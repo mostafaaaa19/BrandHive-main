@@ -1,0 +1,14 @@
+{
+  "name": "brandhive",
+  "version": "1.0.0",
+  "description": "BrandHive - Egypt's #1 Local Brand Marketplace",
+  "private": true,
+  "scripts": {
+    "dev": "cd client && npm run dev",
+    "server": "cd server && npm run dev",
+    "build": "cd client && npm run build",
+    "install:all": "cd client && npm install && cd ../server && npm install",
+    "start": "cd server && npm start"
+  },
+  "keywords": ["marketplace", "egypt", "local-brands", "ecommerce"]
+}

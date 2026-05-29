@@ -1,0 +1,229 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    transition: background-color 0.2s ease, 
+                color 0.2s ease, 
+                border-color 0.2s ease;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    @apply bg-brand-cream text-brand-dark transition-colors duration-200;
+    @apply dark:bg-dark-bg dark:text-dark-text;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3 {
+    font-family: 'Playfair Display', Georgia, serif;
+  }
+}
+
+@layer components {
+  /* Buttons */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 bg-brand-navy text-white font-semibold rounded-xl transition-all duration-200 hover:bg-opacity-90 hover:shadow-card-hover active:scale-95 font-body;
+    @apply dark:bg-brand-gold dark:text-brand-navy dark:hover:bg-brand-gold-light;
+  }
+
+  .btn-gold {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 bg-gold-gradient text-white font-semibold rounded-xl transition-all duration-200 hover:shadow-gold active:scale-95 font-body;
+  }
+
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 border-2 border-brand-navy text-brand-navy font-semibold rounded-xl transition-all duration-200 hover:bg-brand-navy hover:text-white active:scale-95 font-body;
+    @apply dark:border-brand-gold dark:text-brand-gold dark:hover:bg-brand-gold dark:hover:text-brand-navy;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-brand-navy font-medium rounded-lg transition-all duration-200 hover:bg-brand-navy/10 active:scale-95 font-body;
+    @apply dark:text-brand-gold dark:hover:bg-brand-gold/10;
+  }
+
+  /* Cards */
+  .card {
+    @apply bg-white rounded-2xl shadow-card overflow-hidden transition-all duration-300 hover:shadow-card-hover hover:-translate-y-1;
+    @apply dark:bg-dark-surface dark:shadow-none dark:border dark:border-dark-border;
+  }
+
+  .card-product {
+    @apply bg-white rounded-2xl shadow-card overflow-hidden transition-all duration-300 hover:shadow-card-hover hover:-translate-y-1 cursor-pointer;
+    @apply dark:bg-dark-surface dark:shadow-none dark:border dark:border-dark-border;
+  }
+
+  .card-brand {
+    @apply bg-white rounded-2xl shadow-card p-6 transition-all duration-300 hover:shadow-card-hover hover:-translate-y-1;
+    @apply dark:bg-dark-surface dark:shadow-none dark:border dark:border-dark-border;
+  }
+
+  /* Input fields */
+  .input-field {
+    @apply w-full px-4 py-3 border border-gray-200 rounded-xl bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy transition-all duration-200 font-body;
+    @apply dark:bg-dark-surface dark:border-dark-border dark:text-dark-text dark:placeholder-dark-muted dark:focus:ring-brand-gold/20 dark:focus:border-brand-gold;
+  }
+
+  .input-label {
+    @apply block text-sm font-semibold text-gray-700 mb-1.5 font-body;
+    @apply dark:text-dark-text;
+  }
+
+  /* Badges */
+  .badge-verified {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-full border border-emerald-200;
+    @apply dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20;
+  }
+
+  .badge-sale {
+    @apply inline-flex items-center px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded-full;
+  }
+
+  .badge-new {
+    @apply inline-flex items-center px-2 py-0.5 bg-brand-navy text-white text-xs font-bold rounded-full;
+    @apply dark:bg-brand-gold dark:text-brand-navy;
+  }
+
+  .badge-featured {
+    @apply inline-flex items-center px-2 py-0.5 bg-brand-gold text-white text-xs font-bold rounded-full;
+    @apply dark:bg-brand-gold dark:text-brand-navy;
+  }
+
+  /* Section heading */
+  .section-heading {
+    @apply text-3xl md:text-4xl font-display font-bold text-brand-navy;
+    @apply dark:text-white;
+  }
+
+  .section-subheading {
+    @apply text-gray-500 mt-2 font-body;
+    @apply dark:text-dark-muted;
+  }
+
+  /* Nav link */
+  .nav-link {
+    @apply text-gray-700 font-medium hover:text-brand-navy transition-colors duration-200 font-body;
+    @apply dark:text-dark-muted dark:hover:text-brand-gold;
+  }
+
+  .nav-link-active {
+    @apply text-brand-navy font-semibold font-body;
+    @apply dark:text-brand-gold;
+  }
+
+  /* Star rating */
+  .star-filled {
+    @apply text-amber-400;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-gray-100 dark:bg-dark-bg;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-brand-gold rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-brand-gold-light;
+  }
+
+  /* Product image container */
+  .product-img {
+    @apply aspect-square overflow-hidden bg-gray-50;
+    @apply dark:bg-dark-bg;
+  }
+
+  /* Page container */
+  .page-container {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  /* Sidebar */
+  .sidebar-item {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl text-gray-600 hover:bg-brand-navy/5 hover:text-brand-navy font-medium transition-all duration-200 cursor-pointer font-body;
+    @apply dark:text-dark-muted dark:hover:bg-dark-surface dark:hover:text-brand-gold;
+  }
+
+  .sidebar-item-active {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl bg-brand-navy text-white font-semibold cursor-pointer font-body;
+    @apply dark:bg-brand-gold dark:text-brand-navy;
+  }
+
+  /* Skeleton loader */
+  .skeleton {
+    @apply animate-pulse bg-gray-200 rounded-lg;
+    @apply dark:bg-dark-surface;
+  }
+}
+
+@layer utilities {
+  .text-gradient-gold {
+    background: linear-gradient(135deg, #C8922A, #E8B84B);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-gradient-genz {
+    background: linear-gradient(135deg, #7C3AED, #EC4899, #F97316);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .bg-pattern {
+    background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23C8922A' fill-opacity='0.06'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  }
+
+  .glass {
+    @apply bg-white/80 backdrop-blur-md border border-white/20;
+  }
+
+}
+
+/* ===== RTL / Arabic overrides ===== */
+[dir="rtl"] body {
+  font-family: 'Cairo', 'Inter', system-ui, sans-serif;
+}
+
+[dir="rtl"] .font-display,
+[dir="rtl"] h1,
+[dir="rtl"] h2,
+[dir="rtl"] h3 {
+  font-family: 'Cairo', 'Playfair Display', Georgia, serif;
+}
+
+[dir="rtl"] .font-body {
+  font-family: 'Cairo', 'Inter', system-ui, sans-serif;
+}
+
+/* Flip directional icons in RTL */
+[dir="rtl"] .rtl-flip {
+  transform: scaleX(-1);
+}
+
+/* Input text direction */
+[dir="rtl"] input,
+[dir="rtl"] textarea {
+  text-align: right;
+}
+
+/* Sidebar active item */
+[dir="rtl"] .sidebar-item-active {
+  border-right: 3px solid currentColor;
+  border-left: none;
+}

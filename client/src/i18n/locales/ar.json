@@ -1,0 +1,172 @@
+{
+  "nav": {
+    "home": "الرئيسية",
+    "explore": "استكشف الماركات",
+    "products": "المنتجات",
+    "global": "عالمي",
+    "cart": "السلة",
+    "login": "تسجيل الدخول",
+    "register": "إنشاء حساب",
+    "account": "حسابي",
+    "sellerDashboard": "لوحة البائع",
+    "adminDashboard": "لوحة الإدارة",
+    "logout": "تسجيل الخروج",
+    "sell": "ابدأ البيع"
+  },
+  "home": {
+    "hero": {
+      "title": "اكتشف أفضل المنتجات المصرية",
+      "subtitle": "تسوق من أكثر من 12,000 ماركة مصرية موثقة. ادعم المحلي، تسوق بذكاء.",
+      "shopNow": "تسوق الآن",
+      "startSelling": "ابدأ البيع",
+      "stats": {
+        "brands": "+12 ألف ماركة",
+        "products": "280 ألف منتج",
+        "governorates": "27 محافظة",
+        "buyers": "+500 ألف مشتري"
+      }
+    },
+    "features": {
+      "verifiedSellers": "بائعون موثقون",
+      "verifiedSellersDesc": "كل بائع تم التحقق منه ومراجعته",
+      "fastDelivery": "توصيل سريع",
+      "fastDeliveryDesc": "توصيل لجميع المحافظات الـ 27",
+      "supportLocal": "ادعم المحلي",
+      "supportLocalDesc": "كل عملية شراء تدعم رواد الأعمال المصريين",
+      "bestQuality": "أفضل جودة",
+      "bestQualityDesc": "مراجعات مدعومة بالذكاء الاصطناعي لضمان أفضل المنتجات"
+    },
+    "featuredProducts": "منتجات مميزة",
+    "popular": "الأكثر شعبية",
+    "new": "جديد",
+    "featured": "مميز",
+    "topBrands": "أبرز الماركات",
+    "globalBrands": "ماركات عالمية",
+    "testimonials": "ماذا يقول مجتمعنا",
+    "sellCta": {
+      "title": "بع على براند هايف",
+      "subtitle": "انضم لآلاف البائعين المصريين. عمولة 5% فقط، بدون رسوم شهرية.",
+      "button": "ابدأ البيع اليوم"
+    }
+  },
+  "auth": {
+    "login": "تسجيل الدخول",
+    "register": "إنشاء حساب",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "confirmPassword": "تأكيد كلمة المرور",
+    "name": "الاسم",
+    "forgotPassword": "نسيت كلمة المرور؟",
+    "noAccount": "ليس لديك حساب؟",
+    "hasAccount": "لديك حساب بالفعل؟",
+    "signUp": "سجل الآن",
+    "signIn": "سجل دخولك",
+    "sendCode": "إرسال رمز التحقق",
+    "verifyAccount": "تحقق من حسابك",
+    "verifyCode": "أدخل رمز التحقق",
+    "resetPassword": "إعادة تعيين كلمة المرور",
+    "setNewPassword": "تعيين كلمة مرور جديدة",
+    "resendCode": "إعادة إرسال الرمز",
+    "backToLogin": "العودة لتسجيل الدخول",
+    "verificationSent": "أدخل الرمز المكون من 6 أرقام المرسل إلى",
+    "namePlaceholder": "اسمك الكامل",
+    "emailPlaceholder": "بريدك@الإلكتروني.com",
+    "passwordPlaceholder": "8 أحرف على الأقل",
+    "orContinueWith": "أو تابع بـ"
+  },
+  "products": {
+    "addToCart": "أضف للسلة",
+    "addToWishlist": "أضف للمفضلة",
+    "removeFromWishlist": "إزالة من المفضلة",
+    "inStock": "متوفر",
+    "outOfStock": "غير متوفر",
+    "price": "السعر",
+    "category": "الفئة",
+    "brand": "الماركة",
+    "search": "ابحث عن منتجات...",
+    "filter": "تصفية",
+    "sortBy": "ترتيب حسب",
+    "newest": "الأحدث",
+    "priceLowHigh": "السعر: من الأقل للأعلى",
+    "priceHighLow": "السعر: من الأعلى للأقل",
+    "noProducts": "لا توجد منتجات"
+  },
+  "cart": {
+    "title": "سلة التسوق",
+    "empty": "سلتك فارغة",
+    "total": "الإجمالي",
+    "checkout": "إتمام الشراء",
+    "remove": "إزالة",
+    "quantity": "الكمية",
+    "continueShopping": "مواصلة التسوق"
+  },
+  "dashboard": {
+    "user": {
+      "title": "حسابي",
+      "orders": "طلباتي",
+      "wishlist": "المفضلة",
+      "profile": "الملف الشخصي",
+      "settings": "الإعدادات"
+    },
+    "seller": {
+      "title": "لوحة البائع",
+      "products": "منتجاتي",
+      "orders": "الطلبات",
+      "analytics": "التحليلات",
+      "addProduct": "إضافة منتج",
+      "revenue": "الإيرادات",
+      "totalSales": "إجمالي المبيعات"
+    },
+    "admin": {
+      "title": "لوحة الإدارة",
+      "users": "المستخدمون",
+      "brands": "الماركات",
+      "products": "المنتجات",
+      "orders": "الطلبات",
+      "analytics": "التحليلات",
+      "approve": "موافقة",
+      "reject": "رفض"
+    }
+  },
+  "common": {
+    "loading": "جاري التحميل...",
+    "error": "حدث خطأ ما",
+    "retry": "حاول مجدداً",
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "delete": "حذف",
+    "edit": "تعديل",
+    "view": "عرض",
+    "back": "رجوع",
+    "next": "التالي",
+    "submit": "إرسال",
+    "search": "بحث",
+    "noResults": "لا توجد نتائج",
+    "egp": "ج.م"
+  },
+  "footer": {
+    "rights": "جميع الحقوق محفوظة",
+    "about": "عن براند هايف",
+    "contact": "تواصل معنا",
+    "terms": "شروط الخدمة",
+    "privacy": "سياسة الخصوصية"
+  },
+  "sell": {
+    "title": "كن بائعاً",
+    "subtitle": "انضم لأكبر سوق إلكتروني في مصر",
+    "commission": "عمولة 5% فقط",
+    "noFees": "بدون رسوم شهرية",
+    "apply": "قدّم الآن"
+  },
+  "support": {
+    "title": "الدعم الفني",
+    "placeholder": "اكتب رسالتك...",
+    "send": "إرسال",
+    "greeting": "مرحباً! كيف يمكنني مساعدتك؟"
+  },
+  "notFound": {
+    "title": "404",
+    "message": "هذه الصفحة غير موجودة.",
+    "backHome": "العودة للرئيسية"
+  }
+}

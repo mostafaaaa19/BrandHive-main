@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="BrandHive - Egypt's #1 marketplace for local brands, artisans, and authentic Egyptian products." />
+    <meta name="keywords" content="Egypt, local brands, marketplace, handmade, Egyptian products, BrandHive" />
+    <meta property="og:title" content="BrandHive - Egypt's Local Marketplace" />
+    <meta property="og:description" content="Discover 12,000+ verified Egyptian local brands. Shop handmade, fashion, jewelry, and more." />
+    <title>BrandHive — Egypt's Local Marketplace 🇪🇬</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+      // Prevent dark mode flash
+      (function() {
+        try {
+          var theme = localStorage.getItem('brandhive_theme');
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (theme === 'dark' || (!theme && prefersDark)) {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+        } catch(e) {}
+      })();
+    </script>
+    <script>
+      // Prevent RTL flash
+      (function() {
+        try {
+          var lang = localStorage.getItem('brandhive_lang');
+          if (lang === 'ar') {
+            document.documentElement.dir = 'rtl';
+            document.documentElement.lang = 'ar';
+            document.documentElement.classList.add('rtl');
+          } else {
+            document.documentElement.dir = 'ltr';
+            document.documentElement.lang = 'en';
+          }
+        } catch(e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

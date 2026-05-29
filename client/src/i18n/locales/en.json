@@ -1,0 +1,172 @@
+{
+  "nav": {
+    "home": "Home",
+    "explore": "Explore Brands",
+    "products": "Products",
+    "global": "Global",
+    "cart": "Cart",
+    "login": "Login",
+    "register": "Register",
+    "account": "My Account",
+    "sellerDashboard": "Seller Dashboard",
+    "adminDashboard": "Admin Dashboard",
+    "logout": "Logout",
+    "sell": "Start Selling"
+  },
+  "home": {
+    "hero": {
+      "title": "Discover Egypt's Finest",
+      "subtitle": "Shop from 12,000+ verified Egyptian brands. Support local, shop smart.",
+      "shopNow": "Shop Now",
+      "startSelling": "Start Selling",
+      "stats": {
+        "brands": "12K+ Brands",
+        "products": "280K Products",
+        "governorates": "27 Governorates",
+        "buyers": "500K+ Buyers"
+      }
+    },
+    "features": {
+      "verifiedSellers": "Verified Sellers",
+      "verifiedSellersDesc": "Every seller is vetted and verified",
+      "fastDelivery": "Fast Delivery",
+      "fastDeliveryDesc": "Delivery across all 27 governorates",
+      "supportLocal": "Support Local",
+      "supportLocalDesc": "Every purchase supports Egyptian entrepreneurs",
+      "bestQuality": "Best Quality",
+      "bestQualityDesc": "AI-powered reviews ensure only the best products"
+    },
+    "featuredProducts": "Featured Products",
+    "popular": "Popular",
+    "new": "New",
+    "featured": "Featured",
+    "topBrands": "Top Brands",
+    "globalBrands": "Global Brands",
+    "testimonials": "What Our Community Says",
+    "sellCta": {
+      "title": "Sell on BrandHive",
+      "subtitle": "Join thousands of Egyptian sellers. Only 5% commission, no monthly fees.",
+      "button": "Start Selling Today"
+    }
+  },
+  "auth": {
+    "login": "Login",
+    "register": "Create Account",
+    "email": "Email Address",
+    "password": "Password",
+    "confirmPassword": "Confirm Password",
+    "name": "Name",
+    "forgotPassword": "Forgot Password?",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?",
+    "signUp": "Sign up",
+    "signIn": "Sign in",
+    "sendCode": "Send Reset Code",
+    "verifyAccount": "Verify Your Account",
+    "verifyCode": "Enter Reset Code",
+    "resetPassword": "Reset Password",
+    "setNewPassword": "Set New Password",
+    "resendCode": "Resend Code",
+    "backToLogin": "Back to Login",
+    "verificationSent": "Enter the 6-digit code sent to",
+    "namePlaceholder": "Your full name",
+    "emailPlaceholder": "your@email.com",
+    "passwordPlaceholder": "Min. 8 characters",
+    "orContinueWith": "Or continue with"
+  },
+  "products": {
+    "addToCart": "Add to Cart",
+    "addToWishlist": "Add to Wishlist",
+    "removeFromWishlist": "Remove from Wishlist",
+    "inStock": "In Stock",
+    "outOfStock": "Out of Stock",
+    "price": "Price",
+    "category": "Category",
+    "brand": "Brand",
+    "search": "Search products...",
+    "filter": "Filter",
+    "sortBy": "Sort By",
+    "newest": "Newest",
+    "priceLowHigh": "Price: Low to High",
+    "priceHighLow": "Price: High to Low",
+    "noProducts": "No products found"
+  },
+  "cart": {
+    "title": "Your Cart",
+    "empty": "Your cart is empty",
+    "total": "Total",
+    "checkout": "Checkout",
+    "remove": "Remove",
+    "quantity": "Quantity",
+    "continueShopping": "Continue Shopping"
+  },
+  "dashboard": {
+    "user": {
+      "title": "My Account",
+      "orders": "My Orders",
+      "wishlist": "Wishlist",
+      "profile": "Profile",
+      "settings": "Settings"
+    },
+    "seller": {
+      "title": "Seller Dashboard",
+      "products": "My Products",
+      "orders": "Orders",
+      "analytics": "Analytics",
+      "addProduct": "Add Product",
+      "revenue": "Revenue",
+      "totalSales": "Total Sales"
+    },
+    "admin": {
+      "title": "Admin Dashboard",
+      "users": "Users",
+      "brands": "Brands",
+      "products": "Products",
+      "orders": "Orders",
+      "analytics": "Analytics",
+      "approve": "Approve",
+      "reject": "Reject"
+    }
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "retry": "Try Again",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "view": "View",
+    "back": "Back",
+    "next": "Next",
+    "submit": "Submit",
+    "search": "Search",
+    "noResults": "No results found",
+    "egp": "EGP"
+  },
+  "footer": {
+    "rights": "All rights reserved",
+    "about": "About",
+    "contact": "Contact",
+    "terms": "Terms of Service",
+    "privacy": "Privacy Policy"
+  },
+  "sell": {
+    "title": "Become a Seller",
+    "subtitle": "Join Egypt's largest marketplace",
+    "commission": "Only 5% commission",
+    "noFees": "No monthly fees",
+    "apply": "Apply Now"
+  },
+  "support": {
+    "title": "Support Chat",
+    "placeholder": "Type your message...",
+    "send": "Send",
+    "greeting": "Hi! How can I help you today?"
+  },
+  "notFound": {
+    "title": "404",
+    "message": "This page doesn't exist.",
+    "backHome": "Back to Home"
+  }
+}

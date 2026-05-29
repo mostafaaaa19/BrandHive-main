@@ -4,7 +4,6 @@ import { ArrowRight, ArrowLeft, Upload, CheckCircle, Store, BarChart3, Users, Me
 import { useAuth } from '../context/AuthContext';
 import { brandsAPI, categoriesAPI } from '../services/api';
 import { mapCategory } from '../utils/mappers';
-import { categories as mockCategories } from '../data/mockData';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
 import toast from 'react-hot-toast';
@@ -14,7 +13,7 @@ export default function SellerRegistration() {
   const { isRTL } = useLanguage();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [categories, setCategories] = useState(mockCategories);
+  const [categories, setCategories] = useState([]);
 
   useEffect(() => {
     const fetchCategories = async () => {
@@ -25,7 +24,7 @@ export default function SellerRegistration() {
           setCategories(raw.map(mapCategory));
         }
       } catch {
-        // fallback to mockCategories
+        // keep empty categories on failure
       }
     };
     fetchCategories();
@@ -53,7 +52,7 @@ export default function SellerRegistration() {
     email: user?.email || '',
     phone: '',
     brandName: '',
-    governorate: isRTL ? 'القاهرة' : 'Cairo',
+    governorate: 'Cairo',
     businessType: isRTL ? 'بائع فردي' : 'Individual Seller',
     description: '',
     logoFile: null,
@@ -94,6 +93,13 @@ export default function SellerRegistration() {
       submitData.append('name', form.brandName);
       submitData.append('description', form.description);
       submitData.append('country', 'Egypt');
+
+      if (form.phone) {
+        submitData.append('phone', form.phone.trim());
+      }
+
+      submitData.append('city', form.governorate || form.city || 'Cairo');
+      // Backend only accepts city, not governorate
 
       const selectedCatObjects = categories.filter(c => {
         const displayName = isRTL && c.arName ? c.arName : c.name;
@@ -141,6 +147,13 @@ export default function SellerRegistration() {
     }
   };
 
+  const EGYPT_GOVERNORATES = [
+    'Cairo', 'Alexandria', 'Giza', 'Luxor', 'Aswan', 'Hurghada', 'Port Said', 'Suez',
+    'Mansoura', 'Tanta', 'Zagazig', 'Ismailia', 'Minya', 'Beni Suef', 'Fayoum', 'Sohag',
+    'Qena', 'Asyut', 'Kafr El Sheikh', 'Sharqia', 'Gharbia', 'Monufia', 'Beheira', 'Qalyubia',
+    'Dakahlia', 'North Sinai', 'South Sinai',
+  ];
+
   const businessTypes = isRTL 
     ? ['بائع فردي', 'عمل صغير', 'شركة مسجلة', 'حرفي / صانع يدوي', 'مزرعة / زراعي']
     : ['Individual Seller', 'Small Business', 'Registered Company', 'Artisan / Craftsperson', 'Farm / Agricultural'];
@@ -153,10 +166,6 @@ export default function SellerRegistration() {
       categories: p.categories.includes(cat) ? p.categories.filter(c => c !== cat) : [...p.categories, cat]
     }));
   };
-
-  const governorates = isRTL 
-    ? ['القاهرة', 'الإسكندرية', 'الجيزة', 'الأقصر', 'أسوان', 'الفيوم', 'المنصورة', 'طنطا']
-    : ['Cairo', 'Alexandria', 'Giza', 'Luxor', 'Aswan', 'Fayoum', 'Mansoura', 'Tanta'];
 
   return (
     <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg flex transition-colors duration-200 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
@@ -268,19 +277,25 @@ export default function SellerRegistration() {
                 <label className="input-label dark:text-dark-text">{isRTL ? 'رقم الهاتف *' : 'Phone Number *'}</label>
                 <input value={form.phone} onChange={e => update('phone', e.target.value)} placeholder="+20 10 0000 0000" className={`input-field ${isRTL ? 'text-right' : ''}`} />
               </div>
-              <div className={`grid grid-cols-2 gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                <div className={isRTL ? 'text-right' : ''}>
-                  <label className="input-label dark:text-dark-text">{isRTL ? 'المحافظة' : 'Governorate'}</label>
-                  <select value={form.governorate} onChange={e => update('governorate', e.target.value)} className={`input-field ${isRTL ? 'text-right' : ''}`}>
-                    {governorates.map(g => <option key={g}>{g}</option>)}
-                  </select>
-                </div>
-                <div className={isRTL ? 'text-right' : ''}>
-                  <label className="input-label dark:text-dark-text">{isRTL ? 'نوع العمل' : 'Business Type'}</label>
-                  <select value={form.businessType} onChange={e => update('businessType', e.target.value)} className={`input-field ${isRTL ? 'text-right' : ''}`}>
-                    {businessTypes.map(t => <option key={t}>{t}</option>)}
-                  </select>
-                </div>
+              <div className={isRTL ? 'text-right' : ''}>
+                <label className={`block text-sm font-medium text-gray-700 dark:text-dark-text mb-1 ${isRTL ? 'text-right' : ''}`}>
+                  {isRTL ? 'المحافظة' : 'Governorate'} *
+                </label>
+                <select
+                  value={form.governorate || 'Cairo'}
+                  onChange={e => update('governorate', e.target.value)}
+                  className={`input-field ${isRTL ? 'text-right' : ''}`}
+                >
+                  {EGYPT_GOVERNORATES.map(g => (
+                    <option key={g} value={g}>{g}</option>
+                  ))}
+                </select>
+              </div>
+              <div className={isRTL ? 'text-right' : ''}>
+                <label className="input-label dark:text-dark-text">{isRTL ? 'نوع العمل' : 'Business Type'}</label>
+                <select value={form.businessType} onChange={e => update('businessType', e.target.value)} className={`input-field ${isRTL ? 'text-right' : ''}`}>
+                  {businessTypes.map(t => <option key={t}>{t}</option>)}
+                </select>
               </div>
             </div>
           )}

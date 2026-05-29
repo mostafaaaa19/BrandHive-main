@@ -1,11 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Search, Grid3X3, List, X } from 'lucide-react';
 import BrandCard from '../components/BrandCard';
-import { governorates, categories as mockCategories } from '../data/mockData';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
-import { brandsAPI, categoriesAPI } from '../services/api';
-import { mapBrand, mapCategory } from '../utils/mappers';
+import { brandsAPI } from '../services/api';
+import { mapBrand } from '../utils/mappers';
 
 export default function ExploreBrands() {
   const { t } = useTranslation();
@@ -34,7 +33,6 @@ export default function ExploreBrands() {
   const [activeFilter, setActiveFilter] = useState('All');
   
   const [brands, setBrands] = useState([]);
-  const [categories, setCategories] = useState(mockCategories);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -52,19 +50,26 @@ export default function ExploreBrands() {
       } finally {
         setLoading(false);
       }
-
-      try {
-        const res = await categoriesAPI.getAll();
-        const raw = res.data?.data || res.data?.categories || res.data || [];
-        if (Array.isArray(raw) && raw.length > 0) {
-          setCategories(raw.map(mapCategory));
-        }
-      } catch {
-        // keep mockCategories as fallback
-      }
     };
     fetchBrands();
   }, []);
+
+  const realCategories = useMemo(() => {
+    const cats = new Set();
+    brands.forEach(b => {
+      if (b.category) cats.add(b.category);
+    });
+    return Array.from(cats).filter(Boolean);
+  }, [brands]);
+
+  const realGovernorates = useMemo(() => {
+    const govs = new Set();
+    brands.forEach(b => {
+      if (b.governorate) govs.add(b.governorate);
+      if (b.location && b.location !== 'Egypt') govs.add(b.location);
+    });
+    return Array.from(govs).filter(Boolean);
+  }, [brands]);
 
   const filtered = useMemo(() => {
     let result = [...brands];
@@ -198,14 +203,16 @@ export default function ExploreBrands() {
             </div>
 
             {/* Governorate */}
-            <select
-              value={selectedGov}
-              onChange={(e) => setSelectedGov(e.target.value)}
-              className={`input-field sm:w-48 ${isRTL ? 'text-right' : ''}`}
-            >
-              <option value="">{isRTL ? 'جميع المحافظات' : 'All Governorates'}</option>
-              {governorates.slice(0, 15).map(g => <option key={g} value={g}>{g}</option>)}
-            </select>
+            {realGovernorates.length > 0 && (
+              <select
+                value={selectedGov}
+                onChange={(e) => setSelectedGov(e.target.value)}
+                className={`input-field sm:w-48 ${isRTL ? 'text-right' : ''}`}
+              >
+                <option value="">{isRTL ? 'كل المحافظات' : 'All Governorates'}</option>
+                {realGovernorates.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+            )}
 
             {/* Category */}
             <select
@@ -214,7 +221,7 @@ export default function ExploreBrands() {
               className={`input-field sm:w-44 ${isRTL ? 'text-right' : ''}`}
             >
               <option value="">{isRTL ? 'جميع الفئات' : 'All Categories'}</option>
-              {categories.map(c => <option key={c.id} value={c.name}>{isRTL && c.arName ? c.arName : c.name}</option>)}
+              {realCategories.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
 
             {/* Sort */}

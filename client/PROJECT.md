@@ -284,3 +284,16 @@ To ensure consistency between backend responses and frontend UI, we use mappers 
 - Added SellerPendingPage — post-registration waiting screen while brand awaits admin approval
 - SellerRegistration now redirects to `/seller/pending` instead of dashboard after successful submit
 - Added `/seller/pending` protected route in App.jsx
+- Removed all remaining mockData imports from pages — globalBrands now from real API, categories derived from products/brands, governorates derived from real data, fixed adminAPI orders endpoint to /orders/admin/all
+- Fixed SellerRegistration — now sends phone and city/governorate fields required by backend
+- Fixed SellerRegistration — removed governorate field, backend only accepts city
+- Fixed Admin pending seller approvals — added brandRequests state, tries multiple endpoints to find brand requests, approve/reject buttons connected to real API
+- Fixed sellers filter to handle isVerified/isActive/isApproved/status field variations
+- Fixed setBrands response shape parsing with Array.isArray check
+- Added debug logging for brand requests API response
+- Fixed CORS: added Vercel domain to Railway server allowed origins
+- Added vercel.json for SPA routing fix
+- Confirmed withCredentials: false for Bearer token auth
+- Fixed sellers filter: now uses `status === 'pending'` instead of isVerified/isActive checks
+- Fixed brand requests to fetch all pages using pagination meta
+- Added getBrandRequests page parameter support

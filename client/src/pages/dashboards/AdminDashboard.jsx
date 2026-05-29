@@ -478,12 +478,33 @@ export default function AdminDashboard() {
       }
 
       try {
-        const brandRes = await adminAPI.getBrandRequests();
-        setBrands(brandRes.data?.data || brandRes.data?.brands || []);
+        const firstRes = await adminAPI.getBrandRequests();
+        const meta = firstRes.data?.meta;
+        let allBrands = firstRes.data?.data || [];
+
+        if (meta?.total > meta?.limit && meta?.total > allBrands.length) {
+          const totalPages = Math.ceil(meta.total / (meta.limit || 10));
+          const pagePromises = [];
+          for (let page = 2; page <= Math.min(totalPages, 10); page++) {
+            pagePromises.push(adminAPI.getBrandRequests(page));
+          }
+          const restResults = await Promise.allSettled(pagePromises);
+          restResults.forEach(result => {
+            if (result.status === 'fulfilled') {
+              const pageData = result.value.data?.data || [];
+              allBrands = [...allBrands, ...pageData];
+            }
+          });
+        }
+
+        setBrands(Array.isArray(allBrands) ? allBrands : []);
+        console.log('[Admin] total brands loaded:', allBrands.length);
+        console.log('[Admin] pending:', allBrands.filter(b => b.status === 'pending').length);
       } catch {
         try {
           const brandResFallback = await adminAPI.getBrands();
-          setBrands(brandResFallback.data?.data || brandResFallback.data?.brands || []);
+          const rawFallback = brandResFallback.data?.data || brandResFallback.data?.brands || brandResFallback.data || [];
+          setBrands(Array.isArray(rawFallback) ? rawFallback : []);
         } catch {
           setBrands([]);
         }
@@ -517,13 +538,15 @@ export default function AdminDashboard() {
     fetchData();
   }, []);
 
-  const sellers = brands.filter(b => !b.isVerified);
+  const sellers = brands.filter(b => b.status === 'pending');
 
   const approveSeller = async (id) => {
     try {
       await adminAPI.approveBrandRequest(id);
       setBrands(prev => prev.map(b =>
-        (b._id === id || b.id === id) ? { ...b, isVerified: true } : b
+        (b._id === id || b.id === id)
+          ? { ...b, isVerified: true, isApproved: true, isActive: true, status: 'approved' }
+          : b
       ));
       toast.success(
         isRTL ? 'تم قبول البائع وإرسال إشعار!' : 'Seller approved and notified!',
@@ -767,7 +790,7 @@ export default function AdminDashboard() {
                                   <button
                                     onClick={() => {
                                       adminAPI.verifyBrand(brand._id || brand.id);
-                                      setBrands(prev => prev.map(b => (b._id === brand._id || b.id === brand.id) ? { ...b, isVerified: true } : b));
+                                      setBrands(prev => prev.map(b => (b._id === brand._id || b.id === brand.id) ? { ...b, isVerified: true, isApproved: true, isActive: true, status: 'approved' } : b));
                                       toast.success(isRTL ? 'تم قبول البائع!' : 'Seller approved!');
                                     }}
                                     className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/20 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1"

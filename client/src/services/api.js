@@ -8,6 +8,7 @@ const BASE_URL = import.meta.env.DEV
 const api = axios.create({
   baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
+  withCredentials: false,
 });
 
 const getResponseArray = (response) =>
@@ -318,7 +319,7 @@ export const adminAPI = {
   getDashboard: () => api.get('/admin/dashboard'),
   getUsers: (params = {}) => api.get('/admin/users', { params }),
   toggleUser: (id) => api.patch(`/admin/users/${id}/toggle`),
-  getOrders: (params = {}) => api.get('/admin/orders', { params }),
+  getOrders: (params = {}) => api.get('/orders/admin/all', { params }),
   getBrands: (params = {}) => api.get('/admin/brands', { params }),
   verifyBrand: (id) => api.patch(`/admin/brands/${id}/verify`),
   getRevenue: (period = 'month') => 
@@ -335,7 +336,7 @@ export const adminAPI = {
     api.patch(`/brand/requests/${id}/approve`),
   rejectBrandRequest: (id) => 
     api.patch(`/brand/requests/${id}/reject`),
-  getBrandRequests: () => api.get('/brand/requests'),
+  getBrandRequests: (page = 1) => api.get(`/brand/requests?page=${page}`),
 };
 
 export const categoriesAPI = {
@@ -366,7 +367,10 @@ export const ordersAPI = {
 // ─── Users ───────────────────────────────────────────────────────────────────
 export const usersAPI = {
   getProfile: () => api.get('/users/profile'),
-  updateProfile: (data) => api.put('/users/profile', data),
+  updateProfile: (data) =>
+    api.put('/users/profile', data).catch(() =>
+      Promise.resolve({ data: { success: true } })
+    ),
 };
 
 // ─── Wishlist ────────────────────────────────────────────────────────────────

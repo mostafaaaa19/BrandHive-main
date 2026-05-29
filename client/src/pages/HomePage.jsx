@@ -7,7 +7,7 @@ import {
 import { useInView } from 'react-intersection-observer';
 import ProductCard from '../components/ProductCard';
 import BrandCard from '../components/BrandCard';
-import { globalBrands, testimonials, categories as mockCategories } from '../data/mockData';
+import { testimonials } from '../data/mockData';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
 import { productsAPI, brandsAPI, categoriesAPI } from '../services/api';
@@ -56,7 +56,8 @@ export default function HomePage() {
   const [activeTab, setActiveTab] = useState('Popular');
   const [featuredProducts, setFeaturedProducts] = useState([]);
   const [topBrands, setTopBrands] = useState([]);
-  const [categories, setCategories] = useState(mockCategories);
+  const [categories, setCategories] = useState([]);
+  const [globalBrands, setGlobalBrands] = useState([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [brandsLoading, setBrandsLoading] = useState(true);
   const { ref: featuresRef, inView: featuresInView } = useInView({ triggerOnce: true, threshold: 0.1 });
@@ -98,7 +99,17 @@ export default function HomePage() {
         const res = await brandsAPI.getAll(1, 50);
         const raw = res.data?.data || res.data?.brands || res.data || [];
         const list = Array.isArray(raw) ? raw : [];
-        setTopBrands(list.map(mapBrand));
+        const brandsData = list.map(mapBrand);
+        setTopBrands(brandsData);
+        const globalList = brandsData
+          .filter(b => b.logo || b.brandLogo)
+          .slice(0, 12)
+          .map(b => ({
+            name: b.name,
+            logo: b.logo || b.brandLogo,
+            slug: b.slug,
+          }));
+        setGlobalBrands(globalList);
       } catch {
         setTopBrands([]);
       } finally {
@@ -111,10 +122,10 @@ export default function HomePage() {
         const raw = res.data?.data || res.data?.categories || res.data || [];
         const mapped = Array.isArray(raw) && raw.length > 0
           ? raw.map(mapCategory)
-          : mockCategories;
+          : [];
         setCategories(mapped);
       } catch {
-        setCategories(mockCategories);
+        setCategories([]);
       }
 
     };
@@ -563,13 +574,42 @@ export default function HomePage() {
           </div>
 
           <div className={`grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-            {globalBrands.map((brand) => (
-              <div key={brand.name} className="flex flex-col items-center gap-2 p-4 bg-white dark:bg-dark-surface rounded-2xl shadow-card hover:shadow-card-hover hover:-translate-y-1 dark:border dark:border-transparent dark:hover:border-brand-gold transition-all cursor-pointer group">
-                <span className="text-3xl group-hover:scale-110 transition-transform">{brand.logo}</span>
-                <span className="text-xs font-semibold text-gray-700 dark:text-dark-text">{brand.name}</span>
-                <span className="text-xs text-gray-400 dark:text-dark-muted">{brand.category}</span>
-              </div>
-            ))}
+            {globalBrands.length > 0
+              ? globalBrands.map((brand, i) => (
+                  <div
+                    key={i}
+                    onClick={() => navigate(`/brand/${brand.slug}`)}
+                    className="flex items-center justify-center p-4 bg-white dark:bg-dark-surface rounded-2xl shadow-card hover:shadow-card-hover transition-all cursor-pointer"
+                  >
+                    <img
+                      src={brand.logo}
+                      alt={brand.name}
+                      className="h-10 w-auto object-contain max-w-[120px]"
+                      onError={e => {
+                        e.target.style.display = 'none';
+                        e.target.nextSibling.style.display = 'block';
+                      }}
+                    />
+                    <span
+                      style={{ display: 'none' }}
+                      className="font-bold text-sm text-gray-700 dark:text-dark-text"
+                    >
+                      {brand.name}
+                    </span>
+                  </div>
+                ))
+              : topBrands.slice(0, 12).map((brand, i) => (
+                  <div
+                    key={i}
+                    onClick={() => navigate(`/brand/${brand.slug}`)}
+                    className="flex items-center justify-center p-4 bg-white dark:bg-dark-surface rounded-2xl shadow-card cursor-pointer"
+                  >
+                    <span className="font-bold text-sm text-gray-700 dark:text-dark-text truncate">
+                      {brand.name}
+                    </span>
+                  </div>
+                ))
+            }
           </div>
         </div>
       </section>

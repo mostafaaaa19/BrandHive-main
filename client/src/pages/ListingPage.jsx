@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { SlidersHorizontal, Grid3X3, LayoutGrid, List, X, ChevronDown, ChevronUp, Star, RefreshCw } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
-import { governorates } from '../data/mockData';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
 import { productsAPI } from '../services/api';

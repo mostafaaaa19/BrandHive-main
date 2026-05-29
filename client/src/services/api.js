@@ -334,8 +334,8 @@ export const adminAPI = {
     api.delete(`/admin/users/${id}`),
   approveBrandRequest: (id) => 
     api.patch(`/brand/requests/${id}/approve`),
-  rejectBrandRequest: (id) => 
-    api.patch(`/brand/requests/${id}/reject`),
+  rejectBrandRequest: (id, reason) =>
+    api.patch(`/brand/requests/${id}/reject`, { rejectionReason: reason }),
   getBrandRequests: (page = 1) => api.get(`/brand/requests?page=${page}`),
 };
 

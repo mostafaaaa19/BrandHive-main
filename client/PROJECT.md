@@ -297,3 +297,12 @@ To ensure consistency between backend responses and frontend UI, we use mappers 
 - Fixed sellers filter: now uses `status === 'pending'` instead of isVerified/isActive checks
 - Fixed brand requests to fetch all pages using pagination meta
 - Added getBrandRequests page parameter support
+- Fixed reject brand request: now sends rejectionReason to API
+- Added rejection reason modal with validation (min 10 characters)
+- Confirm button disabled until reason is long enough
+- Fixed AddProductPage: brand _id now fetched from sellerAPI.getDashboard() with getBazaar() fallback
+- Removed demoSeller mock import
+- Fixed salePrice → discountPrice field name
+- Fixed FormData to send only non-empty optional fields
+- Added brand validation before submit
+- Fixed brand fetch in AddProductPage: now fetches all brands and filters by user id

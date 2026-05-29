@@ -459,6 +459,8 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [adminAnalytics, setAdminAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [rejectModal, setRejectModal] = useState({ open: false, brandId: null, brandName: '' });
+  const [rejectReason, setRejectReason] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -560,10 +562,21 @@ export default function AdminDashboard() {
     }
   };
 
-  const rejectSeller = async (id) => {
+  const rejectSeller = (id, name) => {
+    setRejectReason('');
+    setRejectModal({ open: true, brandId: id, brandName: name });
+  };
+
+  const confirmReject = async () => {
+    if (!rejectReason.trim() || rejectReason.trim().length < 10) {
+      toast.error(isRTL ? 'يجب أن يكون سبب الرفض 10 أحرف على الأقل' : 'Rejection reason must be at least 10 characters');
+      return;
+    }
     try {
-      await adminAPI.rejectBrandRequest(id);
-      setBrands(prev => prev.filter(b => b._id !== id && b.id !== id));
+      await adminAPI.rejectBrandRequest(rejectModal.brandId, rejectReason.trim());
+      setBrands(prev => prev.filter(b => b._id !== rejectModal.brandId && b.id !== rejectModal.brandId));
+      setRejectModal({ open: false, brandId: null, brandName: '' });
+      setRejectReason('');
       toast.error(
         isRTL ? 'تم رفض طلب البائع.' : 'Seller application rejected.',
         { style: { borderRadius: '12px', fontFamily: isRTL ? 'Cairo' : 'Inter' } }
@@ -908,7 +921,7 @@ export default function AdminDashboard() {
                                     <CheckCircle size={12} /> {isRTL ? 'قبول' : 'Approve'}
                                   </button>
                                   <button
-                                    onClick={() => rejectSeller(brand._id || brand.id)}
+                                    onClick={() => rejectSeller(brand._id || brand.id, brand.name)}
                                     className="px-3 py-1.5 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/20 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1"
                                   >
                                     <XCircle size={12} /> {isRTL ? 'رفض' : 'Reject'}
@@ -1062,6 +1075,67 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Reject Brand Modal */}
+      {rejectModal.open && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+          <div className={`bg-white dark:bg-dark-surface rounded-3xl shadow-2xl p-8 w-full max-w-md ${isRTL ? 'text-right' : ''}`}>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-display font-bold text-gray-900 dark:text-dark-text">
+                {isRTL ? 'رفض طلب البائع' : 'Reject Seller Application'}
+              </h3>
+              <button
+                onClick={() => setRejectModal({ open: false, brandId: null, brandName: '' })}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-dark-text transition-colors"
+              >
+                <XCircle size={24} />
+              </button>
+            </div>
+
+            <div className="bg-red-50 dark:bg-red-900/10 rounded-2xl p-4 mb-5">
+              <p className="text-sm text-red-700 dark:text-red-400">
+                {isRTL
+                  ? `هل أنت متأكد من رفض طلب "${rejectModal.brandName}"؟`
+                  : `Are you sure you want to reject "${rejectModal.brandName}"?`}
+              </p>
+            </div>
+
+            <div className="mb-5">
+              <label className={`block text-sm font-semibold text-gray-700 dark:text-dark-text mb-2 ${isRTL ? 'text-right' : ''}`}>
+                {isRTL ? 'سبب الرفض (مطلوب — 10 أحرف على الأقل)' : 'Rejection Reason (required — min 10 characters)'}
+              </label>
+              <textarea
+                value={rejectReason}
+                onChange={e => setRejectReason(e.target.value)}
+                rows={3}
+                placeholder={isRTL
+                  ? 'مثال: المعلومات المقدمة غير كافية أو غير مكتملة...'
+                  : 'e.g. The provided information is incomplete or insufficient...'}
+                className={`w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-4 py-3 text-sm text-gray-900 dark:text-dark-text outline-none focus:border-brand-navy dark:focus:border-brand-gold resize-none ${isRTL ? 'text-right' : ''}`}
+              />
+              <p className={`text-xs mt-1 ${rejectReason.trim().length >= 10 ? 'text-emerald-500' : 'text-gray-400 dark:text-dark-muted'}`}>
+                {rejectReason.trim().length}/10 {isRTL ? 'حرف كحد أدنى' : 'characters minimum'}
+              </p>
+            </div>
+
+            <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <button
+                onClick={() => setRejectModal({ open: false, brandId: null, brandName: '' })}
+                className="flex-1 btn-outline text-sm"
+              >
+                {isRTL ? 'إلغاء' : 'Cancel'}
+              </button>
+              <button
+                onClick={confirmReject}
+                disabled={rejectReason.trim().length < 10}
+                className="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors"
+              >
+                {isRTL ? 'تأكيد الرفض' : 'Confirm Reject'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

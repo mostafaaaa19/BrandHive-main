@@ -5,7 +5,7 @@ import { Upload, X, ArrowLeft, ChevronRight, Tag, DollarSign, Package, Image as 
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { categoriesAPI, sellerAPI } from '../../services/api';
+import { categoriesAPI, sellerAPI, brandsAPI } from '../../services/api';
 
 export default function AddProductPage() {
   const navigate = useNavigate();
@@ -16,6 +16,7 @@ export default function AddProductPage() {
   const [categories, setCategories] = useState([]);
   const [loadingCats, setLoadingCats] = useState(true);
   const [myBrand, setMyBrand] = useState(null);
+  const [brandLoading, setBrandLoading] = useState(true);
   
   // Form State
   const [formData, setFormData] = useState({
@@ -53,21 +54,30 @@ export default function AddProductPage() {
       }
 
       try {
-        const dashRes = await sellerAPI.getDashboard();
-        const brandData = dashRes.data?.data?.brand || dashRes.data?.brand || null;
-        if (brandData) {
-          setMyBrand(brandData);
-          setFormData(prev => ({
-            ...prev,
-            brand: brandData._id || brandData.id,
-          }));
+        const brandsRes = await brandsAPI.getAll(1, 100);
+        const allBrands = brandsRes.data?.data || brandsRes.data?.brands || brandsRes.data || [];
+
+        const matchedBrand = Array.isArray(allBrands)
+          ? allBrands.find(b =>
+              b.requestedBy === user?.id ||
+              b.requestedBy === user?._id ||
+              b.createdBy === user?.id ||
+              b.createdBy === user?._id
+            )
+          : null;
+
+        if (matchedBrand?._id) {
+          setMyBrand(matchedBrand);
+          setFormData(prev => ({ ...prev, brand: matchedBrand._id }));
         }
       } catch {
-        // brand not available yet — seller may not have an approved brand
+        // brand not found
+      } finally {
+        setBrandLoading(false);
       }
     };
     fetchInitialData();
-  }, []);
+  }, [user]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -142,7 +152,7 @@ export default function AddProductPage() {
     if (!formData.price || parseFloat(formData.price) <= 0) newErrors.price = 'Price must be greater than 0';
     if (!formData.stock || parseInt(formData.stock) < 0) newErrors.stock = 'Stock cannot be negative';
     if (!formData.category) newErrors.category = 'Category is required';
-    if (!formData.brand) newErrors.brand = 'Brand is required';
+    if (!formData.brand) newErrors.brand = 'Brand is required — make sure your brand is approved';
     if (!mainImage) newErrors.images = 'At least one main image is required';
     
     setErrors(newErrors);
@@ -163,36 +173,24 @@ export default function AddProductPage() {
     setSubmitType(type);
 
     try {
-      const catObj = categories.find(c =>
-        c.name === formData.category ||
-        c._id === formData.category ||
-        c.id === formData.category
-      );
-      const categoryId = catObj?._id || catObj?.id || formData.category;
-
       const submitData = new FormData();
 
       submitData.append('name', formData.name.trim());
       submitData.append('description', formData.description.trim());
       submitData.append('price', formData.price);
       submitData.append('stock', formData.stock);
-      submitData.append('category', categoryId);
+      submitData.append('category', formData.category);
       submitData.append('brand', formData.brand);
 
       if (formData.discountPrice && parseFloat(formData.discountPrice) > 0) {
         submitData.append('discountPrice', formData.discountPrice);
       }
-      if (formData.weight?.trim()) {
-        submitData.append('weight', formData.weight);
-      }
-      if (tagList.length > 0) {
-        submitData.append('tags', JSON.stringify(tagList));
-      }
+      if (formData.sku?.trim()) submitData.append('sku', formData.sku.trim());
+      if (formData.weight) submitData.append('weight', formData.weight);
+      if (tagList.length > 0) tagList.forEach(t => submitData.append('tags[]', t));
 
       if (mainImage) submitData.append('images', mainImage);
-      additionalImages.forEach(img => {
-        if (img.file) submitData.append('images', img.file);
-      });
+      additionalImages.forEach(img => submitData.append('images', img.file));
 
       await sellerAPI.createProduct(submitData);
 
@@ -299,13 +297,24 @@ export default function AddProductPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Brand *</label>
-                    <input
-                      type="text"
-                      name="brand"
-                      value={myBrand?.name || user?.brandName || 'Loading...'}
-                      readOnly
-                      className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg/50 px-4 py-2 text-gray-500 dark:text-dark-muted outline-none"
-                    />
+                    <div className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg/50 px-4 py-2 min-h-[38px] flex items-center">
+                      {brandLoading ? (
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 border-2 border-brand-gold border-t-transparent rounded-full animate-spin" />
+                          <span className="text-gray-400 dark:text-dark-muted text-sm">Loading brand...</span>
+                        </div>
+                      ) : myBrand ? (
+                        <span className="text-gray-700 dark:text-dark-text text-sm font-medium">{myBrand.name}</span>
+                      ) : (
+                        <span className="text-red-400 text-sm">No approved brand found</span>
+                      )}
+                    </div>
+                    {!brandLoading && !myBrand && (
+                      <p className="text-red-500 text-xs mt-1">
+                        You need an approved brand to add products.{' '}
+                        <a href="/sell" className="underline text-brand-gold">Apply here</a>
+                      </p>
+                    )}
                     {errors.brand && <p className="text-red-500 text-xs mt-1">{errors.brand}</p>}
                   </div>
                 </div>

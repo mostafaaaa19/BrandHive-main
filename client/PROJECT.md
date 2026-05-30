@@ -324,3 +324,11 @@ To ensure consistency between backend responses and frontend UI, we use mappers 
 - Admin Products tab: added Delete, Activate, Deactivate actions
 - Added search filter for products by name or brand
 - Added adminAPI.deleteProduct, activateProduct, deactivateProduct endpoints
+- Removed Google and Facebook login buttons from LoginPage and RegisterPage (no backend implementation)
+- Fixed SupportChat security: moved Anthropic API call to backend /chat/ai endpoint
+- API key now stored in server/.env only, never exposed to browser
+- Removed mock conversations, simplified to single support chat window
+- Added chatAPI.sendMessage() to services/api.js
+- Added /chat/ai endpoint using axios to proxy Anthropic API calls
+- Fixed server.js: removed /api/ prefix from all routes to match frontend expectations
+- Routes now: /auth, /brand, /product, /orders, /users

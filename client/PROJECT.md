@@ -332,3 +332,6 @@ To ensure consistency between backend responses and frontend UI, we use mappers 
 - Added /chat/ai endpoint using axios to proxy Anthropic API calls
 - Fixed server.js: removed /api/ prefix from all routes to match frontend expectations
 - Routes now: /auth, /brand, /product, /orders, /users
+- Fixed /chat/ai proxy: now routes to localhost:5000 instead of Railway
+- Fixed chatAPI to use direct fetch instead of axios instance
+- Fixed Vite proxy: changed /chat to /chat/ai to avoid React Router conflict

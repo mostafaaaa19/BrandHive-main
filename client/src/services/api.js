@@ -430,4 +430,13 @@ export const addressesAPI = {
     api.get(`/addresses/${id}/shipping-fee?subtotal=${subtotal}`),
 };
 
+export const chatAPI = {
+  sendMessage: (messages, language) =>
+    fetch('/chat/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages, language }),
+    }).then(r => r.json()),
+};
+
 export default api;

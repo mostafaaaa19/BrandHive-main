@@ -9,6 +9,11 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      '/chat/ai': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+        secure: false,
+      },
       '/brandhive-api': {
         target: 'https://brandhive-apis-production.up.railway.app',
         changeOrigin: true,

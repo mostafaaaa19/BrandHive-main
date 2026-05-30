@@ -130,28 +130,7 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="flex items-center gap-3 my-6">
-            <div className="flex-1 h-px bg-gray-200 dark:bg-dark-border"></div>
-            <span className="text-xs text-gray-400 dark:text-dark-muted">{t('auth.orContinueWith')}</span>
-            <div className="flex-1 h-px bg-gray-200 dark:bg-dark-border"></div>
-          </div>
-
-          <div className={`grid grid-cols-2 gap-3 mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
-            {[
-              { label: 'Google', icon: '🟢' },
-              { label: 'Facebook', icon: '🔵' },
-            ].map(provider => (
-              <button
-                key={provider.label}
-                onClick={() => toast('Social login coming soon!', { icon: '🔜', style: { borderRadius: '12px' } })}
-                className="flex items-center justify-center gap-2 py-3 border border-gray-200 dark:border-dark-border rounded-xl text-sm font-medium text-gray-700 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-surface transition-colors"
-              >
-                {provider.icon} {provider.label}
-              </button>
-            ))}
-          </div>
-
-          <p className="text-center text-sm text-gray-600 dark:text-dark-muted">
+          <p className="text-center text-sm text-gray-600 dark:text-dark-muted mt-6">
             {t('auth.noAccount')}{' '}
             <Link to="/register" className="text-brand-navy dark:text-brand-gold font-semibold hover:underline">
               {isRTL ? 'انضم لبراند هايف مجاناً' : 'Join BrandHive free'}

@@ -265,8 +265,12 @@ export const authAPI = {
 
 // ─── Brands — backend returns empty; keep using mockData ─────────────────────
 export const brandsAPI = {
-  getAll: (page = 1, limit = 50) => 
-    api.get(`/brand?page=${page}&limit=${limit}`),
+  getAll: (pageOrParams = 1, limit = 50) => {
+    if (typeof pageOrParams === 'object' && pageOrParams !== null) {
+      return api.get('/brand', { params: pageOrParams });
+    }
+    return api.get('/brand', { params: { page: pageOrParams, limit } });
+  },
   getOne: (id) => api.get(`/brand/${id}`),
   getByCategory: (categoryId) => 
     api.get(`/brand/by-category/${categoryId}`),
@@ -296,9 +300,12 @@ export const sellerAPI = {
   getDashboard: () => api.get('/seller/dashboard'),
   getOrders: () => api.get('/seller/orders'),
   getProducts: () => api.get('/seller/products'),
-  createProduct: (data) => api.post('/seller/products', data, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  }),
+  createProduct: (data) => {
+    const isFormData = data instanceof FormData;
+    return api.post('/seller/products', data, isFormData ? {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    } : undefined);
+  },
   updateProduct: (id, data) => api.put(`/seller/products/${id}`, data),
   deleteProduct: (id) => api.delete(`/seller/products/${id}`),
   updateOrderStatus: (id, status) => api.patch(`/seller/orders/${id}/status`, { status }),
@@ -337,6 +344,9 @@ export const adminAPI = {
   rejectBrandRequest: (id, reason) =>
     api.patch(`/brand/requests/${id}/reject`, { rejectionReason: reason }),
   getBrandRequests: (page = 1) => api.get(`/brand/requests?page=${page}`),
+  deleteProduct: (id) => api.delete(`/product/${id}`),
+  activateProduct: (id) => api.patch(`/product/${id}/activate`),
+  deactivateProduct: (id) => api.patch(`/product/${id}/deactivate`),
 };
 
 export const categoriesAPI = {

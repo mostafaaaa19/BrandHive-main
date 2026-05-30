@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../../context/AuthContext';
-import { sellerAPI } from '../../services/api';
+import { sellerAPI, brandsAPI, productsAPI } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../../context/LanguageContext';
 import toast from 'react-hot-toast';
@@ -46,7 +46,7 @@ function SellerOrdersTab({ orders, isRTL, sellerAPI, t }) {
     setLoading(true);
     try {
       const res = await sellerAPI.filterOrders(status);
-      const data = res.data?.data || res.data?.orders || [];
+      const data = res.data?.data || res.data?.orders || res.data || [];
       setFilteredOrders(Array.isArray(data) ? data : []);
     } catch {
       setFilteredOrders(
@@ -292,8 +292,8 @@ function SellerReviewsTab({ isRTL, sellerAPI }) {
     const fetchReviews = async () => {
       try {
         const res = await sellerAPI.getReviews();
-        const data = res.data?.data || res.data?.reviews || [];
-        setReviews(Array.isArray(data) ? data : []);
+        const reviewData = res.data?.data || res.data?.reviews || res.data || [];
+        setReviews(Array.isArray(reviewData) ? reviewData : []);
       } catch {
         setReviews([]);
       } finally {
@@ -382,20 +382,25 @@ function SellerBazaarTab({ isRTL, sellerAPI }) {
   const [bazaar, setBazaar] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notifying, setNotifying] = useState(false);
+  const [bazaarFetched, setBazaarFetched] = useState(false);
 
   useEffect(() => {
+    if (bazaarFetched) return;
+    setBazaarFetched(true);
+
     const fetchBazaar = async () => {
       try {
         const res = await sellerAPI.getBazaar();
         setBazaar(res.data?.data || res.data || null);
       } catch {
+        // bazaar endpoint not available — skip silently
         setBazaar(null);
       } finally {
         setLoading(false);
       }
     };
     fetchBazaar();
-  }, []);
+  }, [bazaarFetched]);
 
   const handleNotify = async () => {
     const title = prompt(isRTL 
@@ -619,6 +624,7 @@ export default function SellerDashboard() {
   const [dashboard, setDashboard] = useState(null);
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
+  const [myBrandId, setMyBrandId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [analytics, setAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
@@ -636,18 +642,42 @@ export default function SellerDashboard() {
       }
 
       try {
-        // Fetch seller orders
         const ordRes = await sellerAPI.getOrders();
-        const ordData = ordRes.data?.data || ordRes.data?.orders || [];
+        const ordData = ordRes.data?.data || ordRes.data?.orders || ordRes.data || [];
         setOrders(Array.isArray(ordData) ? ordData : []);
       } catch {
         setOrders([]);
       }
 
+      let brandId = null;
       try {
-        // Fetch seller products
-        const prodRes = await sellerAPI.getProducts();
-        const prodData = prodRes.data?.data || prodRes.data?.products || [];
+        const brandsRes = await brandsAPI.getAll({ limit: 50 });
+        const allBrands = brandsRes.data?.data || brandsRes.data?.brands || brandsRes.data || [];
+        const myBrand = Array.isArray(allBrands)
+          ? allBrands.find(b =>
+              b.requestedBy === user?.id ||
+              b.requestedBy === user?._id ||
+              b.createdBy === user?.id ||
+              b.createdBy === user?._id
+            )
+          : null;
+
+        brandId = myBrand?._id || user?.brandId || user?.brand?._id ||
+          localStorage.getItem('brandhive_seller_brand') || null;
+        if (brandId) setMyBrandId(brandId);
+      } catch {
+        brandId = localStorage.getItem('brandhive_seller_brand') || null;
+        if (brandId) setMyBrandId(brandId);
+      }
+
+      try {
+        let prodRes;
+        if (brandId) {
+          prodRes = await productsAPI.getAll({ brand: brandId, limit: 50 });
+        } else {
+          prodRes = await sellerAPI.getProducts();
+        }
+        const prodData = prodRes.data?.data || prodRes.data?.products || prodRes.data || [];
         setProducts(Array.isArray(prodData) ? prodData : []);
       } catch {
         setProducts([]);
@@ -667,7 +697,7 @@ export default function SellerDashboard() {
       setLoading(false);
     };
     fetchData();
-  }, []);
+  }, [user]);
 
   const brandName = user?.name || 'Seller';
 

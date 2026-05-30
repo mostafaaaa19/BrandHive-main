@@ -16,6 +16,7 @@ export default function AddProductPage() {
   const [categories, setCategories] = useState([]);
   const [loadingCats, setLoadingCats] = useState(true);
   const [myBrand, setMyBrand] = useState(null);
+  const [allBrands, setAllBrands] = useState([]);
   const [brandLoading, setBrandLoading] = useState(true);
   
   // Form State
@@ -54,21 +55,36 @@ export default function AddProductPage() {
       }
 
       try {
-        const brandsRes = await brandsAPI.getAll(1, 100);
-        const allBrands = brandsRes.data?.data || brandsRes.data?.brands || brandsRes.data || [];
+        const brandsRes = await brandsAPI.getAll({ limit: 50 });
+        const allBrandsList = brandsRes.data?.data ||
+                              brandsRes.data?.brands ||
+                              brandsRes.data || [];
 
-        const matchedBrand = Array.isArray(allBrands)
-          ? allBrands.find(b =>
+        const matchedBrand = Array.isArray(allBrandsList)
+          ? allBrandsList.find(b =>
               b.requestedBy === user?.id ||
               b.requestedBy === user?._id ||
-              b.createdBy === user?.id ||
-              b.createdBy === user?._id
+              b._id === user?.brandId ||
+              b._id === user?.brand ||
+              b.owner === user?.id ||
+              b.owner === user?._id
             )
           : null;
 
         if (matchedBrand?._id) {
           setMyBrand(matchedBrand);
           setFormData(prev => ({ ...prev, brand: matchedBrand._id }));
+        } else {
+          const savedBrandId = localStorage.getItem('brandhive_seller_brand');
+          const savedBrand = savedBrandId && Array.isArray(allBrandsList)
+            ? allBrandsList.find(b => (b._id || b.id) === savedBrandId)
+            : null;
+          if (savedBrand) {
+            setMyBrand(savedBrand);
+            setFormData(prev => ({ ...prev, brand: savedBrand._id || savedBrand.id }));
+          } else {
+            setAllBrands(Array.isArray(allBrandsList) ? allBrandsList.filter(b => b.isActive !== false) : []);
+          }
         }
       } catch {
         // brand not found
@@ -152,7 +168,11 @@ export default function AddProductPage() {
     if (!formData.price || parseFloat(formData.price) <= 0) newErrors.price = 'Price must be greater than 0';
     if (!formData.stock || parseInt(formData.stock) < 0) newErrors.stock = 'Stock cannot be negative';
     if (!formData.category) newErrors.category = 'Category is required';
-    if (!formData.brand) newErrors.brand = 'Brand is required — make sure your brand is approved';
+    if (!formData.brand) {
+      newErrors.brand = isRTL
+        ? 'يرجى اختيار الماركة'
+        : 'Please select a brand';
+    }
     if (!mainImage) newErrors.images = 'At least one main image is required';
     
     setErrors(newErrors);
@@ -173,26 +193,33 @@ export default function AddProductPage() {
     setSubmitType(type);
 
     try {
-      const submitData = new FormData();
+      const catObj = categories.find(c =>
+        c.name === formData.category ||
+        c._id === formData.category ||
+        c.id === formData.category
+      );
+      const categoryId = catObj?._id || catObj?.id || formData.category;
 
-      submitData.append('name', formData.name.trim());
-      submitData.append('description', formData.description.trim());
-      submitData.append('price', formData.price);
-      submitData.append('stock', formData.stock);
-      submitData.append('category', formData.category);
-      submitData.append('brand', formData.brand);
+      const payload = {
+        name: formData.name.trim(),
+        description: formData.description.trim(),
+        price: parseFloat(formData.price),
+        stock: parseInt(formData.stock, 10),
+        category: categoryId,
+        brand: formData.brand,
+      };
 
       if (formData.discountPrice && parseFloat(formData.discountPrice) > 0) {
-        submitData.append('discountPrice', formData.discountPrice);
+        payload.discountPrice = parseFloat(formData.discountPrice);
       }
-      if (formData.sku?.trim()) submitData.append('sku', formData.sku.trim());
-      if (formData.weight) submitData.append('weight', formData.weight);
-      if (tagList.length > 0) tagList.forEach(t => submitData.append('tags[]', t));
+      if (formData.weight) {
+        payload.weight = parseFloat(formData.weight);
+      }
+      if (tagList.length > 0) {
+        payload.tags = tagList;
+      }
 
-      if (mainImage) submitData.append('images', mainImage);
-      additionalImages.forEach(img => submitData.append('images', img.file));
-
-      await sellerAPI.createProduct(submitData);
+      await sellerAPI.createProduct(payload);
 
       toast.success(
         type === 'draft'
@@ -201,14 +228,13 @@ export default function AddProductPage() {
         { style: { borderRadius: '12px' } }
       );
       navigate('/seller/dashboard?tab=products');
-
     } catch (err) {
       const errData = err.response?.data;
       const msg = typeof errData?.message === 'string'
         ? errData.message
         : Array.isArray(errData?.message)
-        ? errData.message.join(', ')
-        : (isRTL ? 'فشل إنشاء المنتج' : 'Failed to create product');
+          ? errData.message.join(', ')
+          : (isRTL ? 'فشل إنشاء المنتج' : 'Failed to create product');
 
       console.error('Create product error:', errData);
       toast.error(msg, { style: { borderRadius: '12px' } });
@@ -296,26 +322,45 @@ export default function AddProductPage() {
                     {errors.category && <p className="text-red-500 text-xs mt-1">{errors.category}</p>}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Brand *</label>
-                    <div className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg/50 px-4 py-2 min-h-[38px] flex items-center">
-                      {brandLoading ? (
-                        <div className="flex items-center gap-2">
-                          <div className="w-3 h-3 border-2 border-brand-gold border-t-transparent rounded-full animate-spin" />
-                          <span className="text-gray-400 dark:text-dark-muted text-sm">Loading brand...</span>
-                        </div>
-                      ) : myBrand ? (
+                    <label className={`block text-sm font-medium text-gray-700 dark:text-dark-text mb-1 ${isRTL ? 'text-right' : ''}`}>
+                      {isRTL ? 'الماركة' : 'Brand'} *
+                    </label>
+                    {brandLoading ? (
+                      <div className="flex items-center gap-2 px-4 py-2">
+                        <div className="w-3 h-3 border-2 border-brand-gold border-t-transparent rounded-full animate-spin" />
+                        <span className="text-gray-400 text-sm">Loading...</span>
+                      </div>
+                    ) : myBrand ? (
+                      <div className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg/50 px-4 py-2">
                         <span className="text-gray-700 dark:text-dark-text text-sm font-medium">{myBrand.name}</span>
-                      ) : (
+                      </div>
+                    ) : allBrands.length > 0 ? (
+                      <select
+                        name="brand"
+                        value={formData.brand}
+                        onChange={e => {
+                          handleInputChange(e);
+                          if (e.target.value) {
+                            localStorage.setItem('brandhive_seller_brand', e.target.value);
+                          }
+                        }}
+                        className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg px-4 py-2 focus:border-brand-gold outline-none dark:text-white"
+                      >
+                        <option value="">Select your brand</option>
+                        {allBrands.map(b => (
+                          <option key={b._id} value={b._id}>{b.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="w-full rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/10 px-4 py-2">
                         <span className="text-red-400 text-sm">No approved brand found</span>
-                      )}
-                    </div>
-                    {!brandLoading && !myBrand && (
+                      </div>
+                    )}
+                    {errors.brand && (
                       <p className="text-red-500 text-xs mt-1">
-                        You need an approved brand to add products.{' '}
-                        <a href="/sell" className="underline text-brand-gold">Apply here</a>
+                        {errors.brand}
                       </p>
                     )}
-                    {errors.brand && <p className="text-red-500 text-xs mt-1">{errors.brand}</p>}
                   </div>
                 </div>
               </div>
@@ -518,7 +563,11 @@ export default function AddProductPage() {
                   
                   <div className="p-4">
                     <div className="flex justify-between items-start mb-2">
-                      <p className="text-xs text-brand-gold font-medium">{myBrand?.name || user?.brandName || 'Your Brand'}</p>
+                      <p className="text-xs text-brand-gold font-medium">
+                        {myBrand?.name ||
+                          allBrands.find(b => b._id === formData.brand)?.name ||
+                          'Your Brand'}
+                      </p>
                     </div>
                     <h3 className="font-semibold text-brand-navy dark:text-white mb-2 line-clamp-2 min-h-[48px]">
                       {formData.name || 'Product Name Preview'}

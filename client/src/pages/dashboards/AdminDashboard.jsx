@@ -354,13 +354,13 @@ function AdminOrdersTab({ adminAPI, isRTL }) {
 function AdminProductsTab({ adminAPI, isRTL }) {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(null);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
-    const fetch = async () => {
+    const fetchProducts = async () => {
       try {
-        const res = await productsAPI.getAll({ 
-          page: 1, limit: 50 
-        });
+        const res = await productsAPI.getAll({ page: 1, limit: 50 });
         const data = res.data?.data || [];
         setProducts(Array.isArray(data) ? data : []);
       } catch {
@@ -369,80 +369,131 @@ function AdminProductsTab({ adminAPI, isRTL }) {
         setLoading(false);
       }
     };
-    fetch();
+    fetchProducts();
   }, []);
+
+  const handleDelete = async (id, name) => {
+    if (!window.confirm(isRTL ? `هل تريد حذف "${name}"؟` : `Delete "${name}"?`)) return;
+    setActionLoading(id + '_delete');
+    try {
+      await adminAPI.deleteProduct(id);
+      setProducts(prev => prev.filter(p => p._id !== id && p.id !== id));
+      toast.success(isRTL ? 'تم حذف المنتج' : 'Product deleted');
+    } catch (err) {
+      toast.error(err.response?.data?.message || (isRTL ? 'فشل الحذف' : 'Delete failed'));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleToggle = async (product) => {
+    const id = product._id || product.id;
+    const isActive = product.isActive !== false;
+    setActionLoading(id + '_toggle');
+    try {
+      if (isActive) {
+        await adminAPI.deactivateProduct(id);
+      } else {
+        await adminAPI.activateProduct(id);
+      }
+      setProducts(prev => prev.map(p =>
+        (p._id === id || p.id === id) ? { ...p, isActive: !isActive } : p
+      ));
+      toast.success(isActive
+        ? (isRTL ? 'تم إخفاء المنتج' : 'Product deactivated')
+        : (isRTL ? 'تم تفعيل المنتج' : 'Product activated')
+      );
+    } catch (err) {
+      toast.error(err.response?.data?.message || (isRTL ? 'فشل التحديث' : 'Update failed'));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const filtered = products.filter(p =>
+    p.name?.toLowerCase().includes(search.toLowerCase()) ||
+    p.brand?.name?.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <div>
-      <h1 className={`text-2xl font-display font-bold 
-        text-gray-900 dark:text-dark-text mb-6
-        ${isRTL ? 'text-right' : ''}`}>
-        {isRTL ? 'إدارة المنتجات' : 'Products Management'}
-      </h1>
-      <div className="grid grid-cols-1 md:grid-cols-2 
-        lg:grid-cols-3 gap-4">
-        {loading ? (
-          [...Array(6)].map((_, i) => (
-            <div key={i} className="h-48 bg-gray-100 
-              dark:bg-dark-surface rounded-2xl 
-              animate-pulse" />
-          ))
-        ) : products.length === 0 ? (
-          <div className="col-span-3 text-center py-8 
-            text-gray-400">
-            {isRTL ? 'لا توجد منتجات' : 'No products'}
-          </div>
-        ) : (
-          products.map((product, i) => (
-            <div key={product._id || product.id || i}
-              className="bg-white dark:bg-dark-surface 
-                rounded-2xl shadow-card dark:shadow-none 
-                dark:border dark:border-dark-border 
-                overflow-hidden">
-              <div className="h-32 bg-gray-100 
-                dark:bg-dark-bg overflow-hidden">
-                {product.mainImage || product.images?.[0] ? (
-                  <img 
-                    src={product.mainImage || product.images[0]}
-                    alt={product.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex 
-                    items-center justify-center text-3xl">
-                    📦
-                  </div>
-                )}
-              </div>
-              <div className={`p-3 ${isRTL ? 'text-right' : ''}`}>
-                <p className="font-medium text-sm 
-                  text-gray-900 dark:text-dark-text truncate">
-                  {product.name}
-                </p>
-                <p className="text-xs text-brand-gold 
-                  font-bold mt-1">
-                  {(product.finalPrice || product.price || 0)
-                    .toLocaleString()} EGP
-                </p>
-                <div className={`flex items-center 
-                  justify-between mt-2
-                  ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  <span className="text-xs text-gray-400">
-                    {product.brand?.name || ''}
-                  </span>
-                  <span className="text-xs px-2 py-0.5 
-                    rounded-full bg-emerald-100 
-                    text-emerald-700 font-medium">
-                    {product.isActive !== false 
-                      ? (isRTL ? 'نشط' : 'Active')
-                      : (isRTL ? 'غير نشط' : 'Inactive')}
+      <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+        <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text ${isRTL ? 'text-right' : ''}`}>
+          {isRTL ? 'إدارة المنتجات' : 'Products Management'}
+          <span className="mx-2 text-sm font-normal text-gray-400">({products.length})</span>
+        </h1>
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder={isRTL ? 'بحث...' : 'Search...'}
+          className="px-4 py-2 rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg text-sm outline-none focus:border-brand-gold dark:text-white w-48"
+        />
+      </div>
+
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="h-56 bg-gray-100 dark:bg-dark-surface rounded-2xl animate-pulse" />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-12 text-gray-400">
+          <p className="text-4xl mb-3">📦</p>
+          <p>{isRTL ? 'لا توجد منتجات' : 'No products found'}</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map((product) => {
+            const id = product._id || product.id;
+            const isActive = product.isActive !== false;
+            const imageUrl = product.images?.[0]?.url || product.images?.[0] || product.mainImage || null;
+            return (
+              <div key={id} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border overflow-hidden ${!isActive ? 'opacity-60' : ''}`}>
+                <div className="h-36 bg-gray-100 dark:bg-dark-bg overflow-hidden relative">
+                  {imageUrl ? (
+                    <img src={imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-4xl">📦</div>
+                  )}
+                  <span className={`absolute top-2 right-2 text-xs px-2 py-0.5 rounded-full font-semibold ${isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                    {isActive ? (isRTL ? 'نشط' : 'Active') : (isRTL ? 'غير نشط' : 'Inactive')}
                   </span>
                 </div>
+                <div className={`p-3 ${isRTL ? 'text-right' : ''}`}>
+                  <p className="font-semibold text-sm text-gray-900 dark:text-dark-text truncate">{product.name}</p>
+                  <p className="text-xs text-brand-gold font-bold mt-0.5">
+                    {(product.finalPrice || product.price || 0).toLocaleString()} EGP
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-dark-muted mt-0.5 truncate">
+                    {product.brand?.name || '—'}
+                  </p>
+                  <div className={`flex gap-2 mt-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <button
+                      onClick={() => handleToggle(product)}
+                      disabled={actionLoading === id + '_toggle'}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 ${
+                        isActive
+                          ? 'bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 hover:bg-amber-100'
+                          : 'bg-emerald-50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100'
+                      }`}
+                    >
+                      {actionLoading === id + '_toggle' ? '...' : isActive ? (isRTL ? 'إخفاء' : 'Deactivate') : (isRTL ? 'تفعيل' : 'Activate')}
+                    </button>
+                    <button
+                      onClick={() => handleDelete(id, product.name)}
+                      disabled={actionLoading === id + '_delete'}
+                      className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 hover:bg-red-100 transition-colors disabled:opacity-50"
+                    >
+                      {actionLoading === id + '_delete' ? '...' : (isRTL ? 'حذف' : 'Delete')}
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))
-        )}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

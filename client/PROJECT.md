@@ -306,3 +306,21 @@ To ensure consistency between backend responses and frontend UI, we use mappers 
 - Fixed FormData to send only non-empty optional fields
 - Added brand validation before submit
 - Fixed brand fetch in AddProductPage: now fetches all brands and filters by user id
+- Fixed AddProductPage brand fetch — now finds seller brand from brands list by owner ID, fallback to checking seller's existing products
+- Fixed AddProductPage brand selection — seller can now choose from all available brands manually instead of auto-detecting by owner ID
+- Fixed AddProductPage 400 error — sends JSON body with price/stock as numbers and category/brand as MongoDB IDs; FormData only when images present
+- Fixed SellerDashboard products tab — falls back to filtering all products by createdBy when seller/products returns empty
+- Fixed SellerDashboard products — filters by seller's owned brands, fallback to localStorage saved brand ID, saves selected brand when adding products
+- Fixed SellerDashboard products: now fetches via GET /product?brand=ID instead of /seller/products
+- Fixed brand lookup: searches all brands since requestedBy field not populated by backend
+- Added brand dropdown fallback in AddProductPage when auto-detection fails
+- Fixed brand detection: increased limit to 500 to fetch all brands including newly approved ones
+- Fixed brand fetch limit: 500 → 50 (backend max)
+- Brand dropdown fallback now shows all active brands for manual selection
+- Fixed seller dashboard: orders now uses sellerAPI.getOrders() instead of ordersAPI
+- Fixed seller dashboard: reviews now uses sellerAPI.getReviews() instead of reviewsAPI
+- Fixed bazaar 500 error: wrapped in silent try/catch
+- Fixed bazaar polling: added guard to prevent multiple calls
+- Admin Products tab: added Delete, Activate, Deactivate actions
+- Added search filter for products by name or brand
+- Added adminAPI.deleteProduct, activateProduct, deactivateProduct endpoints

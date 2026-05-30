@@ -335,3 +335,8 @@ To ensure consistency between backend responses and frontend UI, we use mappers 
 - Fixed /chat/ai proxy: now routes to localhost:5000 instead of Railway
 - Fixed chatAPI to use direct fetch instead of axios instance
 - Fixed Vite proxy: changed /chat to /chat/ai to avoid React Router conflict
+- Removed local /chat/ai Vite proxy; chat now routes to Railway via /brandhive-api
+- Restored chatAPI to use axios instance (same Railway backend as other API calls)
+- SupportChat reads res.data.reply from axios response
+- Navbar: EXPLORE_MENU categories now fetched from API with hardcoded fallback
+- ListingPage: filter sidebar categories now fetched from API with mockData fallback

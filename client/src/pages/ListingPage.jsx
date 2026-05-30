@@ -4,8 +4,9 @@ import { SlidersHorizontal, Grid3X3, LayoutGrid, List, X, ChevronDown, ChevronUp
 import ProductCard from '../components/ProductCard';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
-import { productsAPI } from '../services/api';
-import { mapProduct, deduplicateProducts } from '../utils/mappers';
+import { productsAPI, categoriesAPI } from '../services/api';
+import { mapProduct, mapCategory, deduplicateProducts } from '../utils/mappers';
+import { categories as mockCategories } from '../data/mockData';
 
 function FilterSection({ title, children, defaultOpen = true, isRTL }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -74,6 +75,7 @@ export default function ListingPage() {
   });
 
   const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState(mockCategories);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [totalPages, setTotalPages] = useState(1);
@@ -119,6 +121,21 @@ export default function ListingPage() {
   useEffect(() => {
     fetchProducts();
   }, [searchParam]);
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await categoriesAPI.getAll();
+        const raw = res.data?.data || res.data?.categories || res.data || [];
+        if (Array.isArray(raw) && raw.length > 0) {
+          setCategories(raw.map(mapCategory));
+        }
+      } catch {
+        // keep mockCategories fallback
+      }
+    };
+    fetchCategories();
+  }, []);
 
   // Use categoryParam directly for filtering
   // Real products have category.name from API
@@ -296,6 +313,28 @@ export default function ListingPage() {
           ))}
         </div>
       </FilterSection>
+
+      {categories.length > 0 && (
+        <FilterSection title={isRTL ? 'الفئة' : 'Category'} isRTL={isRTL}>
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {categories.map(cat => (
+              <Link
+                key={cat.id || cat.slug}
+                to={`/products?category=${cat.slug}`}
+                className={`flex items-center gap-2 text-sm transition-colors ${isRTL ? 'flex-row-reverse text-right' : ''} ${
+                  normalizeCategory(categoryParam) === normalizeCategory(cat.slug)
+                    ? 'text-brand-gold font-semibold'
+                    : 'text-gray-700 dark:text-dark-text hover:text-brand-gold'
+                }`}
+              >
+                <span>{cat.icon}</span>
+                <span className="flex-1">{isRTL && cat.arName ? cat.arName : cat.name}</span>
+                {cat.count && <span className="text-xs text-gray-400 dark:text-dark-muted">{cat.count}</span>}
+              </Link>
+            ))}
+          </div>
+        </FilterSection>
+      )}
 
       {topGovs.length > 0 && (
         <FilterSection title={isRTL ? 'المحافظة' : 'Governorate'} isRTL={isRTL}>

@@ -4,8 +4,8 @@ import {
   Search, ShoppingCart, Heart, User, Menu, X, ChevronDown,
   Store, LogOut, Settings, Package, LayoutDashboard, Sparkles, Bell
 } from 'lucide-react';
-import { productsAPI, notificationsAPI } from '../services/api';
-import { mapProduct } from '../utils/mappers';
+import { productsAPI, notificationsAPI, categoriesAPI } from '../services/api';
+import { mapProduct, mapCategory } from '../utils/mappers';
 import { useAuth } from '../context/AuthContext';
 import { useCart, useWishlist } from '../context/CartContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -24,9 +24,7 @@ export default function Navbar() {
     { label: t('nav.sell'), path: '/sell', highlight: true },
   ];
 
-  const EXPLORE_MENU = [
-    { label: isRTL ? 'كل الماركات' : 'All Brands', path: '/explore', icon: '🏪' },
-    { label: isRTL ? 'كل المنتجات' : 'All Products', path: '/products', icon: '🛍️' },
+  const HARDCODED_CATS = [
     { label: isRTL ? 'يدوي' : 'Handmade', path: '/products?category=handmade', icon: '🏺' },
     { label: isRTL ? 'أزياء' : 'Fashion', path: '/products?category=fashion', icon: '👗' },
     { label: isRTL ? 'مجوهرات' : 'Jewelry', path: '/products?category=jewelry', icon: '💍' },
@@ -35,6 +33,7 @@ export default function Navbar() {
     { label: isRTL ? 'فن وثقافة' : 'Art & Culture', path: '/products?category=art', icon: '🎨' },
   ];
 
+  const [apiCategories, setApiCategories] = useState([]);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -57,6 +56,35 @@ export default function Navbar() {
   const userMenuRef = useRef(null);
   const searchRef = useRef(null);
   const notifRef = useRef(null);
+
+  const categoryLinks = apiCategories.length > 0
+    ? apiCategories.slice(0, 6).map(c => ({
+        label: isRTL && c.arName ? c.arName : c.name,
+        path: `/products?category=${c.slug}`,
+        icon: c.icon || '🛍️',
+      }))
+    : HARDCODED_CATS;
+
+  const EXPLORE_MENU = [
+    { label: isRTL ? 'كل الماركات' : 'All Brands', path: '/explore', icon: '🏪' },
+    { label: isRTL ? 'كل المنتجات' : 'All Products', path: '/products', icon: '🛍️' },
+    ...categoryLinks,
+  ];
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await categoriesAPI.getAll();
+        const raw = res.data?.data || res.data?.categories || res.data || [];
+        if (Array.isArray(raw) && raw.length > 0) {
+          setApiCategories(raw.map(mapCategory));
+        }
+      } catch {
+        // keep hardcoded fallback
+      }
+    };
+    fetchCategories();
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 10);

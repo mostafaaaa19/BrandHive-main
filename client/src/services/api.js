@@ -347,6 +347,7 @@ export const adminAPI = {
   deleteProduct: (id) => api.delete(`/product/${id}`),
   activateProduct: (id) => api.patch(`/product/${id}/activate`),
   deactivateProduct: (id) => api.patch(`/product/${id}/deactivate`),
+  sendNotification: (data) => api.post('/notifications/send', data),
 };
 
 export const categoriesAPI = {

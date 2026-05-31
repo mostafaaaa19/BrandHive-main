@@ -335,8 +335,25 @@ To ensure consistency between backend responses and frontend UI, we use mappers 
 - Fixed /chat/ai proxy: now routes to localhost:5000 instead of Railway
 - Fixed chatAPI to use direct fetch instead of axios instance
 - Fixed Vite proxy: changed /chat to /chat/ai to avoid React Router conflict
-- Removed local /chat/ai Vite proxy; chat now routes to Railway via /brandhive-api
-- Restored chatAPI to use axios instance (same Railway backend as other API calls)
-- SupportChat reads res.data.reply from axios response
-- Navbar: EXPLORE_MENU categories now fetched from API with hardcoded fallback
-- ListingPage: filter sidebar categories now fetched from API with mockData fallback
+- Fixed My Orders badge: replaced hardcoded 1 with dynamic orders.length
+- Fixed all dashboard tab badges to use real data counts
+- SellerDashboard: Promotions tab now shows discount types with Coming Soon state
+- SellerDashboard: Ads Manager tab now shows advertising packages with Coming Soon state
+- AdminDashboard: Reports tab shows 4 report types with Coming Soon export
+- AdminDashboard: Featured Slots tab shows 3 slot types
+- AdminDashboard: Notifications tab wired to send notification API
+- AdminDashboard: Audit Log tab shows informative placeholder
+- Fixed block/unblock user: replaced isBlocked with isActive === false
+- Fixed handleToggle: now uses optimistic local state update instead of refetch
+- Reports tab: replaced Coming Soon with real CSV export for Users, Orders, Sellers, Products
+- Added exportToCSV helper function
+- Export buttons fetch live data from API and download as dated CSV files
+- Fixed export endpoints: Users uses /admin/users, Sellers uses /brand/requests, Products uses /search/products
+- Fixed response shape parsing for all 4 export handlers
+- Fixed Sales Report: now exports dashboard summary data since no admin orders list endpoint exists
+- Wired Export button in Admin Overview to export dashboard summary as CSV
+- Wired Run Report button to navigate to Reports tab
+- Fixed hardcoded date to show current date dynamically
+- Fixed categories layout in HomePage: now centered with flex-wrap
+- Added Review modal for seller applications showing brand details, logo, categories
+- Review modal includes Approve/Reject actions for pending brands

@@ -12,6 +12,32 @@ import { useLanguage } from '../../context/LanguageContext';
 import toast from 'react-hot-toast';
 import SettingsPanel from '../../components/SettingsPanel';
 
+const exportToCSV = (data, filename) => {
+  if (!data || data.length === 0) {
+    toast.error('No data to export');
+    return;
+  }
+  const headers = Object.keys(data[0]);
+  const csvRows = [
+    headers.join(','),
+    ...data.map(row =>
+      headers.map(h => {
+        const val = row[h] ?? '';
+        const str = typeof val === 'object' ? JSON.stringify(val) : String(val);
+        return `"${str.replace(/"/g, '""')}"`;
+      }).join(',')
+    )
+  ];
+  const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+  toast.success(`${filename}.csv downloaded!`);
+};
+
 const monthlyData = [
   { month: 'Sep', gmv: 1800000, orders: 12000 },
   { month: 'Oct', gmv: 2100000, orders: 14200 },
@@ -95,16 +121,14 @@ function AdminUsersTab({ adminAPI, isRTL, toast }) {
   const handleToggle = async (userId) => {
     try {
       await adminAPI.toggleUser(userId);
-      toast.success(isRTL 
-        ? 'تم تحديث الحالة ✅' 
-        : 'Status updated ✅'
-      );
-      fetchUsers(page, roleFilter);
+      setUsers(prev => prev.map(u =>
+        (u._id === userId || u.id === userId)
+          ? { ...u, isActive: !u.isActive }
+          : u
+      ));
+      toast.success(isRTL ? 'تم تحديث الحالة ✅' : 'Status updated ✅');
     } catch {
-      toast.error(isRTL 
-        ? 'فشل التحديث' 
-        : 'Failed to update'
-      );
+      toast.error(isRTL ? 'فشل التحديث' : 'Failed to update');
     }
   };
 
@@ -204,11 +228,11 @@ function AdminUsersTab({ adminAPI, isRTL, toast }) {
                   <td className="px-4 py-3">
                     <span className={`px-2 py-1 rounded-full 
                       text-[10px] font-bold ${
-                      u.isBlocked
-                        ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-                        : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
+                      u.isActive === false
+                        ? 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400'
+                        : 'bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
                     }`}>
-                      {u.isBlocked 
+                      {u.isActive === false
                         ? (isRTL ? 'محظور' : 'Blocked')
                         : (isRTL ? 'نشط' : 'Active')}
                     </span>
@@ -221,11 +245,11 @@ function AdminUsersTab({ adminAPI, isRTL, toast }) {
                       className={`text-xs px-3 py-1 
                         rounded-lg font-medium 
                         transition-colors ${
-                        u.isBlocked
-                          ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400'
-                          : 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/20 dark:text-red-400'
+                        u.isActive === false
+                          ? 'bg-emerald-50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/20'
+                          : 'bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/20'
                       }`}>
-                      {u.isBlocked 
+                      {u.isActive === false
                         ? (isRTL ? 'رفع الحظر' : 'Unblock')
                         : (isRTL ? 'حظر' : 'Block')}
                     </button>
@@ -498,6 +522,66 @@ function AdminProductsTab({ adminAPI, isRTL }) {
   );
 }
 
+function AdminNotificationSender({ isRTL, adminAPI }) {
+  const [form, setForm] = useState({ title: '', body: '' });
+  const [loading, setLoading] = useState(false);
+
+  const handleSend = async () => {
+    if (!form.title.trim() || !form.body.trim()) {
+      toast.error(isRTL ? 'يرجى ملء جميع الحقول' : 'Please fill all fields');
+      return;
+    }
+    setLoading(true);
+    try {
+      await adminAPI.sendNotification(form);
+      toast.success(isRTL ? 'تم إرسال الإشعار!' : 'Notification sent!');
+      setForm({ title: '', body: '' });
+    } catch (err) {
+      toast.error(err.response?.data?.message || (isRTL ? 'فشل الإرسال' : 'Failed to send'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className={`space-y-4 ${isRTL ? 'text-right' : ''}`}>
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 dark:text-dark-text mb-1">
+          {isRTL ? 'عنوان الإشعار' : 'Notification Title'}
+        </label>
+        <input
+          value={form.title}
+          onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
+          placeholder={isRTL ? 'مثال: عرض خاص لعيد الأضحى' : 'e.g. Special Eid offer'}
+          className={`w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-4 py-2 text-sm outline-none focus:border-brand-gold dark:text-white ${isRTL ? 'text-right' : ''}`}
+        />
+      </div>
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 dark:text-dark-text mb-1">
+          {isRTL ? 'نص الإشعار' : 'Notification Body'}
+        </label>
+        <textarea
+          value={form.body}
+          onChange={e => setForm(p => ({ ...p, body: e.target.value }))}
+          rows={3}
+          placeholder={isRTL ? 'نص الرسالة...' : 'Message body...'}
+          className={`w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-4 py-2 text-sm outline-none focus:border-brand-gold resize-none dark:text-white ${isRTL ? 'text-right' : ''}`}
+        />
+      </div>
+      <button
+        type="button"
+        onClick={handleSend}
+        disabled={loading || !form.title.trim() || !form.body.trim()}
+        className="w-full btn-primary disabled:opacity-50 text-sm"
+      >
+        {loading ? (
+          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
+        ) : (isRTL ? '📢 إرسال للجميع' : '📢 Send to All Users')}
+      </button>
+    </div>
+  );
+}
+
 export default function AdminDashboard() {
   const { t } = useTranslation();
   const { isRTL } = useLanguage();
@@ -511,7 +595,9 @@ export default function AdminDashboard() {
   const [adminAnalytics, setAdminAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [rejectModal, setRejectModal] = useState({ open: false, brandId: null, brandName: '' });
+  const [reviewModal, setReviewModal] = useState({ open: false, brand: null });
   const [rejectReason, setRejectReason] = useState('');
+  const [exportLoading, setExportLoading] = useState({});
 
   useEffect(() => {
     const fetchData = async () => {
@@ -640,6 +726,115 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleExportUsers = async () => {
+    setExportLoading(p => ({ ...p, users: true }));
+    try {
+      const res = await adminAPI.getUsers({ limit: 100, page: 1 });
+      const raw = res.data?.data || res.data?.users || [];
+      if (raw.length === 0) {
+        toast.error(isRTL ? 'لا يوجد مستخدمون للتصدير' : 'No users to export');
+        return;
+      }
+      const data = raw.map(u => ({
+        Name: u.name || '',
+        Email: u.email || '',
+        Role: u.role || '',
+        Status: u.isActive !== false ? 'Active' : 'Blocked',
+        Verified: u.isEmailVerified ? 'Yes' : 'No',
+        'Joined Date': u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '',
+      }));
+      exportToCSV(data, 'BrandHive_Users_Report');
+    } catch {
+      toast.error(isRTL ? 'فشل تصدير المستخدمين' : 'Failed to export users');
+    } finally {
+      setExportLoading(p => ({ ...p, users: false }));
+    }
+  };
+
+  const handleExportOrders = async () => {
+    setExportLoading(p => ({ ...p, orders: true }));
+    try {
+      const res = await adminAPI.getDashboard();
+      const overview = res.data?.data?.overview || {};
+      const ordersByStatus = res.data?.data?.ordersByStatus || {};
+      const today = res.data?.data?.today || {};
+      const alerts = res.data?.data?.alerts || {};
+
+      const data = [
+        { Metric: 'Total Orders', Value: overview.totalOrders || 0 },
+        { Metric: 'Total Revenue (EGP)', Value: overview.totalRevenue || 0 },
+        { Metric: 'Orders Today', Value: today.ordersToday || 0 },
+        { Metric: 'Revenue Today (EGP)', Value: today.revenueToday || 0 },
+        { Metric: 'Pending Orders', Value: ordersByStatus.pending || 0 },
+        { Metric: 'Confirmed Orders', Value: ordersByStatus.confirmed || 0 },
+        { Metric: 'Delivered Orders', Value: ordersByStatus.delivered || 0 },
+        { Metric: 'Cancelled Orders', Value: ordersByStatus.canceled || 0 },
+        { Metric: 'Pending Orders Alert', Value: alerts.pendingOrders || 0 },
+        { Metric: 'Total Products', Value: overview.totalProducts || 0 },
+        { Metric: 'Total Users', Value: overview.totalUsers || 0 },
+        { Metric: 'Total Sellers', Value: overview.totalSellers || 0 },
+        { Metric: 'Export Date', Value: new Date().toLocaleDateString() },
+      ];
+
+      exportToCSV(data, 'BrandHive_Sales_Report');
+    } catch {
+      toast.error(isRTL ? 'فشل تصدير التقرير' : 'Failed to export report');
+    } finally {
+      setExportLoading(p => ({ ...p, orders: false }));
+    }
+  };
+
+  const handleExportSellers = async () => {
+    setExportLoading(p => ({ ...p, sellers: true }));
+    try {
+      const res = await adminAPI.getBrandRequests();
+      const raw = res.data?.data || [];
+      if (raw.length === 0) {
+        toast.error(isRTL ? 'لا يوجد بائعون للتصدير' : 'No sellers to export');
+        return;
+      }
+      const data = raw.map(b => ({
+        'Brand Name': b.name || '',
+        Country: b.country || 'Egypt',
+        Status: b.status || '',
+        'Submitted Date': b.createdAt ? new Date(b.createdAt).toLocaleDateString() : '',
+        'Reviewed Date': b.reviewedAt ? new Date(b.reviewedAt).toLocaleDateString() : '',
+      }));
+      exportToCSV(data, 'BrandHive_Sellers_Report');
+    } catch {
+      toast.error(isRTL ? 'فشل تصدير البائعين' : 'Failed to export sellers');
+    } finally {
+      setExportLoading(p => ({ ...p, sellers: false }));
+    }
+  };
+
+  const handleExportProducts = async () => {
+    setExportLoading(p => ({ ...p, products: true }));
+    try {
+      const res = await productsAPI.getAll({ limit: 50, page: 1 });
+      const raw = res.data?.data || res.data?.products || [];
+      if (raw.length === 0) {
+        toast.error(isRTL ? 'لا توجد منتجات للتصدير' : 'No products to export');
+        return;
+      }
+      const data = raw.map(p => ({
+        Name: p.name || '',
+        Brand: p.brand?.name || '',
+        Category: p.category?.name || '',
+        Price: p.price || 0,
+        'Discount Price': p.discountPrice || p.salePrice || '',
+        Stock: p.stock || 0,
+        Status: p.isActive !== false ? 'Active' : 'Inactive',
+        Rating: p.averageRating || p.rating || 0,
+      }));
+      exportToCSV(data, 'BrandHive_Products_Report');
+    } catch {
+      toast.error(isRTL ? 'فشل تصدير المنتجات' : 'Failed to export products');
+    } finally {
+      setExportLoading(p => ({ ...p, products: false }));
+    }
+  };
+
   const navSections = [
     {
       label: isRTL ? 'المنصة' : 'Platform',
@@ -711,13 +906,37 @@ export default function AdminDashboard() {
                 <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
                   <div className={isRTL ? 'text-right' : ''}>
                     <h1 className="text-2xl font-display font-bold text-gray-900 dark:text-dark-text">{isRTL ? 'لوحة تحكم المشرف' : 'Admin Console'}</h1>
-                    <p className="text-gray-500 dark:text-dark-muted mt-0.5">{isRTL ? 'مقاييس المنصة بالوقت الفعلي — 10 مارس 2025' : 'Real-time platform metrics — March 10, 2025'}</p>
+                    <p className="text-gray-500 dark:text-dark-muted mt-0.5">
+                      {isRTL
+                        ? `مقاييس المنصة بالوقت الفعلي — ${new Date().toLocaleDateString('ar-EG', { day: 'numeric', month: 'long', year: 'numeric' })}`
+                        : `Real-time platform metrics — ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
+                      }
+                    </p>
                   </div>
                   <div className={`flex gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                    <button className="btn-ghost text-sm flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const data = [
+                          { Metric: isRTL ? 'إجمالي المستخدمين' : 'Total Users', Value: dashboard?.usersCount || users.length || 0 },
+                          { Metric: isRTL ? 'إجمالي البائعين' : 'Total Sellers', Value: dashboard?.brandsCount || brands.length || 0 },
+                          { Metric: isRTL ? 'إجمالي المنتجات' : 'Total Products', Value: dashboard?.productsCount || 0 },
+                          { Metric: isRTL ? 'إجمالي الطلبات' : 'Total Orders', Value: dashboard?.ordersCount || 0 },
+                          { Metric: isRTL ? 'إجمالي الإيرادات (ج.م)' : 'Total Revenue (EGP)', Value: dashboard?.totalRevenue || dashboard?.totalSales || 0 },
+                          { Metric: isRTL ? 'طلبات معلقة' : 'Pending Orders', Value: dashboard?.pendingOrders || 0 },
+                          { Metric: isRTL ? 'تاريخ التصدير' : 'Export Date', Value: new Date().toLocaleDateString() },
+                        ];
+                        exportToCSV(data, 'BrandHive_Overview_Report');
+                      }}
+                      className="btn-ghost text-sm flex items-center gap-1"
+                    >
                       📤 {isRTL ? 'تصدير' : 'Export'}
                     </button>
-                    <button className="btn-primary text-sm flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('reports')}
+                      className="btn-primary text-sm flex items-center gap-1"
+                    >
                       🔍 {isRTL ? 'تشغيل تقرير' : 'Run Report'}
                     </button>
                   </div>
@@ -862,6 +1081,8 @@ export default function AdminDashboard() {
                                     <CheckCircle size={12} /> {isRTL ? 'قبول' : 'Approve'}
                                   </button>
                                   <button
+                                    type="button"
+                                    onClick={() => setReviewModal({ open: true, brand })}
                                     className="px-3 py-1.5 bg-gray-100 dark:bg-dark-bg text-gray-600 dark:text-dark-muted hover:bg-gray-200 dark:hover:bg-dark-surface rounded-lg text-xs font-semibold transition-colors flex items-center gap-1"
                                   >
                                     <Eye size={12} /> {isRTL ? 'مراجعة' : 'Review'}
@@ -1109,23 +1330,220 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            {/* Other tabs (reports, etc) */}
-            {['reports', 'featured',
-              'notifications', 'audit'].includes(activeTab) && (
-              <div className="bg-white dark:bg-dark-surface 
-                rounded-2xl shadow-card p-8 text-center">
-                <BarChart3 className="mx-auto text-gray-300 mb-4"
-                  size={48} />
-                <p className="text-gray-500 dark:text-dark-muted">
-                  {isRTL
-                    ? 'هذا القسم قيد التطوير'
-                    : 'This section is under development'}
+            {activeTab === 'reports' && (
+              <div>
+                <h2 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-2 ${isRTL ? 'text-right' : ''}`}>
+                  {isRTL ? 'التقارير' : 'Reports'}
+                </h2>
+                <p className={`text-sm text-gray-500 dark:text-dark-muted mb-6 ${isRTL ? 'text-right' : ''}`}>
+                  {isRTL ? 'تصدير البيانات كملفات CSV جاهزة للاستخدام في Excel' : 'Export data as CSV files ready to open in Excel'}
                 </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[
+                    {
+                      icon: '📊',
+                      title: isRTL ? 'تقرير المبيعات' : 'Sales Report',
+                      desc: isRTL
+                        ? 'ملخص المبيعات — إجمالي الطلبات، الإيرادات، الحالات، وإحصائيات اليوم'
+                        : 'Sales summary — total orders, revenue, statuses, and today stats',
+                      key: 'orders',
+                      handler: handleExportOrders,
+                      color: 'bg-blue-50 dark:bg-blue-900/10',
+                    },
+                    {
+                      icon: '👥',
+                      title: isRTL ? 'تقرير المستخدمين' : 'Users Report',
+                      desc: isRTL ? 'جميع المستخدمين — الاسم، الإيميل، الدور، الحالة، تاريخ التسجيل' : 'All users — name, email, role, status, join date',
+                      key: 'users',
+                      handler: handleExportUsers,
+                      color: 'bg-purple-50 dark:bg-purple-900/10',
+                    },
+                    {
+                      icon: '🏪',
+                      title: isRTL ? 'تقرير البائعين' : 'Sellers Report',
+                      desc: isRTL ? 'جميع طلبات البائعين — الاسم، الحالة، تاريخ التقديم والمراجعة' : 'All seller applications — name, status, submission and review dates',
+                      key: 'sellers',
+                      handler: handleExportSellers,
+                      color: 'bg-amber-50 dark:bg-amber-900/10',
+                    },
+                    {
+                      icon: '📦',
+                      title: isRTL ? 'تقرير المنتجات' : 'Products Report',
+                      desc: isRTL ? 'جميع المنتجات — الاسم، الماركة، الفئة، السعر، المخزون، التقييم' : 'All products — name, brand, category, price, stock, rating',
+                      key: 'products',
+                      handler: handleExportProducts,
+                      color: 'bg-emerald-50 dark:bg-emerald-900/10',
+                    },
+                  ].map((item) => (
+                    <div key={item.key} className={`${item.color} rounded-2xl p-6 ${isRTL ? 'text-right' : ''}`}>
+                      <div className="text-3xl mb-3">{item.icon}</div>
+                      <h3 className="font-bold text-gray-900 dark:text-dark-text mb-2">{item.title}</h3>
+                      <p className="text-sm text-gray-500 dark:text-dark-muted mb-4">{item.desc}</p>
+                      <button
+                        type="button"
+                        onClick={item.handler}
+                        disabled={exportLoading[item.key]}
+                        className={`flex items-center gap-2 px-4 py-2 bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 ${isRTL ? 'flex-row-reverse' : ''}`}
+                      >
+                        {exportLoading[item.key] ? (
+                          <>
+                            <div className="w-3 h-3 border-2 border-white dark:border-brand-navy border-t-transparent rounded-full animate-spin" />
+                            {isRTL ? 'جاري التصدير...' : 'Exporting...'}
+                          </>
+                        ) : (
+                          <>
+                            ⬇️ {isRTL ? 'تصدير CSV' : 'Export CSV'}
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'featured' && (
+              <div>
+                <h2 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
+                  {isRTL ? 'الخانات المميزة' : 'Featured Slots'}
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {[
+                    { icon: '🏠', title: isRTL ? 'الصفحة الرئيسية' : 'Homepage', slots: 4, desc: isRTL ? 'خانات المنتجات المميزة في الصفحة الرئيسية' : 'Featured product slots on the homepage' },
+                    { icon: '🔍', title: isRTL ? 'نتائج البحث' : 'Search Results', slots: 3, desc: isRTL ? 'منتجات تظهر في أعلى نتائج البحث' : 'Products appearing at the top of search results' },
+                    { icon: '🏷️', title: isRTL ? 'صفحة الفئات' : 'Category Pages', slots: 2, desc: isRTL ? 'ماركات مميزة في صفحات الفئات' : 'Featured brands on category pages' },
+                  ].map((item, i) => (
+                    <div key={i} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 ${isRTL ? 'text-right' : ''}`}>
+                      <div className="text-3xl mb-3">{item.icon}</div>
+                      <h3 className="font-bold text-gray-900 dark:text-dark-text mb-1">{item.title}</h3>
+                      <p className="text-xs text-brand-gold font-semibold mb-2">{item.slots} {isRTL ? 'خانات متاحة' : 'slots available'}</p>
+                      <p className="text-sm text-gray-500 dark:text-dark-muted mb-4">{item.desc}</p>
+                      <button type="button" disabled className="w-full py-2 text-xs bg-gray-100 dark:bg-dark-bg text-gray-400 rounded-xl font-semibold cursor-not-allowed">
+                        {isRTL ? 'إدارة الخانات — قريباً' : 'Manage Slots — Coming Soon'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'notifications' && (
+              <div>
+                <h2 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
+                  {isRTL ? 'إرسال إشعار' : 'Send Notification'}
+                </h2>
+                <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 max-w-lg">
+                  <AdminNotificationSender isRTL={isRTL} adminAPI={adminAPI} />
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'audit' && (
+              <div>
+                <h2 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
+                  {isRTL ? 'سجل العمليات' : 'Audit Log'}
+                </h2>
+                <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
+                  <div className="text-center py-8">
+                    <FileText className="mx-auto text-gray-300 dark:text-dark-muted mb-4" size={40} />
+                    <p className="font-semibold text-gray-700 dark:text-dark-text mb-2">
+                      {isRTL ? 'سجل العمليات' : 'Audit Log'}
+                    </p>
+                    <p className="text-sm text-gray-400 dark:text-dark-muted">
+                      {isRTL
+                        ? 'سيتم تسجيل جميع العمليات الإدارية هنا — موافقة البائعين، حذف المنتجات، تعديل المستخدمين'
+                        : 'All admin actions will be logged here — seller approvals, product deletions, user modifications'}
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Review Brand Modal */}
+      {reviewModal.open && reviewModal.brand && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+          <div className={`bg-white dark:bg-dark-surface rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto ${isRTL ? 'text-right' : ''}`}>
+
+            <div className={`flex items-center justify-between p-6 border-b border-gray-100 dark:border-dark-border ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <h3 className="text-xl font-display font-bold text-gray-900 dark:text-dark-text">
+                {isRTL ? 'مراجعة طلب البائع' : 'Review Seller Application'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setReviewModal({ open: false, brand: null })}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-dark-text transition-colors"
+              >
+                <XCircle size={24} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-dark-bg overflow-hidden flex-shrink-0 flex items-center justify-center">
+                  {reviewModal.brand.logo?.url ? (
+                    <img src={reviewModal.brand.logo.url} alt={reviewModal.brand.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-2xl">🏪</span>
+                  )}
+                </div>
+                <div className={isRTL ? 'text-right' : ''}>
+                  <h4 className="text-lg font-bold text-gray-900 dark:text-dark-text">{reviewModal.brand.name}</h4>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                    reviewModal.brand.status === 'approved'
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
+                      : reviewModal.brand.status === 'rejected'
+                      ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                      : 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+                  }`}>
+                    {reviewModal.brand.status || 'pending'}
+                  </span>
+                </div>
+              </div>
+
+              {[
+                { label: isRTL ? 'الوصف' : 'Description', value: reviewModal.brand.description || '—' },
+                { label: isRTL ? 'الدولة' : 'Country', value: reviewModal.brand.country || 'Egypt' },
+                { label: isRTL ? 'الفئات' : 'Categories', value: reviewModal.brand.categories?.map(c => c.name || c).join(', ') || reviewModal.brand.category?.name || '—' },
+                { label: isRTL ? 'الموقع الإلكتروني' : 'Website', value: reviewModal.brand.website || '—' },
+                { label: isRTL ? 'تاريخ التقديم' : 'Submitted', value: reviewModal.brand.createdAt ? new Date(reviewModal.brand.createdAt).toLocaleDateString(isRTL ? 'ar-EG' : 'en-US') : '—' },
+              ].map(item => (
+                <div key={item.label} className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <span className="text-sm font-semibold text-gray-500 dark:text-dark-muted w-28 flex-shrink-0">{item.label}:</span>
+                  <span className="text-sm text-gray-900 dark:text-dark-text">{item.value}</span>
+                </div>
+              ))}
+            </div>
+
+            {reviewModal.brand.status === 'pending' && (
+              <div className={`flex gap-3 p-6 pt-0 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    approveSeller(reviewModal.brand._id || reviewModal.brand.id);
+                    setReviewModal({ open: false, brand: null });
+                  }}
+                  className="flex-1 py-2.5 bg-emerald-50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+                >
+                  <CheckCircle size={16} /> {isRTL ? 'قبول' : 'Approve'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReviewModal({ open: false, brand: null });
+                    rejectSeller(reviewModal.brand._id || reviewModal.brand.id, reviewModal.brand.name);
+                  }}
+                  className="flex-1 py-2.5 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 hover:bg-red-100 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+                >
+                  <XCircle size={16} /> {isRTL ? 'رفض' : 'Reject'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Reject Brand Modal */}
       {rejectModal.open && (

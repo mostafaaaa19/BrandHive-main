@@ -1011,18 +1011,90 @@ export default function SellerDashboard() {
               />
             )}
 
-            {/* Other tabs (messages, payouts, ads, promotions) */}
-            {['messages', 'payouts', 'ads', 'promotions']
-              .includes(activeTab) && (
-              <div className="bg-white dark:bg-dark-surface 
-                rounded-2xl shadow-card p-8 text-center">
-                <BarChart3 className="mx-auto text-gray-300 
-                  dark:text-dark-muted mb-4" size={48} />
+            {['messages', 'payouts'].includes(activeTab) && (
+              <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card p-8 text-center">
+                <BarChart3 className="mx-auto text-gray-300 dark:text-dark-muted mb-4" size={48} />
                 <p className="text-gray-500 dark:text-dark-muted">
-                  {isRTL 
-                    ? 'هذا القسم قيد التطوير' 
-                    : 'This section is under development'}
+                  {isRTL ? 'هذا القسم قيد التطوير' : 'This section is under development'}
                 </p>
+              </div>
+            )}
+
+            {activeTab === 'promotions' && (
+              <div>
+                <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
+                  {isRTL ? 'العروض والخصومات' : 'Promotions & Discounts'}
+                </h1>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                  {[
+                    { icon: '🏷️', title: isRTL ? 'كوبونات الخصم' : 'Discount Coupons', desc: isRTL ? 'أنشئ كوبونات خصم لعملائك بنسبة مئوية أو قيمة ثابتة' : 'Create discount coupons for customers — percentage or fixed value', status: isRTL ? 'قريباً' : 'Coming Soon', color: 'bg-purple-50 dark:bg-purple-900/10' },
+                    { icon: '⚡', title: isRTL ? 'عروض فلاش' : 'Flash Sales', desc: isRTL ? 'خصومات محدودة الوقت تزيد المبيعات بشكل كبير' : 'Limited-time discounts that dramatically boost sales', status: isRTL ? 'قريباً' : 'Coming Soon', color: 'bg-amber-50 dark:bg-amber-900/10' },
+                    { icon: '🎁', title: isRTL ? 'اشترِ X واحصل على Y' : 'Buy X Get Y', desc: isRTL ? 'عروض "اشترِ واحد واحصل على الثاني بنصف السعر" وما شابهها' : 'Buy one get one free and similar bundle deals', status: isRTL ? 'قريباً' : 'Coming Soon', color: 'bg-emerald-50 dark:bg-emerald-900/10' },
+                    { icon: '🚚', title: isRTL ? 'شحن مجاني' : 'Free Shipping', desc: isRTL ? 'قدم شحناً مجانياً عند تجاوز حد معين للطلب' : 'Offer free shipping above a minimum order value', status: isRTL ? 'قريباً' : 'Coming Soon', color: 'bg-blue-50 dark:bg-blue-900/10' },
+                  ].map((item, i) => (
+                    <div key={i} className={`${item.color} rounded-2xl p-5 ${isRTL ? 'text-right' : ''}`}>
+                      <div className="text-3xl mb-3">{item.icon}</div>
+                      <div className={`flex items-start justify-between gap-2 mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <h3 className="font-bold text-gray-900 dark:text-dark-text">{item.title}</h3>
+                        <span className="text-xs bg-gray-200 dark:bg-dark-bg text-gray-500 dark:text-dark-muted px-2 py-0.5 rounded-full whitespace-nowrap">{item.status}</span>
+                      </div>
+                      <p className="text-sm text-gray-500 dark:text-dark-muted">{item.desc}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className={`flex items-start gap-3 bg-brand-gold-pale dark:bg-brand-gold/10 rounded-2xl p-5 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+                  <span className="text-2xl">💡</span>
+                  <div>
+                    <p className="font-semibold text-gray-900 dark:text-dark-text text-sm mb-1">
+                      {isRTL ? 'هل تعلم؟' : 'Did you know?'}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-dark-muted">
+                      {isRTL
+                        ? 'المتاجر التي تستخدم العروض والخصومات تحقق مبيعات أعلى بنسبة 35% في المتوسط على منصة BrandHive.'
+                        : 'Stores using promotions and discounts achieve 35% higher sales on average on BrandHive.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'ads' && (
+              <div>
+                <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
+                  {isRTL ? 'مدير الإعلانات' : 'Ads Manager'}
+                </h1>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  {[
+                    { icon: '🔝', title: isRTL ? 'منتج مميز' : 'Featured Product', desc: isRTL ? 'اجعل منتجك يظهر في أعلى نتائج البحث والصفحة الرئيسية' : 'Get your product featured on search results and homepage', price: isRTL ? 'من 99 ج.م / يوم' : 'From 99 EGP/day' },
+                    { icon: '🏪', title: isRTL ? 'ماركة مميزة' : 'Featured Brand', desc: isRTL ? 'احصل على مكان مميز في قسم "أفضل الماركات" على الصفحة الرئيسية' : 'Get a featured spot in the Top Brands section on homepage', price: isRTL ? 'من 299 ج.م / أسبوع' : 'From 299 EGP/week' },
+                    { icon: '📢', title: isRTL ? 'إعلان بانر' : 'Banner Ad', desc: isRTL ? 'أعلن عن منتجاتك أو عروضك في أماكن بارزة على المنصة' : 'Advertise your products or offers in prominent platform spots', price: isRTL ? 'من 499 ج.م / أسبوع' : 'From 499 EGP/week' },
+                  ].map((item, i) => (
+                    <div key={i} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 ${isRTL ? 'text-right' : ''}`}>
+                      <div className="text-3xl mb-3">{item.icon}</div>
+                      <h3 className="font-bold text-gray-900 dark:text-dark-text mb-2">{item.title}</h3>
+                      <p className="text-sm text-gray-500 dark:text-dark-muted mb-4">{item.desc}</p>
+                      <div className={`flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <span className="text-brand-gold font-bold text-sm">{item.price}</span>
+                        <button type="button" className="text-xs bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy px-3 py-1.5 rounded-lg font-semibold opacity-50 cursor-not-allowed">
+                          {isRTL ? 'قريباً' : 'Coming Soon'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className={`flex items-start gap-3 bg-brand-navy/5 dark:bg-brand-navy/20 rounded-2xl p-5 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+                  <span className="text-2xl">📩</span>
+                  <div>
+                    <p className="font-semibold text-gray-900 dark:text-dark-text text-sm mb-1">
+                      {isRTL ? 'مهتم بالإعلان؟' : 'Interested in advertising?'}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-dark-muted">
+                      {isRTL
+                        ? 'تواصل مع فريق BrandHive على support@brandhive.com لمعرفة المزيد عن خيارات الإعلان المتاحة.'
+                        : 'Contact the BrandHive team at support@brandhive.com to learn more about available advertising options.'}
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
           </div>

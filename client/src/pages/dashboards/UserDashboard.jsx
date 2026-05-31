@@ -6,7 +6,7 @@ import {
   X, Clock, CheckCircle, XCircle, Truck, RefreshCw, AlertCircle, Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ordersAPI, addressesAPI, usersAPI, authAPI, reviewsAPI } from '../../services/api';
+import { ordersAPI, addressesAPI, usersAPI, authAPI, reviewsAPI, notificationsAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useWishlist, useCart } from '../../context/CartContext';
 import { useTranslation } from 'react-i18next';
@@ -172,6 +172,7 @@ export default function UserDashboard() {
 
   const [myReviews, setMyReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     if (user) {
@@ -202,6 +203,20 @@ export default function UserDashboard() {
     };
     fetchMyReviews();
   }, [activeTab]);
+
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      try {
+        const res = await notificationsAPI.getUnreadCount();
+        setUnreadCount(res.data?.data?.count || res.data?.count || 0);
+      } catch {
+        setUnreadCount(0);
+      }
+    };
+    fetchUnreadCount();
+    const interval = setInterval(fetchUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'orders' || activeTab === 'dashboard') {
@@ -355,9 +370,9 @@ export default function UserDashboard() {
 
   const TABS = [
     { icon: LayoutDashboard, label: isRTL ? 'لوحة التحكم' : 'Dashboard', tab: 'dashboard' },
-    { icon: Package, label: isRTL ? 'طلباتي' : 'My Orders', tab: 'orders', badge: 1 },
-    { icon: Heart, label: isRTL ? 'المفضلة' : 'Wishlist', tab: 'wishlist', badge: wishlistItems.length },
-    { icon: Star, label: isRTL ? 'تقييماتي' : 'Reviews', tab: 'reviews' },
+    { icon: Package, label: isRTL ? 'طلباتي' : 'My Orders', tab: 'orders', badge: orders.length || 0 },
+    { icon: Heart, label: isRTL ? 'المفضلة' : 'Wishlist', tab: 'wishlist', badge: wishlistItems.length || 0 },
+    { icon: Star, label: isRTL ? 'تقييماتي' : 'Reviews', tab: 'reviews', badge: myReviews.length || 0 },
     { icon: Settings, label: isRTL ? 'الإعدادات' : 'Settings', tab: 'settings' },
   ];
 
@@ -365,7 +380,7 @@ export default function UserDashboard() {
     { icon: User, label: isRTL ? 'إعدادات الحساب' : 'Profile Settings', tab: 'profile' },
     { icon: MapPin, label: isRTL ? 'العناوين' : 'Addresses', tab: 'addresses' },
     { icon: CreditCard, label: isRTL ? 'طرق الدفع' : 'Payment Methods', tab: 'payment' },
-    { icon: Bell, label: isRTL ? 'التنبيهات' : 'Notifications', tab: 'notifications' },
+    { icon: Bell, label: isRTL ? 'التنبيهات' : 'Notifications', tab: 'notifications', badge: unreadCount || 0 },
   ];
 
   const SUPPORT_TABS = [

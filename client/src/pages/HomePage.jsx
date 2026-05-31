@@ -329,12 +329,12 @@ export default function HomePage() {
             </Link>
           </div>
 
-          <div className={`grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-10 gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className="flex flex-wrap justify-center gap-4 pb-2">
             {categories.map((cat) => (
               <Link
                 key={cat.id}
                 to={`/products?category=${cat.slug}`}
-                className="group flex flex-col items-center gap-2 p-3 rounded-2xl bg-white dark:bg-dark-surface hover:shadow-card-hover dark:hover:border-brand-gold dark:border dark:border-transparent hover:-translate-y-1 transition-all duration-200 text-center"
+                className="group flex flex-col items-center gap-2 p-3 w-36 rounded-2xl bg-white dark:bg-dark-surface hover:shadow-card-hover dark:hover:border-brand-gold dark:border dark:border-transparent hover:-translate-y-1 transition-all duration-200 text-center"
               >
                 <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${cat.color} flex items-center justify-center text-2xl shadow-sm group-hover:scale-110 transition-transform`}>
                   {cat.icon}

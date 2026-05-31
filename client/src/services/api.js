@@ -247,8 +247,12 @@ export const authAPI = {
   // PATCH { email, newPassword } — set a new password
   resetPassword: (data) => api.patch('/auth/reset-password', data),
 
-  // POST { oldPassword, newPassword }
-  changePassword: (data) => api.post('/auth/change-password', data),
+  // Requires verify-reset-code first — use forgotPassword → verifyResetCode → resetPassword
+  changePassword: (data) =>
+    api.patch('/auth/reset-password', {
+      email: data.email,
+      newPassword: data.password || data.newPassword,
+    }),
 
   // POST { email }
   logout: (data) => api.post('/auth/logout', data),

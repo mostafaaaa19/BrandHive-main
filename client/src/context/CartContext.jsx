@@ -56,8 +56,14 @@ export const CartProvider = ({ children }) => {
           key: item._id || item.productId,
           id: item.productId?._id || item.productId,
           name: item.productId?.name || item.name,
-          price: item.productId?.price || item.price,
-          quantity: item.quantity,
+          price: Number(
+            item.productId?.finalPrice ||
+            item.productId?.discountPrice ||
+            item.productId?.price ||
+            item.price ||
+            0
+          ),
+          quantity: Number(item.quantity) || 1,
           brandName: item.productId?.brand?.name || '',
           brandSlug: item.productId?.brand?.slug || '',
           category: item.productId?.category?.name || '',
@@ -159,7 +165,11 @@ export const CartProvider = ({ children }) => {
     }
   };
 
-  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const total = items.reduce((sum, item) => {
+    const price = Number(item.price) || 0;
+    const qty = Number(item.quantity) || 0;
+    return sum + price * qty;
+  }, 0);
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = total;
 

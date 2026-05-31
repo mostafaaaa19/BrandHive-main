@@ -168,16 +168,30 @@ export default function UserDashboard() {
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  const [savedCards, setSavedCards] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('brandhive_saved_cards')) || [];
+    } catch {
+      return [];
+    }
+  });
+  const [showAddCard, setShowAddCard] = useState(false);
+  const [cardForm, setCardForm] = useState({ number: '', name: '', expiry: '', cvv: '' });
+  const [cardErrors, setCardErrors] = useState({});
+
+  const [profileInitialized, setProfileInitialized] = useState(false);
+
   useEffect(() => {
-    if (user) {
+    if (user && !profileInitialized) {
       const nameParts = (user.name || '').split(' ');
       setProfileForm({
         firstName: nameParts[0] || '',
         lastName: nameParts.slice(1).join(' ') || '',
         phone: user.phone || '',
       });
+      setProfileInitialized(true);
     }
-  }, [user]);
+  }, [user, profileInitialized]);
 
   useEffect(() => {
     if (activeTab !== 'reviews') return;
@@ -241,6 +255,63 @@ export default function UserDashboard() {
     } finally {
       setProfileLoading(false);
     }
+  };
+
+  const detectCardType = (number) => {
+    const n = number.replace(/\s/g, '');
+    if (n.startsWith('4')) return 'Visa';
+    if (n.startsWith('5') || n.startsWith('2')) return 'Mastercard';
+    if (n.startsWith('6')) return 'Meeza';
+    return 'Card';
+  };
+
+  const formatCardNumber = (val) =>
+    val.replace(/\D/g, '').slice(0, 16).replace(/(.{4})/g, '$1 ').trim();
+
+  const formatExpiry = (val) => {
+    const clean = val.replace(/\D/g, '').slice(0, 4);
+    return clean.length >= 3 ? clean.slice(0, 2) + '/' + clean.slice(2) : clean;
+  };
+
+  const handleAddCard = () => {
+    const errors = {};
+    const num = cardForm.number.replace(/\s/g, '');
+    if (num.length < 16) errors.number = isRTL ? 'رقم الكارت غير صحيح' : 'Invalid card number';
+    if (!cardForm.name.trim()) errors.name = isRTL ? 'الاسم مطلوب' : 'Name required';
+    if (cardForm.expiry.length < 5) errors.expiry = isRTL ? 'تاريخ انتهاء غير صحيح' : 'Invalid expiry';
+    if (cardForm.cvv.length < 3) errors.cvv = isRTL ? 'CVV غير صحيح' : 'Invalid CVV';
+    setCardErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
+    const newCard = {
+      id: Date.now().toString(),
+      last4: num.slice(-4),
+      type: detectCardType(num),
+      expiry: cardForm.expiry,
+      name: cardForm.name,
+      isDefault: savedCards.length === 0,
+    };
+    const updated = [...savedCards, newCard];
+    setSavedCards(updated);
+    localStorage.setItem('brandhive_saved_cards', JSON.stringify(updated));
+    setCardForm({ number: '', name: '', expiry: '', cvv: '' });
+    setCardErrors({});
+    setShowAddCard(false);
+    toast.success(isRTL ? 'تم إضافة الكارت ✅' : 'Card added ✅');
+  };
+
+  const handleDeleteCard = (id) => {
+    const updated = savedCards.filter(c => c.id !== id);
+    if (updated.length > 0 && !updated.some(c => c.isDefault)) updated[0].isDefault = true;
+    setSavedCards(updated);
+    localStorage.setItem('brandhive_saved_cards', JSON.stringify(updated));
+    toast.success(isRTL ? 'تم حذف الكارت' : 'Card removed');
+  };
+
+  const handleSetDefault = (id) => {
+    const updated = savedCards.map(c => ({ ...c, isDefault: c.id === id }));
+    setSavedCards(updated);
+    localStorage.setItem('brandhive_saved_cards', JSON.stringify(updated));
   };
 
   const fetchOrders = async () => {
@@ -943,28 +1014,227 @@ export default function UserDashboard() {
               </div>
             )}
 
-            {/* Payment Tab (keep simple for now) */}
+            {/* Payment Tab */}
             {activeTab === 'payment' && (
-              <div>
-                <h1 className={`text-2xl font-display font-bold 
-                  text-gray-900 dark:text-dark-text mb-6
-                  ${isRTL ? 'text-right' : ''}`}>
+              <div className="space-y-6">
+                <h1
+                  className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text ${
+                    isRTL ? 'text-right' : ''
+                  }`}
+                >
                   {isRTL ? 'طرق الدفع' : 'Payment Methods'}
                 </h1>
-                <div className="bg-white dark:bg-dark-surface 
-                  rounded-2xl shadow-card p-8 text-center">
-                  <CreditCard className="mx-auto text-gray-300 mb-4"
-                    size={48} />
-                  <p className="font-semibold text-gray-700 
-                    dark:text-dark-text mb-1">
-                    {isRTL ? 'طرق الدفع' : 'Payment Methods'}
-                  </p>
-                  <p className="text-sm text-gray-400 
-                    dark:text-dark-muted">
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {[
+                    {
+                      icon: '💳',
+                      name: isRTL ? 'باي موب' : 'Paymob',
+                      subtitle: isRTL ? 'بطاقة ائتمان / خصم' : 'Credit / Debit Card',
+                      badge: isRTL ? 'الأكثر شيوعاً' : 'Most Popular',
+                      badgeClass:
+                        'bg-brand-gold/15 text-brand-navy dark:bg-brand-gold/20 dark:text-brand-gold',
+                      supports: isRTL
+                        ? 'فيزا • ماستركارد • ميزة'
+                        : 'Visa • Mastercard • Meeza',
+                    },
+                    {
+                      icon: '🏧',
+                      name: isRTL ? 'فوري' : 'Fawry',
+                      subtitle: isRTL ? 'دفع نقدي في نقاط فوري' : 'Cash at Fawry outlets',
+                      badge: isRTL ? 'كل مصر' : 'All Egypt',
+                      badgeClass:
+                        'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
+                      supports: isRTL
+                        ? 'أكثر من 300,000 نقطة'
+                        : '300,000+ payment points',
+                    },
+                    {
+                      icon: '🚚',
+                      name: isRTL ? 'الدفع عند الاستلام' : 'Cash on Delivery',
+                      subtitle: isRTL ? 'ادفع عند استلام طلبك' : 'Pay when your order arrives',
+                      badge: isRTL ? 'بدون رسوم إضافية' : 'No extra fees',
+                      badgeClass:
+                        'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
+                      supports: isRTL ? '27 محافظة' : '27 Governorates',
+                    },
+                  ].map((method) => (
+                    <div
+                      key={method.name}
+                      className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5 flex flex-col ${
+                        isRTL ? 'text-right' : ''
+                      }`}
+                    >
+                      <div
+                        className={`flex items-start justify-between gap-2 mb-4 ${
+                          isRTL ? 'flex-row-reverse' : ''
+                        }`}
+                      >
+                        <span className="text-3xl" aria-hidden>
+                          {method.icon}
+                        </span>
+                        <span
+                          className={`text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${method.badgeClass}`}
+                        >
+                          {method.badge}
+                        </span>
+                      </div>
+                      <h3 className="font-display font-bold text-gray-900 dark:text-dark-text text-lg">
+                        {method.name}
+                      </h3>
+                      <p className="text-sm text-gray-500 dark:text-dark-muted mt-1">
+                        {method.subtitle}
+                      </p>
+                      <p className="text-xs text-gray-400 dark:text-dark-muted mt-4 pt-4 border-t border-gray-100 dark:border-dark-border">
+                        {isRTL ? 'يدعم: ' : 'Supports: '}
+                        {method.supports}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                <div
+                  className={`flex gap-3 bg-brand-navy/5 dark:bg-brand-gold/5 border border-brand-navy/10 dark:border-brand-gold/20 rounded-2xl p-4 ${
+                    isRTL ? 'flex-row-reverse text-right' : ''
+                  }`}
+                >
+                  <span className="text-xl flex-shrink-0" aria-hidden>
+                    🔒
+                  </span>
+                  <p className="text-sm text-gray-600 dark:text-dark-muted">
                     {isRTL
-                      ? 'يمكنك إضافة طرق دفع عند إتمام الطلب'
-                      : 'You can add payment methods during checkout'}
+                      ? 'جميع المعاملات مشفرة بتقنية SSL 256-bit. لا نخزن بيانات بطاقتك أبداً.'
+                      : 'All transactions are encrypted with 256-bit SSL. We never store your card details.'}
                   </p>
+                </div>
+
+                <div>
+                  <h3 className={`font-bold text-gray-900 dark:text-dark-text mb-3 ${isRTL ? 'text-right' : ''}`}>
+                    {isRTL ? 'الكروت المحفوظة' : 'Saved Cards'}
+                  </h3>
+
+                  <div className="space-y-3 mb-3">
+                    {savedCards.map(card => (
+                      <div key={card.id} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-4 flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div className={`w-12 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                          card.type === 'Visa' ? 'bg-brand-navy' :
+                          card.type === 'Mastercard' ? 'bg-purple-700' :
+                          card.type === 'Meeza' ? 'bg-emerald-700' : 'bg-gray-700'
+                        }`}>
+                          <span className="text-white text-xs font-bold">
+                            {card.type === 'Visa' ? 'VISA' : card.type === 'Mastercard' ? 'MC' : card.type === 'Meeza' ? 'M' : '💳'}
+                          </span>
+                        </div>
+                        <div className={`flex-1 ${isRTL ? 'text-right' : ''}`}>
+                          <p className="font-semibold text-gray-900 dark:text-dark-text text-sm">
+                            •••• •••• •••• {card.last4}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-dark-muted">
+                            {card.type} — {isRTL ? 'ينتهي' : 'Expires'} {card.expiry}
+                          </p>
+                        </div>
+                        {card.isDefault ? (
+                          <span className="text-xs bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 px-2 py-1 rounded-full font-semibold flex-shrink-0">
+                            {isRTL ? 'افتراضي' : 'Default'}
+                          </span>
+                        ) : (
+                          <button onClick={() => handleSetDefault(card.id)} className="text-xs text-brand-navy dark:text-brand-gold font-semibold hover:underline flex-shrink-0">
+                            {isRTL ? 'تعيين افتراضي' : 'Set Default'}
+                          </button>
+                        )}
+                        <button onClick={() => handleDeleteCard(card.id)} className="text-gray-300 hover:text-red-400 transition-colors flex-shrink-0">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {!showAddCard ? (
+                    <button
+                      onClick={() => setShowAddCard(true)}
+                      className="w-full border-2 border-dashed border-gray-200 dark:border-dark-border rounded-2xl p-4 flex items-center justify-center gap-3 hover:border-brand-gold hover:bg-brand-gold/5 transition-all"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-dark-bg flex items-center justify-center">
+                        <span className="text-gray-400 text-xl">+</span>
+                      </div>
+                      <div className={isRTL ? 'text-right' : ''}>
+                        <p className="font-semibold text-gray-700 dark:text-dark-text text-sm">
+                          {isRTL ? 'إضافة كارت جديد' : 'Add New Card'}
+                        </p>
+                        <p className="text-xs text-gray-400 dark:text-dark-muted">Visa, Mastercard, Meeza</p>
+                      </div>
+                    </button>
+                  ) : (
+                    <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5">
+                      <h4 className={`font-bold text-gray-900 dark:text-dark-text mb-4 ${isRTL ? 'text-right' : ''}`}>
+                        {isRTL ? 'إضافة كارت جديد' : 'Add New Card'}
+                      </h4>
+                      <div className={`space-y-3 ${isRTL ? 'text-right' : ''}`}>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 dark:text-dark-muted mb-1">
+                            {isRTL ? 'رقم الكارت' : 'Card Number'}
+                          </label>
+                          <input
+                            value={cardForm.number}
+                            onChange={e => setCardForm(p => ({ ...p, number: formatCardNumber(e.target.value) }))}
+                            placeholder="1234 5678 9012 3456"
+                            maxLength={19}
+                            className={`w-full rounded-xl border ${cardErrors.number ? 'border-red-400' : 'border-gray-200 dark:border-dark-border'} bg-gray-50 dark:bg-dark-bg px-4 py-2.5 text-sm outline-none focus:border-brand-gold dark:text-white`}
+                          />
+                          {cardErrors.number && <p className="text-red-400 text-xs mt-1">{cardErrors.number}</p>}
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 dark:text-dark-muted mb-1">
+                            {isRTL ? 'الاسم على الكارت' : 'Name on Card'}
+                          </label>
+                          <input
+                            value={cardForm.name}
+                            onChange={e => setCardForm(p => ({ ...p, name: e.target.value }))}
+                            placeholder={isRTL ? 'الاسم كما يظهر على الكارت' : 'As it appears on card'}
+                            className={`w-full rounded-xl border ${cardErrors.name ? 'border-red-400' : 'border-gray-200 dark:border-dark-border'} bg-gray-50 dark:bg-dark-bg px-4 py-2.5 text-sm outline-none focus:border-brand-gold dark:text-white`}
+                          />
+                          {cardErrors.name && <p className="text-red-400 text-xs mt-1">{cardErrors.name}</p>}
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 dark:text-dark-muted mb-1">
+                              {isRTL ? 'تاريخ الانتهاء' : 'Expiry Date'}
+                            </label>
+                            <input
+                              value={cardForm.expiry}
+                              onChange={e => setCardForm(p => ({ ...p, expiry: formatExpiry(e.target.value) }))}
+                              placeholder="MM/YY"
+                              maxLength={5}
+                              className={`w-full rounded-xl border ${cardErrors.expiry ? 'border-red-400' : 'border-gray-200 dark:border-dark-border'} bg-gray-50 dark:bg-dark-bg px-4 py-2.5 text-sm outline-none focus:border-brand-gold dark:text-white`}
+                            />
+                            {cardErrors.expiry && <p className="text-red-400 text-xs mt-1">{cardErrors.expiry}</p>}
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 dark:text-dark-muted mb-1">CVV</label>
+                            <input
+                              value={cardForm.cvv}
+                              onChange={e => setCardForm(p => ({ ...p, cvv: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
+                              placeholder="123"
+                              maxLength={4}
+                              type="password"
+                              className={`w-full rounded-xl border ${cardErrors.cvv ? 'border-red-400' : 'border-gray-200 dark:border-dark-border'} bg-gray-50 dark:bg-dark-bg px-4 py-2.5 text-sm outline-none focus:border-brand-gold dark:text-white`}
+                            />
+                            {cardErrors.cvv && <p className="text-red-400 text-xs mt-1">{cardErrors.cvv}</p>}
+                          </div>
+                        </div>
+                        <div className={`flex gap-3 pt-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <button onClick={handleAddCard} className="flex-1 btn-primary text-sm">
+                            {isRTL ? 'إضافة الكارت' : 'Add Card'}
+                          </button>
+                          <button onClick={() => { setShowAddCard(false); setCardErrors({}); }} className="flex-1 btn-outline text-sm">
+                            {isRTL ? 'إلغاء' : 'Cancel'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

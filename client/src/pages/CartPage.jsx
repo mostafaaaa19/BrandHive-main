@@ -360,7 +360,7 @@ export default function CartPage() {
                             </button>
                           </div>
                           <span className="font-bold text-brand-navy dark:text-brand-gold">
-                            {(item.price * item.quantity).toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}
+                            {((Number(item.price) || 0) * (Number(item.quantity) || 1)).toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}
                           </span>
                         </div>
                       </div>
@@ -635,7 +635,7 @@ export default function CartPage() {
               {items.map((item, idx) => (
                 <div key={item.key || item.id || idx} className={`flex justify-between items-center py-2 border-b border-gray-50 dark:border-dark-border last:border-0 ${isRTL ? 'flex-row-reverse' : ''}`}>
                   <span className="text-sm text-gray-700 dark:text-dark-muted">{item.name} × {item.quantity}</span>
-                  <span className="text-sm font-semibold dark:text-dark-text">{(item.price * item.quantity).toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}</span>
+                  <span className="text-sm font-semibold dark:text-dark-text">{((Number(item.price) || 0) * (Number(item.quantity) || 1)).toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}</span>
                 </div>
               ))}
               <div className={`flex justify-between items-center pt-3 font-bold text-lg ${isRTL ? 'flex-row-reverse' : ''}`}>

@@ -362,3 +362,16 @@ To ensure consistency between backend responses and frontend UI, we use mappers 
 - Fixed wishlist items display — now fetches full product details when productId is not populated
 - Built real BazaarPage — shows all brands as seller stores with search, logo, cover, stats
 - Removed duplicate Change Password section from Profile Settings tab — now only available in Settings tab via SettingsPanel component
+- Payment Methods tab: replaced placeholder with real UI showing Paymob, Fawry, COD
+- Payment Methods tab: added saved cards section with add/delete/set default
+- Cards stored in localStorage
+- Kept existing Paymob/Fawry/COD info cards below
+- Payment Methods tab: removed How to Pay section
+- Moved Add New Card below payment method cards
+- Fixed NaN price in cart: added Number() casting and fallbacks for price/quantity
+- Fixed subtotal calculation with safe reduce
+- Fixed password input losing focus: added profileInitialized guard to useEffect
+- Added Current Password input field in Profile Settings
+- Fixed change password body: uses email + password fields as per API spec
+- Fixed change password 404: routes to PATCH /auth/reset-password (change-password endpoint not on backend)
+- Fixed change password flow: verify reset code via OTP before setting new password in Settings

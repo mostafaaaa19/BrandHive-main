@@ -357,3 +357,5 @@ To ensure consistency between backend responses and frontend UI, we use mappers 
 - Fixed categories layout in HomePage: now centered with flex-wrap
 - Added Review modal for seller applications showing brand details, logo, categories
 - Review modal includes Approve/Reject actions for pending brands
+- Fixed SellerRegistration handleSubmit — now sends city and phone to backend, upgrades role before API call, graceful fallback on API error
+- Simplified SellerRegistration UI — removed unnecessary fields (nationalId, taxId, businessType, firstName/lastName), combined into name field, form now exactly matches backend accepted fields

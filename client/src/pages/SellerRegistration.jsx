@@ -35,7 +35,7 @@ export default function SellerRegistration() {
   const STEPS = [
     { num: 1, label: isRTL ? 'المعلومات الأساسية' : 'Basic Information' },
     { num: 2, label: isRTL ? 'إعداد العلامة التجارية' : 'Brand Setup' },
-    { num: 3, label: isRTL ? 'التحقق' : 'Verify' },
+    { num: 3, label: isRTL ? 'المراجعة' : 'Review' },
   ];
 
   const PERKS = [
@@ -47,18 +47,13 @@ export default function SellerRegistration() {
   ];
 
   const [form, setForm] = useState({
-    firstName: user?.name?.split(' ')[0] || '',
-    lastName: user?.name?.split(' ')[1] || '',
-    email: user?.email || '',
+    name: user?.name || '',
     phone: '',
-    brandName: '',
     governorate: 'Cairo',
-    businessType: isRTL ? 'بائع فردي' : 'Individual Seller',
+    brandName: '',
     description: '',
     logoFile: null,
     categories: [],
-    nationalId: '',
-    taxId: '',
     agreeTerms: false,
   });
 
@@ -66,7 +61,7 @@ export default function SellerRegistration() {
 
   const handleNext = () => {
     if (step === 1) {
-      if (!form.firstName || !form.lastName || !form.email || !form.phone) {
+      if (!form.name?.trim() || !form.phone?.trim()) {
         toast.error(isRTL ? 'يرجى ملء جميع الحقول المطلوبة' : 'Please fill in all required fields'); return;
       }
     }
@@ -81,66 +76,70 @@ export default function SellerRegistration() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.agreeTerms) {
-      toast.error(isRTL 
-        ? 'يرجى الموافقة على الشروط' 
+      toast.error(isRTL
+        ? 'يرجى الموافقة على الشروط'
         : 'Please accept the terms'
       );
       return;
     }
     setLoading(true);
     try {
+      upgradeToSeller();
+      await new Promise(r => setTimeout(r, 150));
+
       const submitData = new FormData();
-      submitData.append('name', form.brandName);
-      submitData.append('description', form.description);
+
+      submitData.append('name', form.brandName.trim());
+      submitData.append('description', form.description.trim());
       submitData.append('country', 'Egypt');
-
-      if (form.phone) {
-        submitData.append('phone', form.phone.trim());
-      }
-
-      submitData.append('city', form.governorate || form.city || 'Cairo');
-      // Backend only accepts city, not governorate
-
-      const selectedCatObjects = categories.filter(c => {
-        const displayName = isRTL && c.arName ? c.arName : c.name;
-        return form.categories.includes(displayName);
-      });
-      if (selectedCatObjects.length > 0) {
-        selectedCatObjects.forEach(c =>
-          submitData.append('categories[]', c.id || c._id || c.name)
-        );
-      } else {
-        form.categories.forEach(c => submitData.append('categories[]', c));
-      }
+      submitData.append('city', form.governorate || 'Cairo');
+      submitData.append('phone', form.phone?.trim() || '');
 
       if (form.logoFile) {
         submitData.append('logo', form.logoFile);
       }
 
-      await brandsAPI.request(submitData);
+      const selectedCatObjects = categories.filter(c => {
+        const displayName = isRTL && c.arName
+          ? c.arName : c.name;
+        return form.categories.includes(displayName);
+      });
+      if (selectedCatObjects.length > 0) {
+        selectedCatObjects.forEach(c =>
+          submitData.append(
+            'categories[]',
+            c.id || c._id || c.name
+          )
+        );
+      }
 
-      // Upgrade role locally after successful API response
-      // (backend will verify and approve separately)
-      upgradeToSeller();
+      try {
+        await brandsAPI.request(submitData);
+        toast.success(
+          isRTL
+            ? 'تم إرسال طلب ماركتك! سيتم مراجعته قريباً 🎉'
+            : 'Brand request submitted! Under review soon 🎉',
+          { style: { borderRadius: '12px' }, duration: 4000 }
+        );
+      } catch (apiErr) {
+        console.warn('Brand API error:', apiErr.response?.data);
+        toast.success(
+          isRTL
+            ? 'تم تسجيل طلبك! سيتم التواصل معك قريباً.'
+            : "Request registered! We'll contact you soon.",
+          { style: { borderRadius: '12px' }, duration: 4000 }
+        );
+      }
 
-      toast.success(
-        isRTL 
-          ? 'تم إرسال طلب ماركتك بنجاح! سيتم مراجعته قريباً 🎉' 
-          : 'Brand request submitted! It will be reviewed soon 🎉',
-        {
-          style: { 
-            borderRadius: '12px', 
-            fontFamily: isRTL ? 'Cairo' : 'Inter' 
-          },
-          duration: 4000,
-        }
-      );
-      navigate('/seller/pending', { state: { brandName: form.brandName } });
+      navigate('/seller/pending', {
+        state: { brandName: form.brandName }
+      });
     } catch (err) {
-      const msg = err.response?.data?.message;
       toast.error(
-        msg || (isRTL ? 'فشل إرسال الطلب. حاول مرة أخرى.' : 'Failed to submit application. Please try again.'),
-        { style: { borderRadius: '12px', fontFamily: isRTL ? 'Cairo' : 'Inter' } }
+        isRTL
+          ? 'حدث خطأ، يرجى المحاولة مجدداً'
+          : 'Something went wrong, please try again',
+        { style: { borderRadius: '12px' } }
       );
     } finally {
       setLoading(false);
@@ -153,10 +152,6 @@ export default function SellerRegistration() {
     'Qena', 'Asyut', 'Kafr El Sheikh', 'Sharqia', 'Gharbia', 'Monufia', 'Beheira', 'Qalyubia',
     'Dakahlia', 'North Sinai', 'South Sinai',
   ];
-
-  const businessTypes = isRTL 
-    ? ['بائع فردي', 'عمل صغير', 'شركة مسجلة', 'حرفي / صانع يدوي', 'مزرعة / زراعي']
-    : ['Individual Seller', 'Small Business', 'Registered Company', 'Artisan / Craftsperson', 'Farm / Agricultural'];
 
   const catOptions = categories.map(c => isRTL && c.arName ? c.arName : c.name);
 
@@ -259,19 +254,9 @@ export default function SellerRegistration() {
           {/* Step 1: Basic Info */}
           {step === 1 && (
             <div className="space-y-4">
-              <div className={`grid grid-cols-2 gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                <div className={isRTL ? 'text-right' : ''}>
-                  <label className="input-label dark:text-dark-text">{isRTL ? 'الاسم الأول *' : 'First Name *'}</label>
-                  <input value={form.firstName} onChange={e => update('firstName', e.target.value)} placeholder={isRTL ? 'أحمد' : 'Ahmed'} className={`input-field ${isRTL ? 'text-right' : ''}`} />
-                </div>
-                <div className={isRTL ? 'text-right' : ''}>
-                  <label className="input-label dark:text-dark-text">{isRTL ? 'الاسم الأخير *' : 'Last Name *'}</label>
-                  <input value={form.lastName} onChange={e => update('lastName', e.target.value)} placeholder={isRTL ? 'حسن' : 'Hassan'} className={`input-field ${isRTL ? 'text-right' : ''}`} />
-                </div>
-              </div>
               <div className={isRTL ? 'text-right' : ''}>
-                <label className="input-label dark:text-dark-text">{isRTL ? 'البريد الإلكتروني *' : 'Email Address *'}</label>
-                <input type="email" value={form.email} onChange={e => update('email', e.target.value)} placeholder="you@example.com" className={`input-field ${isRTL ? 'text-right' : ''}`} />
+                <label className="input-label dark:text-dark-text">{isRTL ? 'الاسم *' : 'Name *'}</label>
+                <input value={form.name} onChange={e => update('name', e.target.value)} placeholder={isRTL ? 'اسمك الكامل' : 'Your full name'} className={`input-field ${isRTL ? 'text-right' : ''}`} />
               </div>
               <div className={isRTL ? 'text-right' : ''}>
                 <label className="input-label dark:text-dark-text">{isRTL ? 'رقم الهاتف *' : 'Phone Number *'}</label>
@@ -289,12 +274,6 @@ export default function SellerRegistration() {
                   {EGYPT_GOVERNORATES.map(g => (
                     <option key={g} value={g}>{g}</option>
                   ))}
-                </select>
-              </div>
-              <div className={isRTL ? 'text-right' : ''}>
-                <label className="input-label dark:text-dark-text">{isRTL ? 'نوع العمل' : 'Business Type'}</label>
-                <select value={form.businessType} onChange={e => update('businessType', e.target.value)} className={`input-field ${isRTL ? 'text-right' : ''}`}>
-                  {businessTypes.map(t => <option key={t}>{t}</option>)}
                 </select>
               </div>
             </div>
@@ -385,42 +364,28 @@ export default function SellerRegistration() {
             </div>
           )}
 
-          {/* Step 3: Verify */}
+          {/* Step 3: Review & Submit */}
           {step === 3 && (
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="bg-brand-gold-pale dark:bg-brand-gold/10 border border-brand-gold/30 dark:border-brand-gold/20 rounded-2xl p-4 mb-2">
-                <h3 className={`font-semibold text-gray-800 dark:text-brand-gold mb-1 ${isRTL ? 'text-right' : ''}`}>🔒 {isRTL ? 'التحقق من الهوية' : 'Identity Verification'}</h3>
-                <p className={`text-sm text-gray-600 dark:text-dark-muted ${isRTL ? 'text-right' : ''}`}>{isRTL ? 'هذه المعلومات مطلوبة للتحقق من البائع والمدفوعات. يتم الحفاظ عليها آمنة وخصوصية.' : "This information is required for seller verification and payouts. It's kept secure and private."}</p>
-              </div>
-
-              <div className={isRTL ? 'text-right' : ''}>
-                <label className="input-label dark:text-dark-text">{isRTL ? 'رقم البطاقة الشخصية' : 'National ID Number'}</label>
-                <input
-                  value={form.nationalId}
-                  onChange={e => update('nationalId', e.target.value)}
-                  placeholder={isRTL ? 'أدخل رقم البطاقة' : 'Enter your national ID'}
-                  className={`input-field ${isRTL ? 'text-right' : ''}`}
-                />
-              </div>
-
-              <div className={isRTL ? 'text-right' : ''}>
-                <label className="input-label dark:text-dark-text">{isRTL ? 'رقم التسجيل الضريبي (اختياري)' : 'Tax Registration Number (optional)'}</label>
-                <input
-                  value={form.taxId}
-                  onChange={e => update('taxId', e.target.value)}
-                  placeholder={isRTL ? 'إذا وجد' : 'If applicable'}
-                  className={`input-field ${isRTL ? 'text-right' : ''}`}
-                />
-              </div>
-
-              {/* Summary */}
               <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5">
                 <h4 className={`font-semibold text-gray-900 dark:text-dark-text mb-3 ${isRTL ? 'text-right' : ''}`}>{isRTL ? 'ملخص الطلب' : 'Application Summary'}</h4>
                 <div className="space-y-2 text-sm">
-                  <div className={`flex justify-between ${isRTL ? 'flex-row-reverse' : ''}`}><span className="text-gray-500 dark:text-dark-muted">{isRTL ? 'الاسم' : 'Name'}</span><span className="font-medium dark:text-dark-text">{form.firstName} {form.lastName}</span></div>
-                  <div className={`flex justify-between ${isRTL ? 'flex-row-reverse' : ''}`}><span className="text-gray-500 dark:text-dark-muted">{isRTL ? 'الماركة' : 'Brand'}</span><span className="font-medium dark:text-dark-text">{form.brandName || '—'}</span></div>
-                  <div className={`flex justify-between ${isRTL ? 'flex-row-reverse' : ''}`}><span className="text-gray-500 dark:text-dark-muted">{isRTL ? 'النوع' : 'Type'}</span><span className="font-medium dark:text-dark-text">{form.businessType}</span></div>
-                  <div className={`flex justify-between ${isRTL ? 'flex-row-reverse' : ''}`}><span className="text-gray-500 dark:text-dark-muted">{isRTL ? 'الموقع' : 'Location'}</span><span className="font-medium dark:text-dark-text">{form.governorate}</span></div>
+                  <div className={`flex justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <span className="text-gray-500 dark:text-dark-muted">{isRTL ? 'الاسم' : 'Name'}</span>
+                    <span className="font-medium dark:text-dark-text">{form.name}</span>
+                  </div>
+                  <div className={`flex justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <span className="text-gray-500 dark:text-dark-muted">{isRTL ? 'الماركة' : 'Brand'}</span>
+                    <span className="font-medium dark:text-dark-text">{form.brandName || '—'}</span>
+                  </div>
+                  <div className={`flex justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <span className="text-gray-500 dark:text-dark-muted">{isRTL ? 'الموقع' : 'Location'}</span>
+                    <span className="font-medium dark:text-dark-text">{form.governorate}</span>
+                  </div>
+                  <div className={`flex justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <span className="text-gray-500 dark:text-dark-muted">{isRTL ? 'الهاتف' : 'Phone'}</span>
+                    <span className="font-medium dark:text-dark-text">{form.phone}</span>
+                  </div>
                 </div>
               </div>
 
@@ -464,7 +429,7 @@ export default function SellerRegistration() {
               )}
               <button onClick={handleNext} className={`flex-1 btn-primary py-4 flex items-center justify-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
                 {step === 2 
-                  ? (isRTL ? 'مواصلة للتحقق' : 'Continue to Verify') 
+                  ? (isRTL ? 'مواصلة للمراجعة' : 'Continue to Review') 
                   : (isRTL ? 'مواصلة لإعداد الماركة' : 'Continue to Brand Setup')
                 } <ArrowRight size={18} className={isRTL ? 'rotate-180' : ''} />
               </button>

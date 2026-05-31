@@ -23,7 +23,7 @@ const isValidMongoId = (id) =>
 
 export const CartProvider = ({ children }) => {
   const [items, setItems] = useState([]);
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isCustomer } = useAuth();
 
   useEffect(() => {
     const stored = localStorage.getItem('brandhive_cart');
@@ -38,7 +38,8 @@ export const CartProvider = ({ children }) => {
 
   // Fetch cart from API (when logged in)
   const fetchCart = useCallback(async () => {
-    if (!isAuthenticated) return;
+    // Cart API is customer-only; seller/admin JWTs get 403
+    if (!isAuthenticated || !isCustomer) return;
     try {
       const res = await cartAPI.get();
       const data = res.data;
@@ -71,7 +72,7 @@ export const CartProvider = ({ children }) => {
     } catch {
       // API failed — keep localStorage items
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isCustomer]);
 
   // Fetch cart on mount and when auth changes
   useEffect(() => {
@@ -96,7 +97,7 @@ export const CartProvider = ({ children }) => {
     });
 
     // Only sync with API if product has real MongoDB ID
-    if (isAuthenticated && isValidMongoId(product.id)) {
+    if (isAuthenticated && isCustomer && isValidMongoId(product.id)) {
       try {
         await cartAPI.add({ 
           productId: product.id, 
@@ -113,7 +114,7 @@ export const CartProvider = ({ children }) => {
     const item = items.find(i => i.key === key);
     setItems(prev => prev.filter(i => i.key !== key));
     
-    if (isAuthenticated && isValidMongoId(item?.id)) {
+    if (isAuthenticated && isCustomer && isValidMongoId(item?.id)) {
       try {
         await cartAPI.removeItem(item.id);
       } catch {
@@ -133,7 +134,7 @@ export const CartProvider = ({ children }) => {
       prev.map(i => i.key === key ? { ...i, quantity } : i)
     );
     
-    if (isAuthenticated && isValidMongoId(item?.id)) {
+    if (isAuthenticated && isCustomer && isValidMongoId(item?.id)) {
       try {
         await cartAPI.update({ 
           productId: item.id, 
@@ -149,7 +150,7 @@ export const CartProvider = ({ children }) => {
   const clearCart = async () => {
     setItems([]);
     localStorage.removeItem('brandhive_cart');
-    if (isAuthenticated) {
+    if (isAuthenticated && isCustomer) {
       try {
         await cartAPI.clear();
       } catch {
@@ -172,7 +173,7 @@ export const CartProvider = ({ children }) => {
 export const WishlistProvider = ({ children }) => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isCustomer } = useAuth();
 
   // Helper: check if valid MongoDB ID
   const isValidMongoId = (id) =>
@@ -197,7 +198,7 @@ export const WishlistProvider = ({ children }) => {
 
   // Fetch wishlist from API when logged in
   const fetchWishlist = useCallback(async () => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !isCustomer) return;
     try {
       const res = await wishlistAPI.get();
       const data = res.data;
@@ -226,7 +227,7 @@ export const WishlistProvider = ({ children }) => {
     } catch {
       // Keep localStorage items on failure
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isCustomer]);
 
   // Fetch on mount and auth change
   useEffect(() => {
@@ -245,7 +246,7 @@ export const WishlistProvider = ({ children }) => {
     }
 
     // Sync with API if logged in and valid ID
-    if (isAuthenticated && isValidMongoId(product.id)) {
+    if (isAuthenticated && isCustomer && isValidMongoId(product.id)) {
       try {
         if (exists) {
           await wishlistAPI.remove(product.id);
@@ -270,7 +271,7 @@ export const WishlistProvider = ({ children }) => {
     const item = items.find(i => i.id === productId);
     if (!item) return;
 
-    if (isAuthenticated && isValidMongoId(productId)) {
+    if (isAuthenticated && isCustomer && isValidMongoId(productId)) {
       try {
         await wishlistAPI.moveToCart(productId);
         setItems(prev => prev.filter(i => i.id !== productId));
@@ -289,7 +290,7 @@ export const WishlistProvider = ({ children }) => {
   const clearWishlist = async () => {
     setItems([]);
     localStorage.removeItem('brandhive_wishlist');
-    if (isAuthenticated) {
+    if (isAuthenticated && isCustomer) {
       try {
         await wishlistAPI.clear();
       } catch {}

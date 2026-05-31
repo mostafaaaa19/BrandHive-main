@@ -201,27 +201,73 @@ export const WishlistProvider = ({ children }) => {
     if (!isAuthenticated || !isCustomer) return;
     try {
       const res = await wishlistAPI.get();
-      const data = res.data;
-      const list = 
-        data?.data?.items ||
-        data?.data ||
-        data?.items ||
-        data?.wishlist ||
+      const data =
+        res.data?.data?.items ||
+        res.data?.data ||
+        res.data?.wishlist ||
+        res.data?.items ||
+        res.data ||
         [];
-      if (Array.isArray(list) && list.length > 0) {
-        const mapped = list.map(item => ({
-          id: item.productId?._id || item.productId || item._id,
-          name: item.productId?.name || item.name,
-          price: item.productId?.price || item.price,
-          image: item.productId?.images?.[0] || null,
-          brandName: item.productId?.brand?.name || '',
-          slug: item.productId?.slug || '',
-          category: item.productId?.category?.name || '',
-        }));
-        setItems(mapped);
+      const list = Array.isArray(data) ? data : [];
+
+      if (list.length === 0) return;
+
+      const mapped = await Promise.all(
+        list.map(async (item) => {
+          if (
+            item.productId &&
+            typeof item.productId === 'object' &&
+            item.productId.name
+          ) {
+            return {
+              id: item.productId._id || item.productId.id,
+              name: item.productId.name,
+              price:
+                item.productId.finalPrice ||
+                item.productId.price ||
+                0,
+              image:
+                item.productId.mainImage ||
+                item.productId.images?.[0] ||
+                null,
+              brandName: item.productId.brand?.name || '',
+              brandSlug: item.productId.brand?.slug || '',
+              slug: item.productId.slug || '',
+              category: item.productId.category?.name || '',
+            };
+          }
+
+          const productId =
+            item.productId || item._id || item.product;
+          if (!productId) return null;
+
+          try {
+            const { productsAPI } = await import('../services/api');
+            const prodRes = await productsAPI.getOne(productId);
+            const p = prodRes.data?.data || prodRes.data;
+            if (!p) return null;
+            return {
+              id: p.id || p._id,
+              name: p.name,
+              price: p.finalPrice || p.price || 0,
+              image: p.mainImage || p.images?.[0] || null,
+              brandName: p.brand?.name || '',
+              brandSlug: p.brand?.slug || '',
+              slug: p.slug || '',
+              category: p.category?.name || '',
+            };
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      const validItems = mapped.filter(Boolean);
+      if (validItems.length > 0) {
+        setItems(validItems);
         localStorage.setItem(
           'brandhive_wishlist',
-          JSON.stringify(mapped)
+          JSON.stringify(validItems)
         );
       }
     } catch {

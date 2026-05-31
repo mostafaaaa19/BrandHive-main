@@ -6,7 +6,7 @@ import {
   X, Clock, CheckCircle, XCircle, Truck, RefreshCw, AlertCircle, Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ordersAPI, addressesAPI, usersAPI, authAPI, reviewsAPI, notificationsAPI } from '../../services/api';
+import { ordersAPI, addressesAPI, usersAPI, reviewsAPI, notificationsAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useWishlist, useCart } from '../../context/CartContext';
 import { useTranslation } from 'react-i18next';
@@ -164,12 +164,6 @@ export default function UserDashboard() {
   });
   const [profileLoading, setProfileLoading] = useState(false);
 
-  const [passwordForm, setPasswordForm] = useState({
-    email: '',
-    password: '',
-  });
-  const [passwordLoading, setPasswordLoading] = useState(false);
-
   const [myReviews, setMyReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -182,7 +176,6 @@ export default function UserDashboard() {
         lastName: nameParts.slice(1).join(' ') || '',
         phone: user.phone || '',
       });
-      setPasswordForm(prev => ({ ...prev, email: user.email || '' }));
     }
   }, [user]);
 
@@ -247,32 +240,6 @@ export default function UserDashboard() {
       );
     } finally {
       setProfileLoading(false);
-    }
-  };
-
-  const handlePasswordChange = async () => {
-    if (!passwordForm.password || passwordForm.password.length < 6) {
-      toast.error(isRTL ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' : 'Password must be at least 6 characters');
-      return;
-    }
-    setPasswordLoading(true);
-    try {
-      await authAPI.changePassword({
-        email: passwordForm.email,
-        password: passwordForm.password,
-      });
-      setPasswordForm(prev => ({ ...prev, password: '' }));
-      toast.success(isRTL ? 'تم تغيير كلمة المرور!' : 'Password changed successfully!', {
-        style: { borderRadius: '12px', fontFamily: isRTL ? 'Cairo' : 'Inter' }
-      });
-    } catch (err) {
-      toast.error(
-        err.response?.data?.message ||
-        (isRTL ? 'فشل تغيير كلمة المرور' : 'Failed to change password'),
-        { style: { borderRadius: '12px' } }
-      );
-    } finally {
-      setPasswordLoading(false);
     }
   };
 
@@ -850,34 +817,6 @@ export default function UserDashboard() {
                     ) : (isRTL ? 'حفظ التغييرات' : 'Save Changes')}
                   </button>
                   <div className="clear-both" />
-                </div>
-
-                {/* Change Password Card */}
-                <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
-                  <h3 className={`font-bold text-gray-900 dark:text-dark-text mb-4 ${isRTL ? 'text-right' : ''}`}>
-                    {isRTL ? 'تغيير كلمة المرور' : 'Change Password'}
-                  </h3>
-                  <div className="max-w-sm space-y-3">
-                    <div className={isRTL ? 'text-right' : ''}>
-                      <label className="input-label">{isRTL ? 'كلمة المرور الجديدة' : 'New Password'}</label>
-                      <input
-                        type="password"
-                        value={passwordForm.password}
-                        onChange={e => setPasswordForm(p => ({ ...p, password: e.target.value }))}
-                        placeholder={isRTL ? 'كلمة المرور الجديدة' : 'New password'}
-                        className={`input-field ${isRTL ? 'text-right' : ''}`}
-                      />
-                    </div>
-                    <button
-                      onClick={handlePasswordChange}
-                      disabled={passwordLoading || !passwordForm.password}
-                      className="btn-outline text-sm disabled:opacity-50"
-                    >
-                      {passwordLoading ? (
-                        <div className="w-4 h-4 border-2 border-brand-navy border-t-transparent rounded-full animate-spin mx-auto" />
-                      ) : (isRTL ? 'تغيير كلمة المرور' : 'Update Password')}
-                    </button>
-                  </div>
                 </div>
               </div>
             )}

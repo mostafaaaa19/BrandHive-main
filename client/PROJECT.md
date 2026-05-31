@@ -359,3 +359,6 @@ To ensure consistency between backend responses and frontend UI, we use mappers 
 - Review modal includes Approve/Reject actions for pending brands
 - Fixed SellerRegistration handleSubmit — now sends city and phone to backend, upgrades role before API call, graceful fallback on API error
 - Simplified SellerRegistration UI — removed unnecessary fields (nationalId, taxId, businessType, firstName/lastName), combined into name field, form now exactly matches backend accepted fields
+- Fixed wishlist items display — now fetches full product details when productId is not populated
+- Built real BazaarPage — shows all brands as seller stores with search, logo, cover, stats
+- Removed duplicate Change Password section from Profile Settings tab — now only available in Settings tab via SettingsPanel component

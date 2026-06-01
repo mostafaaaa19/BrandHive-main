@@ -112,12 +112,21 @@ export const AuthProvider = ({ children }) => {
   };
 
   // ── logout ────────────────────────────────────────────────────────────────
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('brandhive_user');
-    localStorage.removeItem('brandhive_cart');
-    localStorage.removeItem('brandhive_wishlist');
-    localStorage.removeItem('brandhive_role_override');
+  const logout = async () => {
+    try {
+      const currentUser = JSON.parse(localStorage.getItem('brandhive_user'));
+      if (currentUser?.email) {
+        await authAPI.logout({ email: currentUser.email });
+      }
+    } catch {
+      // Even if API fails, clear local state
+    } finally {
+      setUser(null);
+      localStorage.removeItem('brandhive_user');
+      localStorage.removeItem('brandhive_cart');
+      localStorage.removeItem('brandhive_wishlist');
+      localStorage.removeItem('brandhive_role_override');
+    }
   };
 
   // ── updateUser (local only, for profile edits) ────────────────────────────

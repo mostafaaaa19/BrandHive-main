@@ -377,6 +377,7 @@ export const ordersAPI = {
   getMyOrder: (orderId) => api.get(`/orders/my-orders/${orderId}`),
   getAll: () => api.get('/orders/my-orders'),
   cancelOrder: (orderId, data) => api.post(`/orders/my-orders/${orderId}/cancel`, data),
+  reorder: (orderId) => api.post(`/orders/${orderId}/reorder`),
 };
 
 // ─── Users ───────────────────────────────────────────────────────────────────
@@ -442,6 +443,16 @@ export const chatAPI = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages, language }),
     }).then(r => r.json()),
+};
+
+export const couponsAPI = {
+  create: (data) => api.post('/coupons', data),
+  getAll: (params = {}) =>
+    api.get('/coupons/admin/all', { params }),
+  getOne: (id) => api.get(`/coupons/admin/${id}`),
+  update: (id, data) => api.put(`/coupons/${id}`, data),
+  delete: (id) => api.delete(`/coupons/${id}`),
+  validate: (data) => api.post('/coupons/validate', data),
 };
 
 export default api;

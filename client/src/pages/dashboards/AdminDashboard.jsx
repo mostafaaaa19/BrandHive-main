@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Store, Package, DollarSign, Search as SearchIcon,
-  Flag, Target, Settings, Bell, FileText, LogOut, CheckCircle, Eye, BarChart3, XCircle
+  Flag, Target, Settings, Bell, FileText, LogOut, CheckCircle, Eye, BarChart3, XCircle, Trash2, Tag, Plus
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useAuth } from '../../context/AuthContext';
-import { adminAPI, productsAPI } from '../../services/api';
+import { adminAPI, productsAPI, couponsAPI } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../../context/LanguageContext';
 import toast from 'react-hot-toast';
@@ -132,6 +132,34 @@ function AdminUsersTab({ adminAPI, isRTL, toast }) {
     }
   };
 
+  const handleDeleteUser = async (userId, userName) => {
+    if (!window.confirm(
+      isRTL
+        ? `هل أنت متأكد من حذف "${userName}"؟ لا يمكن التراجع عن هذا الإجراء.`
+        : `Are you sure you want to delete "${userName}"? This cannot be undone.`
+    )) return;
+
+    const userToDelete = users.find(u => u._id === userId || u.id === userId);
+    if (userToDelete?.role === 'admin') {
+      toast.error(isRTL ? 'لا يمكن حذف حساب مشرف' : 'Cannot delete admin accounts');
+      return;
+    }
+
+    try {
+      await adminAPI.deleteUser(userId);
+      setUsers(prev => prev.filter(u => u._id !== userId && u.id !== userId));
+      toast.success(
+        isRTL ? 'تم حذف المستخدم ✅' : 'User deleted ✅',
+        { style: { borderRadius: '12px' } }
+      );
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || (isRTL ? 'فشل حذف المستخدم' : 'Failed to delete user'),
+        { style: { borderRadius: '12px' } }
+      );
+    }
+  };
+
   const ROLE_FILTERS = [
     { value: 'all', label: isRTL ? 'الكل' : 'All' },
     { value: 'customer', label: isRTL ? 'العملاء' : 'Customers' },
@@ -238,21 +266,29 @@ function AdminUsersTab({ adminAPI, isRTL, toast }) {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => 
-                        handleToggle(u._id || u.id)
-                      }
-                      className={`text-xs px-3 py-1 
-                        rounded-lg font-medium 
-                        transition-colors ${
-                        u.isActive === false
-                          ? 'bg-emerald-50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/20'
-                          : 'bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/20'
-                      }`}>
-                      {u.isActive === false
-                        ? (isRTL ? 'رفع الحظر' : 'Unblock')
-                        : (isRTL ? 'حظر' : 'Block')}
-                    </button>
+                    <div className={`flex gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                      <button
+                        onClick={() => 
+                          handleToggle(u._id || u.id)
+                        }
+                        className={`text-xs px-3 py-1 
+                          rounded-lg font-medium 
+                          transition-colors ${
+                          u.isActive === false
+                            ? 'bg-emerald-50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/20'
+                            : 'bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/20'
+                        }`}>
+                        {u.isActive === false
+                          ? (isRTL ? 'رفع الحظر' : 'Unblock')
+                          : (isRTL ? 'حظر' : 'Block')}
+                      </button>
+                      <button
+                        onClick={() => handleDeleteUser(u._id || u.id, u.name)}
+                        className="px-3 py-1.5 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/20 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1"
+                      >
+                        <Trash2 size={12} /> {isRTL ? 'حذف' : 'Delete'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -582,6 +618,229 @@ function AdminNotificationSender({ isRTL, adminAPI }) {
   );
 }
 
+function AdminCouponsTab({ isRTL, toast }) {
+  const [coupons, setCoupons] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    code: '',
+    type: 'percentage',
+    value: '',
+    expiresAt: '',
+  });
+
+  const fetchCoupons = async () => {
+    setLoading(true);
+    try {
+      const res = await couponsAPI.getAll({ page: 1, limit: 20 });
+      const data = res.data?.data || res.data?.coupons || res.data || [];
+      setCoupons(Array.isArray(data) ? data : []);
+    } catch {
+      setCoupons([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchCoupons(); }, []);
+
+  const handleCreate = async () => {
+    if (!form.code || !form.value || !form.expiresAt) {
+      toast.error(isRTL ? 'يرجى ملء جميع الحقول' : 'Please fill all fields');
+      return;
+    }
+    setCreating(true);
+    try {
+      await couponsAPI.create({
+        code: form.code.toUpperCase().trim(),
+        type: form.type,
+        value: parseFloat(form.value),
+        expiresAt: form.expiresAt,
+      });
+      toast.success(isRTL ? 'تم إنشاء الكوبون ✅' : 'Coupon created ✅');
+      setForm({ code: '', type: 'percentage', value: '', expiresAt: '' });
+      setShowForm(false);
+      fetchCoupons();
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || (isRTL ? 'فشل إنشاء الكوبون' : 'Failed to create')
+      );
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm(isRTL ? 'هل تريد حذف هذا الكوبون؟' : 'Delete this coupon?')) return;
+    try {
+      await couponsAPI.delete(id);
+      toast.success(isRTL ? 'تم الحذف' : 'Deleted');
+      setCoupons(prev => prev.filter(c => (c._id || c.id) !== id));
+    } catch {
+      toast.error(isRTL ? 'فشل الحذف' : 'Failed');
+    }
+  };
+
+  return (
+    <div>
+      <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+        <h1 className="text-2xl font-display font-bold text-gray-900 dark:text-dark-text">
+          {isRTL ? 'إدارة الكوبونات' : 'Coupons Management'}
+        </h1>
+        <button
+          onClick={() => setShowForm(!showForm)}
+          className="btn-primary text-sm flex items-center gap-2"
+        >
+          <Plus size={14} />
+          {isRTL ? 'كوبون جديد' : 'New Coupon'}
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 mb-6">
+          <h3 className={`font-bold text-gray-900 dark:text-dark-text mb-4 ${isRTL ? 'text-right' : ''}`}>
+            {isRTL ? 'إنشاء كوبون جديد' : 'Create New Coupon'}
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="input-label">{isRTL ? 'كود الكوبون' : 'Coupon Code'} *</label>
+              <input
+                type="text"
+                placeholder="e.g. SAVE20"
+                value={form.code}
+                onChange={e => setForm(p => ({ ...p, code: e.target.value.toUpperCase() }))}
+                className={`input-field dark:bg-dark-bg dark:border-dark-border dark:text-dark-text uppercase ${isRTL ? 'text-right' : ''}`}
+              />
+            </div>
+            <div>
+              <label className="input-label">{isRTL ? 'نوع الخصم' : 'Discount Type'} *</label>
+              <select
+                value={form.type}
+                onChange={e => setForm(p => ({ ...p, type: e.target.value }))}
+                className="input-field dark:bg-dark-bg dark:border-dark-border dark:text-dark-text"
+              >
+                <option value="percentage">{isRTL ? 'نسبة مئوية (%)' : 'Percentage (%)'}</option>
+                <option value="fixed">{isRTL ? 'مبلغ ثابت (EGP)' : 'Fixed Amount (EGP)'}</option>
+              </select>
+            </div>
+            <div>
+              <label className="input-label">{isRTL ? 'قيمة الخصم' : 'Discount Value'} *</label>
+              <input
+                type="number"
+                placeholder={form.type === 'percentage' ? '0-100' : '0'}
+                value={form.value}
+                onChange={e => setForm(p => ({ ...p, value: e.target.value }))}
+                min="0"
+                max={form.type === 'percentage' ? 100 : undefined}
+                className={`input-field dark:bg-dark-bg dark:border-dark-border dark:text-dark-text ${isRTL ? 'text-right' : ''}`}
+              />
+            </div>
+            <div>
+              <label className="input-label">{isRTL ? 'تاريخ الانتهاء' : 'Expiry Date'} *</label>
+              <input
+                type="date"
+                value={form.expiresAt}
+                min={new Date().toISOString().split('T')[0]}
+                onChange={e => setForm(p => ({ ...p, expiresAt: e.target.value }))}
+                className="input-field dark:bg-dark-bg dark:border-dark-border dark:text-dark-text"
+              />
+            </div>
+          </div>
+          <div className={`flex gap-3 mt-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <button
+              onClick={handleCreate}
+              disabled={creating}
+              className="btn-primary flex items-center gap-2 disabled:opacity-50"
+            >
+              {creating ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Plus size={14} />
+              )}
+              {isRTL ? 'إنشاء' : 'Create'}
+            </button>
+            <button onClick={() => setShowForm(false)} className="btn-outline">
+              {isRTL ? 'إلغاء' : 'Cancel'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center">
+            <div className="w-6 h-6 border-2 border-brand-gold border-t-transparent rounded-full animate-spin mx-auto" />
+          </div>
+        ) : coupons.length === 0 ? (
+          <div className="p-8 text-center">
+            <Tag size={40} className="mx-auto text-gray-300 dark:text-dark-muted mb-3" />
+            <p className="text-gray-500 dark:text-dark-muted text-sm">
+              {isRTL ? 'لا توجد كوبونات بعد' : 'No coupons yet'}
+            </p>
+          </div>
+        ) : (
+          <table className={`w-full text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
+            <thead className="bg-gray-50 dark:bg-dark-bg">
+              <tr>
+                {[
+                  isRTL ? 'الكود' : 'Code',
+                  isRTL ? 'النوع' : 'Type',
+                  isRTL ? 'القيمة' : 'Value',
+                  isRTL ? 'الانتهاء' : 'Expires',
+                  isRTL ? 'الحالة' : 'Status',
+                  isRTL ? 'إجراء' : 'Action',
+                ].map(h => (
+                  <th key={h} className="px-4 py-3 text-xs font-bold text-gray-400 dark:text-dark-muted uppercase">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
+              {coupons.map((coupon, i) => (
+                <tr key={coupon._id || coupon.id || i} className="hover:bg-gray-50/50 dark:hover:bg-dark-bg/50">
+                  <td className="px-4 py-3 font-mono font-bold text-brand-gold">{coupon.code}</td>
+                  <td className="px-4 py-3 dark:text-dark-text capitalize">
+                    {coupon.type === 'percentage'
+                      ? (isRTL ? 'نسبة' : 'Percentage')
+                      : (isRTL ? 'مبلغ ثابت' : 'Fixed')}
+                  </td>
+                  <td className="px-4 py-3 font-semibold dark:text-dark-text">
+                    {coupon.type === 'percentage' ? `${coupon.value}%` : `${coupon.value} EGP`}
+                  </td>
+                  <td className="px-4 py-3 text-gray-400 dark:text-dark-muted text-xs">
+                    {coupon.expiresAt ? new Date(coupon.expiresAt).toLocaleDateString() : '—'}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${
+                      coupon.isActive !== false
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
+                        : 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                    }`}>
+                      {coupon.isActive !== false
+                        ? (isRTL ? 'نشط' : 'Active')
+                        : (isRTL ? 'منتهي' : 'Expired')}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => handleDelete(coupon._id || coupon.id)}
+                      className="text-red-400 hover:text-red-600 transition-colors p-1"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminDashboard() {
   const { t } = useTranslation();
   const { isRTL } = useLanguage();
@@ -843,6 +1102,7 @@ export default function AdminDashboard() {
         { icon: Users, label: isRTL ? 'المستخدمين' : 'Users', tab: 'users' },
         { icon: Store, label: isRTL ? 'البائعين' : 'Sellers', tab: 'sellers', badge: sellers.length },
         { icon: Package, label: isRTL ? 'الطلبات' : 'Orders', tab: 'orders' },
+        { icon: Tag, label: isRTL ? 'الكوبونات' : 'Coupons', tab: 'coupons' },
         { icon: DollarSign, label: isRTL ? 'الأرباح' : 'Revenue', tab: 'revenue' },
       ],
     },
@@ -1124,6 +1384,11 @@ export default function AdminDashboard() {
                 adminAPI={adminAPI}
                 isRTL={isRTL}
               />
+            )}
+
+            {/* Coupons Tab */}
+            {activeTab === 'coupons' && (
+              <AdminCouponsTab isRTL={isRTL} toast={toast} />
             )}
 
             {/* Products Tab */}

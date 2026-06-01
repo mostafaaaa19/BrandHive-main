@@ -375,3 +375,10 @@ To ensure consistency between backend responses and frontend UI, we use mappers 
 - Fixed change password body: uses email + password fields as per API spec
 - Fixed change password 404: routes to PATCH /auth/reset-password (change-password endpoint not on backend)
 - Fixed change password flow: verify reset code via OTP before setting new password in Settings
+- Added Delete User button in Admin Users tab
+- Added guard to prevent deleting admin accounts
+- Added deleteUser to adminAPI
+- Fixed logout: now calls POST /auth/logout with email before clearing localStorage
+- Added Reorder button in UserDashboard orders (delivered/cancelled orders only)
+- Added reorder and logout endpoints to their respective APIs
+- Added Coupons Management tab to AdminDashboard — create/delete coupons with code, type (percentage/fixed), value, expiry date, connected to real couponsAPI

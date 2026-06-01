@@ -148,6 +148,7 @@ export default function UserDashboard() {
   const [orderDetail, setOrderDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [cancellingId, setCancellingId] = useState(null);
+  const [reorderLoading, setReorderLoading] = useState(null);
 
   // Addresses state
   const [addresses, setAddresses] = useState([]);
@@ -366,10 +367,34 @@ export default function UserDashboard() {
     }
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleReorder = async (orderId) => {
+    setReorderLoading(orderId);
+    try {
+      await ordersAPI.reorder(orderId);
+      toast.success(
+        isRTL ? 'تم إعادة الطلب بنجاح! 🛍️' : 'Order placed again successfully! 🛍️',
+        { style: { borderRadius: '12px', fontFamily: isRTL ? 'Cairo' : 'Inter' } }
+      );
+      const res = await ordersAPI.getAll();
+      const data = res.data?.data || res.data?.orders || [];
+      setOrders(Array.isArray(data) ? data : []);
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || (isRTL ? 'فشل إعادة الطلب' : 'Failed to reorder'),
+        { style: { borderRadius: '12px' } }
+      );
+    } finally {
+      setReorderLoading(null);
+    }
+  };
+
+  const handleLogout = async () => {
+    await logout();
     navigate('/');
   };
+
+  const canReorder = (status) =>
+    ['delivered', 'cancelled', 'Delivered', 'Cancelled'].includes(status);
 
   const fetchAddresses = async () => {
     try {
@@ -676,15 +701,30 @@ export default function UserDashboard() {
                                   </span>
                                 </td>
                                 <td className="py-3 px-2">
-                                  <button
-                                    onClick={() => {
-                                      setSelectedOrder(order);
-                                      fetchOrderDetail(orderId);
-                                    }}
-                                    className="text-xs text-brand-navy dark:text-brand-gold hover:underline"
-                                  >
-                                    {isRTL ? 'تتبع' : 'Track'}
-                                  </button>
+                                  <div className={`flex items-center gap-2 flex-wrap ${isRTL ? 'flex-row-reverse' : ''}`}>
+                                    <button
+                                      onClick={() => {
+                                        setSelectedOrder(order);
+                                        fetchOrderDetail(orderId);
+                                      }}
+                                      className="text-xs text-brand-navy dark:text-brand-gold hover:underline"
+                                    >
+                                      {isRTL ? 'تتبع' : 'Track'}
+                                    </button>
+                                    {canReorder(status) && (
+                                      <button
+                                        onClick={() => handleReorder(order._id || order.id)}
+                                        disabled={reorderLoading === (order._id || order.id)}
+                                        className="text-xs px-3 py-1.5 bg-brand-gold/10 text-brand-gold hover:bg-brand-gold/20 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-1"
+                                      >
+                                        {reorderLoading === (order._id || order.id) ? (
+                                          <div className="w-3 h-3 border-2 border-brand-gold border-t-transparent rounded-full animate-spin" />
+                                        ) : (
+                                          <>🔄 {isRTL ? 'إعادة الطلب' : 'Reorder'}</>
+                                        )}
+                                      </button>
+                                    )}
+                                  </div>
                                 </td>
                               </tr>
                             );
@@ -1359,8 +1399,21 @@ export default function UserDashboard() {
                     </div>
 
                     {/* Actions */}
-                    {['pending', 'processing'].includes((orderDetail.status || orderDetail.orderStatus || 'pending').toLowerCase()) && (
-                      <div className={`border-t border-gray-100 dark:border-dark-border pt-4 flex ${isRTL ? 'justify-start' : 'justify-end'}`}>
+                    <div className={`border-t border-gray-100 dark:border-dark-border pt-4 flex gap-2 flex-wrap ${isRTL ? 'justify-start flex-row-reverse' : 'justify-end'}`}>
+                      {canReorder(orderDetail.status || orderDetail.orderStatus) && (
+                        <button
+                          onClick={() => handleReorder(orderDetail._id || orderDetail.id)}
+                          disabled={reorderLoading === (orderDetail._id || orderDetail.id)}
+                          className="text-xs px-3 py-1.5 bg-brand-gold/10 text-brand-gold hover:bg-brand-gold/20 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-1"
+                        >
+                          {reorderLoading === (orderDetail._id || orderDetail.id) ? (
+                            <div className="w-3 h-3 border-2 border-brand-gold border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <>🔄 {isRTL ? 'إعادة الطلب' : 'Reorder'}</>
+                          )}
+                        </button>
+                      )}
+                      {['pending', 'processing'].includes((orderDetail.status || orderDetail.orderStatus || 'pending').toLowerCase()) && (
                         <button
                           disabled={cancellingId === (orderDetail._id || orderDetail.id)}
                           onClick={() => {
@@ -1373,8 +1426,8 @@ export default function UserDashboard() {
                           {cancellingId === (orderDetail._id || orderDetail.id) && <RefreshCw size={14} className="animate-spin" />}
                           {isRTL ? 'إلغاء الطلب' : 'Cancel Order'}
                         </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div className="py-8 text-center text-gray-500">

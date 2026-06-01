@@ -382,3 +382,5 @@ To ensure consistency between backend responses and frontend UI, we use mappers 
 - Added Reorder button in UserDashboard orders (delivered/cancelled orders only)
 - Added reorder and logout endpoints to their respective APIs
 - Added Coupons Management tab to AdminDashboard — create/delete coupons with code, type (percentage/fixed), value, expiry date, connected to real couponsAPI
+- Fixed coupon discount — now reads couponDiscount/couponSaving fields from API response correctly
+- Fixed coupon total — capped discount at subtotal, total can never be negative, uses API total when available

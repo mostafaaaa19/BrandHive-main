@@ -100,31 +100,53 @@ export default function CartPage() {
   };
 
   const shippingCost = subtotal >= 500 ? 0 : 50;
-  const total = subtotal + shippingCost - discount;
+  const total = Math.max(0, subtotal + shippingCost - discount);
 
   const handlePromo = async () => {
     if (!promoCode.trim()) return;
     setPromoLoading(true);
     try {
-      const res = await cartAPI.applyCoupon({ 
-        couponCode: promoCode.toUpperCase() 
+      const res = await cartAPI.applyCoupon({
+        couponCode: promoCode.toUpperCase()
       });
       const data = res.data;
-      const discountValue = 
-        data?.data?.discount || 
-        data?.discount || 
+
+      const apiTotal =
+        data?.data?.total ||
+        data?.total ||
+        null;
+      const apiSubtotal =
+        data?.data?.subtotal ||
+        data?.subtotal ||
+        null;
+      const discountValue =
+        data?.data?.couponDiscount ||
+        data?.data?.couponSaving ||
+        data?.couponDiscount ||
+        data?.couponSaving ||
         0;
+
       setAppliedPromo(promoCode.toUpperCase());
-      setDiscount(discountValue);
+
+      if (apiTotal !== null && apiSubtotal !== null) {
+        const actualDiscount = apiSubtotal - apiTotal;
+        setDiscount(Math.max(0, Math.min(
+          actualDiscount,
+          subtotal
+        )));
+      } else {
+        setDiscount(Math.min(discountValue, subtotal));
+      }
+
       toast.success(
-        isRTL 
-          ? `تم تطبيق الكوبون! خصم ${discountValue} ج.م 🎉`
-          : `Coupon applied! ${discountValue} EGP off 🎉`,
+        isRTL
+          ? `تم تطبيق الكوبون! 🎉`
+          : `Coupon applied! 🎉`,
         { style: { borderRadius: '12px' } }
       );
     } catch (err) {
       toast.error(
-        isRTL 
+        isRTL
           ? 'كوبون غير صالح أو منتهي الصلاحية'
           : 'Invalid or expired coupon code',
         { style: { borderRadius: '12px' } }

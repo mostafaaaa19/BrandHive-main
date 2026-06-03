@@ -304,21 +304,20 @@ function AdminOrdersTab({ adminAPI, isRTL }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const fetchOrders = async () => {
+    try {
+      const res = await adminAPI.getOrders();
+      const data = res.data?.data || res.data?.orders || [];
+      setOrders(Array.isArray(data) ? data : []);
+    } catch {
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetch = async () => {
-      try {
-        const res = await adminAPI.getAllOrders?.() || 
-          { data: { data: [] } };
-        const data = res.data?.data || 
-                     res.data?.orders || [];
-        setOrders(Array.isArray(data) ? data : []);
-      } catch {
-        setOrders([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetch();
+    fetchOrders();
   }, []);
 
   return (
@@ -358,10 +357,11 @@ function AdminOrdersTab({ adminAPI, isRTL }) {
                   isRTL ? 'طريقة الدفع' : 'Payment',
                   isRTL ? 'الحالة' : 'Status',
                   isRTL ? 'التاريخ' : 'Date',
+                  isRTL ? 'تحديث' : 'Update',
                 ].map(h => (
-                  <th key={h} className="pb-3 px-2 
-                    text-xs font-bold text-gray-400 
-                    dark:text-dark-muted uppercase">
+                  <th key={h} className="px-2 py-3 text-xs 
+                    font-bold text-gray-400 dark:text-dark-muted 
+                    uppercase tracking-wider">
                     {h}
                   </th>
                 ))}
@@ -369,37 +369,94 @@ function AdminOrdersTab({ adminAPI, isRTL }) {
             </thead>
             <tbody>
               {orders.map((order, i) => (
-                <tr key={order._id || i} 
+                <tr key={order._id || i}
                   className="border-b border-gray-50 
-                    dark:border-dark-border last:border-0">
+                    dark:border-dark-border last:border-0
+                    hover:bg-gray-50/50 
+                    dark:hover:bg-dark-bg/50">
                   <td className="py-3 px-2 font-mono 
-                    text-xs text-brand-gold">
+                    text-xs text-brand-gold font-bold">
                     #{(order._id || '').slice(-6)}
                   </td>
-                  <td className="py-3 px-2 dark:text-dark-text">
-                    {order.user?.name || 'Customer'}
+                  <td className="py-3 px-2 dark:text-dark-text 
+                    text-sm">
+                    {order.user?.name ||
+                     order.shippingAddress?.fullName ||
+                     order.user?.email?.split('@')[0] ||
+                     'Customer'}
                   </td>
                   <td className="py-3 px-2 font-semibold 
                     dark:text-dark-text">
-                    {(order.totalAmount || 0).toLocaleString()} EGP
+                    {(
+                      order.subtotal ||
+                      order.grandTotal ||
+                      order.totalAmount ||
+                      order.total ||
+                      0
+                    ).toLocaleString()} EGP
                   </td>
                   <td className="py-3 px-2 text-gray-500 
-                    dark:text-dark-muted capitalize">
+                    dark:text-dark-muted capitalize text-sm">
                     {order.paymentMethod || '-'}
                   </td>
                   <td className="py-3 px-2">
-                    <span className="px-2 py-1 rounded-full 
-                      text-[10px] font-bold bg-amber-100 
-                      text-amber-700">
+                    <span className={`px-2 py-1 rounded-full 
+                      text-[10px] font-bold ${
+                      order.status === 'delivered' ||
+                      order.status === 'confirmed'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
+                        : order.status === 'shipped' ||
+                          order.status === 'processing'
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
+                        : order.status === 'cancelled'
+                        ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                        : 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+                    }`}>
                       {order.status || 'pending'}
                     </span>
                   </td>
                   <td className="py-3 px-2 text-gray-400 
                     dark:text-dark-muted text-xs">
-                    {order.createdAt 
-                      ? new Date(order.createdAt)
-                          .toLocaleDateString()
+                    {order.createdAt
+                      ? new Date(order.createdAt).toLocaleDateString()
                       : '-'}
+                  </td>
+                  <td className="py-3 px-2">
+                    <select
+                      defaultValue={order.status}
+                      onChange={async (e) => {
+                        try {
+                          await adminAPI.updateOrderStatus(
+                            order._id,
+                            {
+                              status: e.target.value.toUpperCase(),
+                              note: 'Updated by admin',
+                            }
+                          );
+                          toast.success(isRTL
+                            ? 'تم تحديث الحالة ✅'
+                            : 'Status updated ✅'
+                          );
+                          await fetchOrders();
+                        } catch {
+                          toast.error(isRTL
+                            ? 'فشل التحديث'
+                            : 'Update failed'
+                          );
+                        }
+                      }}
+                      className="text-xs px-2 py-1 rounded-lg 
+                        border border-gray-200 dark:border-dark-border
+                        bg-white dark:bg-dark-bg 
+                        dark:text-dark-text cursor-pointer"
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="confirmed">Confirmed</option>
+                      <option value="processing">Processing</option>
+                      <option value="shipped">Shipped</option>
+                      <option value="delivered">Delivered</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
                   </td>
                 </tr>
               ))}
@@ -848,6 +905,8 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   const [dashboard, setDashboard] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [categoryBreakdown, setCategoryBreakdown] = useState([]);
   const [users, setUsers] = useState([]);
   const [brands, setBrands] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -863,9 +922,51 @@ export default function AdminDashboard() {
       setLoading(true);
       try {
         const dashRes = await adminAPI.getDashboard();
-        setDashboard(dashRes.data?.data || dashRes.data || {});
+        const dashData = dashRes.data?.data || dashRes.data || {};
+        setDashboard(dashData);
+        setStats({
+          totalUsers: dashData.overview?.totalUsers || 0,
+          totalSellers: dashData.overview?.totalSellers || 0,
+          totalRevenue: dashData.overview?.totalRevenue || 0,
+          totalOrders: dashData.overview?.totalOrders || 0,
+          totalProducts: dashData.overview?.totalProducts || 0,
+          totalCustomers: dashData.overview?.totalCustomers || 0,
+          totalReviews: dashData.overview?.totalReviews || 0,
+          ordersToday: dashData.today?.ordersToday || 0,
+          revenueToday: dashData.today?.revenueToday || 0,
+          pendingOrders: dashData.alerts?.pendingOrders || 0,
+          lowStockProducts: dashData.alerts?.lowStockProducts || 0,
+          ordersByStatus: dashData.ordersByStatus || {},
+        });
       } catch {
         setDashboard(null);
+        setStats(null);
+      }
+
+      try {
+        const prodRes = await productsAPI.getAll({ page: 1, limit: 100 });
+        const prods = prodRes.data?.data || prodRes.data?.products || prodRes.data || [];
+        const productList = Array.isArray(prods) ? prods : [];
+
+        const catCounts = {};
+        productList.forEach(p => {
+          const cat = p.category?.name || p.category || 'Other';
+          catCounts[cat] = (catCounts[cat] || 0) + 1;
+        });
+
+        const total = productList.length || 1;
+        const breakdown = Object.entries(catCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([name, count], i) => ({
+            name,
+            count,
+            percentage: Math.round((count / total) * 100),
+            color: ['bg-brand-gold', 'bg-purple-400', 'bg-cyan-400', 'bg-emerald-400', 'bg-red-400'][i] || 'bg-gray-400',
+          }));
+        setCategoryBreakdown(breakdown);
+      } catch {
+        setCategoryBreakdown([]);
       }
 
       try {
@@ -1161,7 +1262,32 @@ export default function AdminDashboard() {
 
           {/* Main Content */}
           <div className="flex-1 min-w-0">
-            {activeTab === 'overview' && (
+            {activeTab === 'overview' && (() => {
+              const orderStatuses = [
+                {
+                  label: isRTL ? 'قيد الانتظار' : 'Pending',
+                  value: stats?.ordersByStatus?.pending || 0,
+                  color: 'bg-amber-400',
+                },
+                {
+                  label: isRTL ? 'مؤكد' : 'Confirmed',
+                  value: stats?.ordersByStatus?.confirmed || 0,
+                  color: 'bg-emerald-400',
+                },
+                {
+                  label: isRTL ? 'تم التوصيل' : 'Delivered',
+                  value: stats?.ordersByStatus?.delivered || 0,
+                  color: 'bg-blue-400',
+                },
+                {
+                  label: isRTL ? 'ملغي' : 'Cancelled',
+                  value: stats?.ordersByStatus?.canceled || 0,
+                  color: 'bg-red-400',
+                },
+              ];
+              const totalOrdersForChart = stats?.totalOrders || 1;
+
+              return (
               <div>
                 <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
                   <div className={isRTL ? 'text-right' : ''}>
@@ -1178,12 +1304,12 @@ export default function AdminDashboard() {
                       type="button"
                       onClick={() => {
                         const data = [
-                          { Metric: isRTL ? 'إجمالي المستخدمين' : 'Total Users', Value: dashboard?.usersCount || users.length || 0 },
-                          { Metric: isRTL ? 'إجمالي البائعين' : 'Total Sellers', Value: dashboard?.brandsCount || brands.length || 0 },
-                          { Metric: isRTL ? 'إجمالي المنتجات' : 'Total Products', Value: dashboard?.productsCount || 0 },
-                          { Metric: isRTL ? 'إجمالي الطلبات' : 'Total Orders', Value: dashboard?.ordersCount || 0 },
-                          { Metric: isRTL ? 'إجمالي الإيرادات (ج.م)' : 'Total Revenue (EGP)', Value: dashboard?.totalRevenue || dashboard?.totalSales || 0 },
-                          { Metric: isRTL ? 'طلبات معلقة' : 'Pending Orders', Value: dashboard?.pendingOrders || 0 },
+                          { Metric: isRTL ? 'إجمالي المستخدمين' : 'Total Users', Value: stats?.totalUsers || 0 },
+                          { Metric: isRTL ? 'إجمالي البائعين' : 'Total Sellers', Value: stats?.totalSellers || 0 },
+                          { Metric: isRTL ? 'إجمالي المنتجات' : 'Total Products', Value: stats?.totalProducts || 0 },
+                          { Metric: isRTL ? 'إجمالي الطلبات' : 'Total Orders', Value: stats?.totalOrders || 0 },
+                          { Metric: isRTL ? 'إجمالي الإيرادات (ج.م)' : 'Total Revenue (EGP)', Value: stats?.totalRevenue || 0 },
+                          { Metric: isRTL ? 'طلبات معلقة' : 'Pending Orders', Value: stats?.pendingOrders || 0 },
                           { Metric: isRTL ? 'تاريخ التصدير' : 'Export Date', Value: new Date().toLocaleDateString() },
                         ];
                         exportToCSV(data, 'BrandHive_Overview_Report');
@@ -1205,10 +1331,10 @@ export default function AdminDashboard() {
                 {/* Stats */}
                 <div className={`grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8 ${isRTL ? 'flex-row-reverse' : ''}`}>
                   {[
-                    { icon: Users, label: isRTL ? 'المستخدمين المسجلين' : 'Registered Users', value: (dashboard?.usersCount || users.length || 0).toLocaleString(), change: '+0%', color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400', trend: '↑' },
-                    { icon: Store, label: isRTL ? 'البائعين النشطين' : 'Active Sellers', value: (dashboard?.brandsCount || brands.length || 0).toLocaleString(), change: '+0', color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400', trend: '↑' },
-                    { icon: DollarSign, label: isRTL ? 'حجم المبيعات' : 'GMV (Mar)', value: (dashboard?.totalSales || 0).toLocaleString() + ' EGP', change: '+0%', color: 'bg-amber-100 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400', trend: '↑' },
-                    { icon: Package, label: isRTL ? 'طلبات الشهر' : 'Orders This Month', value: (dashboard?.ordersCount || 0).toLocaleString(), change: '+0%', color: 'bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400', trend: '↑' },
+                    { icon: Users, label: isRTL ? 'المستخدمون' : 'Registered Users', value: (stats?.totalUsers || 0).toLocaleString(), change: '+0%', color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400', trend: '↑' },
+                    { icon: Store, label: isRTL ? 'البائعون النشطون' : 'Active Sellers', value: (stats?.totalSellers || 0).toLocaleString(), change: '+0', color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400', trend: '↑' },
+                    { icon: DollarSign, label: isRTL ? 'إجمالي الإيرادات' : 'Total Revenue', value: `${(stats?.totalRevenue || 0).toLocaleString()} EGP`, change: '+0%', color: 'bg-amber-100 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400', trend: '↑' },
+                    { icon: Package, label: isRTL ? 'إجمالي الطلبات' : 'Total Orders', value: (stats?.totalOrders || 0).toLocaleString(), change: '+0%', color: 'bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400', trend: '↑' },
                   ].map(stat => (
                     <div key={stat.label} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5 ${isRTL ? 'text-right' : ''}`}>
                       <div className={`w-10 h-10 rounded-xl ${stat.color} flex items-center justify-center mb-3 ${isRTL ? 'mr-0 ml-auto' : ''}`}>
@@ -1221,68 +1347,79 @@ export default function AdminDashboard() {
                   ))}
                 </div>
 
+                {(stats?.pendingOrders > 0 || stats?.lowStockProducts > 0) && (
+                  <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-2xl p-4 mb-6">
+                    <h4 className={`font-bold text-amber-700 dark:text-amber-400 mb-2 text-sm ${isRTL ? 'text-right' : ''}`}>
+                      {isRTL ? '⚠️ تنبيهات' : '⚠️ Alerts'}
+                    </h4>
+                    <div className="space-y-1 text-sm">
+                      {stats?.pendingOrders > 0 && (
+                        <p className={`text-amber-600 dark:text-amber-300 ${isRTL ? 'text-right' : ''}`}>
+                          {isRTL
+                            ? `${stats.pendingOrders} طلب في انتظار المعالجة`
+                            : `${stats.pendingOrders} orders pending processing`}
+                        </p>
+                      )}
+                      {stats?.lowStockProducts > 0 && (
+                        <p className={`text-amber-600 dark:text-amber-300 ${isRTL ? 'text-right' : ''}`}>
+                          {isRTL
+                            ? `${stats.lowStockProducts} منتج بمخزون منخفض`
+                            : `${stats.lowStockProducts} products low on stock`}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Charts Row */}
                 <div className={`grid lg:grid-cols-3 gap-6 mb-6 ${isRTL ? 'lg:flex-row-reverse' : ''}`}>
                   {/* GMV Chart */}
                   <div className="lg:col-span-2 bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
-                    <h3 className="font-display font-bold text-gray-900 dark:text-dark-text mb-4">
-                      {isRTL ? 'حجم المبيعات والطلبات — آخر 7 أشهر' : 'GMV & Orders — Last 7 Months'}
+                    <h3 className={`font-display font-bold text-gray-900 dark:text-dark-text mb-4 ${isRTL ? 'text-right' : ''}`}>
+                      {isRTL ? 'الطلبات حسب الحالة' : 'Orders by Status'}
                     </h3>
-                    <div className={isRTL ? 'direction-ltr' : ''}>
-                      {dashboard?.chartData ? (
-                        <ResponsiveContainer width="100%" height={200}>
-                          <BarChart data={dashboard.chartData}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" className="dark:opacity-10" />
-                            <XAxis dataKey="month" tick={{ fontSize: 12, fill: '#9CA3AF' }} axisLine={false} tickLine={false} reversed={isRTL} />
-                            <YAxis tick={{ fontSize: 12, fill: '#9CA3AF' }} axisLine={false} tickLine={false} orientation={isRTL ? 'right' : 'left'} />
-                            <Tooltip
-                              formatter={(v, n) => [n === 'gmv' ? `${(v/1000).toFixed(1)}K ${t('common.egp')}` : v.toLocaleString(), n === 'gmv' ? (isRTL ? 'المبيعات' : 'GMV') : (isRTL ? 'الطلبات' : 'Orders')]}
-                              contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', backgroundColor: '#1e293b' }}
-                              itemStyle={{ color: '#fff' }}
+                    <div className="space-y-4">
+                      {orderStatuses.map(s => (
+                        <div key={s.label} className={`space-y-1 ${isRTL ? 'text-right' : ''}`}>
+                          <div className={`flex items-center justify-between text-sm ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <span className="text-gray-600 dark:text-dark-muted">{s.label}</span>
+                            <span className="font-bold dark:text-dark-text">{s.value}</span>
+                          </div>
+                          <div className="h-2 bg-gray-100 dark:bg-dark-border rounded-full">
+                            <div
+                              className={`h-full ${s.color} rounded-full transition-all duration-500`}
+                              style={{
+                                width: `${Math.round((s.value / totalOrdersForChart) * 100)}%`,
+                              }}
                             />
-                            <Bar dataKey="gmv" radius={[6, 6, 0, 0]} name="gmv" className="text-brand-navy dark:text-brand-gold" fill="currentColor" />
-                            <Bar dataKey="orders" fill="#C8922A" radius={[6, 6, 0, 0]} name="orders" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <div className="h-[200px] flex items-center justify-center text-gray-400 text-sm italic">
-                          {isRTL ? 'ستظهر الإحصائيات عند توفر بيانات المبيعات' : 'Analytics will appear when sales data is available'}
+                          </div>
                         </div>
-                      )}
+                      ))}
                     </div>
                   </div>
 
                   {/* Category Breakdown */}
                   <div className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 ${isRTL ? 'text-right' : ''}`}>
                     <h3 className="font-display font-bold text-gray-900 dark:text-dark-text mb-4">{isRTL ? 'توزيع الفئات' : 'Category Breakdown'}</h3>
-                    <div className={isRTL ? 'direction-ltr' : ''}>
-                      {dashboard?.categories ? (
-                        <ResponsiveContainer width="100%" height={150}>
-                          <PieChart>
-                            <Pie data={dashboard.categories} cx="50%" cy="50%" outerRadius={65} dataKey="value">
-                              {dashboard.categories.map((_, index) => (
-                                <Cell key={index} fill={COLORS[index % COLORS.length]} />
-                              ))}
-                            </Pie>
-                            <Tooltip formatter={(v) => [`${v}%`]} contentStyle={{ borderRadius: '12px', border: 'none', backgroundColor: '#1e293b', color: '#fff' }} />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <div className="h-[150px] flex items-center justify-center text-gray-400 text-xs italic">
-                          No category data
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-1.5 mt-2">
-                      {(isRTL ? categoryDataAr : categoryData).map((item, i) => (
-                        <div key={item.name} className={`flex items-center justify-between text-xs ${isRTL ? 'flex-row-reverse' : ''}`}>
-                          <div className={`flex items-center gap-1.5 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i] }}></div>
-                            <span className="text-gray-600 dark:text-dark-muted">{item.name}</span>
+                    <div className="space-y-2 mt-2">
+                      {categoryBreakdown.length > 0 ? (
+                        categoryBreakdown.map(cat => (
+                          <div
+                            key={cat.name}
+                            className={`flex items-center justify-between text-sm ${isRTL ? 'flex-row-reverse' : ''}`}
+                          >
+                            <div className={`flex items-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                              <div className={`w-3 h-3 rounded-full ${cat.color}`} />
+                              <span className="text-gray-600 dark:text-dark-muted">{cat.name}</span>
+                            </div>
+                            <span className="font-bold dark:text-dark-text">{cat.percentage}%</span>
                           </div>
-                          <span className="font-semibold text-gray-900 dark:text-dark-text">{item.value}%</span>
-                        </div>
-                      ))}
+                        ))
+                      ) : (
+                        <p className="text-gray-400 text-sm text-center">
+                          {isRTL ? 'لا توجد بيانات' : 'No category data'}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1357,7 +1494,8 @@ export default function AdminDashboard() {
                   )}
                 </div>
               </div>
-            )}
+            );
+            })()}
 
             {/* Settings tab */}
             {activeTab === 'settings' && (
@@ -1494,13 +1632,13 @@ export default function AdminDashboard() {
                       {
                         icon: '💰',
                         label: isRTL ? 'إجمالي الإيرادات' : 'Total Revenue',
-                        value: `${(adminAnalytics?.revenue?.total || dashboard?.totalRevenue || 0).toLocaleString()} ${isRTL ? 'ج.م' : 'EGP'}`,
+                        value: `${(adminAnalytics?.revenue?.total || stats?.totalRevenue || 0).toLocaleString()} ${isRTL ? 'ج.م' : 'EGP'}`,
                         color: 'bg-emerald-50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400',
                       },
                       {
                         icon: '📦',
                         label: isRTL ? 'إجمالي الطلبات' : 'Total Orders',
-                        value: (adminAnalytics?.revenue?.ordersCount || dashboard?.ordersCount || 0).toLocaleString(),
+                        value: (adminAnalytics?.revenue?.ordersCount || stats?.totalOrders || 0).toLocaleString(),
                         color: 'bg-blue-50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-400',
                       },
                       {

@@ -396,3 +396,7 @@ To ensure consistency between backend responses and frontend UI, we use mappers 
 - Fixed coupon apply: percentage discounts converted from piastres, fixed amount discounts use EGP as-is
 - Fixed coupon: removed incorrect /100 division, API returns EGP directly
 - Fixed cart item prices: removed /100 division from CartContext mapper
+- Navbar notifications: added delete button per notification via deleteNotification API
+- Fixed adminAPI.getOrders endpoint from /admin/orders to /orders/admin/all
+- Fixed Admin orders display — uses subtotal for amount, user email prefix for customer name, added status update dropdown per order
+- Fixed Admin Dashboard Overview — mapped correct API field names (overview.totalRevenue, overview.totalOrders etc), added real orders by status bars, real category breakdown from products, added alerts section for pending orders and low stock

@@ -331,6 +331,8 @@ export const adminAPI = {
   getUsers: (params = {}) => api.get('/admin/users', { params }),
   toggleUser: (id) => api.patch(`/admin/users/${id}/toggle`),
   getOrders: (params = {}) => api.get('/orders/admin/all', { params }),
+  updateOrderStatus: (orderId, data) =>
+    api.patch(`/orders/admin/${orderId}/status`, data),
   getBrands: (params = {}) => api.get('/admin/brands', { params }),
   verifyBrand: (id) => api.patch(`/admin/brands/${id}/verify`),
   getRevenue: (period = 'month') => 
@@ -423,6 +425,7 @@ export const notificationsAPI = {
   markAllRead: () => api.patch('/notifications/read-all'),
   markRead: (id) => api.patch(`/notifications/${id}/read`),
   delete: (id) => api.delete(`/notifications/${id}`),
+  deleteNotification: (id) => api.delete(`/notifications/${id}`),
 };
 
 // ─── Addresses ───────────────────────────────────────────────────────────────

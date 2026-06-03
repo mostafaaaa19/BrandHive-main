@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Search, ShoppingCart, Heart, User, Menu, X, ChevronDown,
-  Store, LogOut, Settings, Package, LayoutDashboard, Sparkles, Bell
+  Store, LogOut, Settings, Package, LayoutDashboard, Sparkles, Bell, Trash2
 } from 'lucide-react';
 import { productsAPI, notificationsAPI, categoriesAPI } from '../services/api';
 import { mapProduct, mapCategory } from '../utils/mappers';
@@ -167,6 +167,18 @@ export default function Navbar() {
       setNotifications([]);
     } finally {
       setNotifLoading(false);
+    }
+  };
+
+  const handleDeleteNotification = async (id, wasUnread) => {
+    try {
+      await notificationsAPI.deleteNotification(id);
+      setNotifications(prev => prev.filter(n => (n._id || n.id) !== id));
+      if (wasUnread) {
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      }
+    } catch {
+      // silent fail
     }
   };
 
@@ -405,11 +417,23 @@ export default function Navbar() {
                           notifications.map((notif, i) => (
                             <div
                               key={notif._id || i}
-                              className={`px-4 py-3 border-b border-gray-50 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg transition-colors cursor-pointer ${!notif.isRead ? 'bg-brand-gold/5' : ''}`}
+                              className={`px-4 py-3 border-b border-gray-50 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg transition-colors ${!notif.isRead ? 'bg-brand-gold/5' : ''} ${isRTL ? 'text-right' : ''}`}
                             >
-                              <p className="text-sm font-medium text-gray-900 dark:text-dark-text">{notif.title || notif.message}</p>
-                              {notif.body && <p className="text-xs text-gray-500 dark:text-dark-muted mt-0.5">{notif.body}</p>}
-                              <p className="text-xs text-gray-400 dark:text-dark-muted mt-1">{new Date(notif.createdAt).toLocaleDateString()}</p>
+                              <div className={`flex items-start gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-900 dark:text-dark-text">{notif.title || notif.message}</p>
+                                  {notif.body && <p className="text-xs text-gray-500 dark:text-dark-muted mt-0.5">{notif.body}</p>}
+                                  <p className="text-xs text-gray-400 dark:text-dark-muted mt-1">{new Date(notif.createdAt).toLocaleDateString()}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteNotification(notif._id || notif.id, !notif.isRead)}
+                                  className="text-gray-300 hover:text-red-500 dark:text-dark-muted dark:hover:text-red-400 transition-colors p-1 flex-shrink-0"
+                                  aria-label={isRTL ? 'حذف الإشعار' : 'Delete notification'}
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
                             </div>
                           ))
                         )}

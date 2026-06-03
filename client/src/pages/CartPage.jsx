@@ -111,39 +111,25 @@ export default function CartPage() {
       });
       const data = res.data;
 
-      const apiTotal =
-        data?.data?.total ||
-        data?.total ||
-        null;
-      const apiSubtotal =
-        data?.data?.subtotal ||
-        data?.subtotal ||
-        null;
-      const discountValue =
-        data?.data?.couponDiscount ||
-        data?.data?.couponSaving ||
-        data?.couponDiscount ||
-        data?.couponSaving ||
-        0;
-
       setAppliedPromo(promoCode.toUpperCase());
 
-      if (apiTotal !== null && apiSubtotal !== null) {
-        const actualDiscount = apiSubtotal - apiTotal;
-        setDiscount(Math.max(0, Math.min(
-          actualDiscount,
-          subtotal
-        )));
-      } else {
-        setDiscount(Math.min(discountValue, subtotal));
-      }
+      const apiSubtotal = data?.data?.subtotal || 0;
+      const apiTotal = data?.data?.total || 0;
+      const apiDiscount = data?.data?.couponDiscount || data?.data?.couponSaving || 0;
+
+      const discountValue = (apiSubtotal && apiTotal)
+        ? apiSubtotal - apiTotal
+        : apiDiscount;
+
+      setDiscount(discountValue);
 
       toast.success(
         isRTL
-          ? `تم تطبيق الكوبون! 🎉`
-          : `Coupon applied! 🎉`,
+          ? `تم تطبيق الكوبون! خصم ${discountValue.toLocaleString()} ج.م 🎉`
+          : `Coupon applied! ${discountValue.toLocaleString()} EGP off 🎉`,
         { style: { borderRadius: '12px' } }
       );
+      return;
     } catch (err) {
       toast.error(
         isRTL

@@ -384,3 +384,15 @@ To ensure consistency between backend responses and frontend UI, we use mappers 
 - Added Coupons Management tab to AdminDashboard — create/delete coupons with code, type (percentage/fixed), value, expiry date, connected to real couponsAPI
 - Fixed coupon discount — now reads couponDiscount/couponSaving fields from API response correctly
 - Fixed coupon total — capped discount at subtotal, total can never be negative, uses API total when available
+- Fixed coupon — calculates discount as percentage of API subtotal and applies to local subtotal
+- Fixed coupon endpoint: /cart/coupon instead of /cart/apply-coupon
+- Fixed discount field: now reads couponDiscount/couponSaving from API response
+- Fixed discount calculation using server-returned total
+- Fixed coupon discount: now uses subtotal - total from API for both fixed and percentage coupons
+- Fixed coupon discount: added piastres-to-EGP conversion for API response values
+- Fixed cart items mapping: now reads from product.name/image/id and effectivePrice/lockedPrice
+- Fixed price conversion: piastres to EGP (divide by 100)
+- Admin coupons: removed Fixed Amount option, percentage only
+- Fixed coupon apply: percentage discounts converted from piastres, fixed amount discounts use EGP as-is
+- Fixed coupon: removed incorrect /100 division, API returns EGP directly
+- Fixed cart item prices: removed /100 division from CartContext mapper

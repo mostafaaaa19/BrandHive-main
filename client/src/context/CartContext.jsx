@@ -53,21 +53,20 @@ export const CartProvider = ({ children }) => {
       if (Array.isArray(cartItems) && cartItems.length > 0) {
         // Map API items to local format
         const mapped = cartItems.map(item => ({
-          key: item._id || item.productId,
-          id: item.productId?._id || item.productId,
-          name: item.productId?.name || item.name,
+          key: item.product?.id || item._id || item.productId?._id || item.productId,
+          id: item.product?.id || item._id || item.id || item.productId?._id,
+          productId: item.product?.id || item.productId,
+          name: item.product?.name || item.productId?.name || item.name || '',
           price: Number(
-            item.productId?.finalPrice ||
-            item.productId?.discountPrice ||
-            item.productId?.price ||
-            item.price ||
-            0
+            item.effectivePrice || item.lockedPrice || item.currentPrice ||
+            item.productId?.finalPrice || item.productId?.price || item.price || 0
           ),
           quantity: Number(item.quantity) || 1,
-          brandName: item.productId?.brand?.name || '',
-          brandSlug: item.productId?.brand?.slug || '',
-          category: item.productId?.category?.name || '',
-          image: item.productId?.mainImage || item.productId?.images?.[0] || item.image || null,
+          image: item.product?.image || item.productId?.images?.[0]?.url || item.image || null,
+          slug: item.product?.slug || item.productId?.slug || item.slug || '',
+          brandName: item.product?.brand?.name || item.productId?.brand?.name || item.brandName || '',
+          brandSlug: item.product?.brand?.slug || item.productId?.brand?.slug || '',
+          category: item.product?.category?.name || item.productId?.category?.name || '',
         }));
         setItems(mapped);
         localStorage.setItem(

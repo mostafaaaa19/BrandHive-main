@@ -116,7 +116,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const currentUser = JSON.parse(localStorage.getItem('brandhive_user'));
       if (currentUser?.email) {
-        await authAPI.logout({ email: currentUser.email });
+        authAPI.logout({ email: currentUser.email }).catch(() => {});
       }
     } catch {
       // Even if API fails, clear local state

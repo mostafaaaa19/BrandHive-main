@@ -323,6 +323,7 @@ export const sellerAPI = {
     api.get(`/seller/orders/${id}`),
   filterOrders: (status) => 
     api.get(`/seller/orders?status=${status}`),
+  getStockAlerts: () => api.get('/seller/stock-alerts'),
 };
 
 // ─── Admin ───────────────────────────────────────────────────────────────────
@@ -380,6 +381,7 @@ export const ordersAPI = {
   getAll: () => api.get('/orders/my-orders'),
   cancelOrder: (orderId, data) => api.post(`/orders/my-orders/${orderId}/cancel`, data),
   reorder: (orderId) => api.post(`/orders/${orderId}/reorder`),
+  retryPayment: (orderId) => api.post('/payment/retry', { orderId }),
 };
 
 // ─── Users ───────────────────────────────────────────────────────────────────
@@ -446,6 +448,19 @@ export const chatAPI = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages, language }),
     }).then(r => r.json()),
+};
+
+// ─── Inventory ───────────────────────────────────────────────────────────────
+export const inventoryAPI = {
+  getLogs: (params = {}) => api.get('/inventory/logs', { params }),
+  adjust: (data) => api.post('/inventory/adjust', data),
+  getAlerts: () => api.get('/seller/stock-alerts'),
+};
+
+// ─── Search ────────────────────────────────────────────────────────────────────
+export const searchAPI = {
+  search: (params) => api.get('/search/products', { params }),
+  getFacets: () => api.get('/search/facets'),
 };
 
 export const couponsAPI = {

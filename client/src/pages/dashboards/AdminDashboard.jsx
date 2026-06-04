@@ -304,6 +304,21 @@ function AdminOrdersTab({ adminAPI, isRTL }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const ORDER_STATUS_COLORS = {
+    pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400',
+    confirmed: 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
+    shipped: 'bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400',
+    delivered: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400',
+    canceled: 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400',
+    cancelled: 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400',
+    processing: 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
+  };
+
+  const statusBadgeClass = (status) =>
+    ORDER_STATUS_COLORS[status] ||
+    ORDER_STATUS_COLORS[status?.toLowerCase()] ||
+    ORDER_STATUS_COLORS.pending;
+
   const fetchOrders = async () => {
     try {
       const res = await adminAPI.getOrders();
@@ -400,18 +415,7 @@ function AdminOrdersTab({ adminAPI, isRTL }) {
                     {order.paymentMethod || '-'}
                   </td>
                   <td className="py-3 px-2">
-                    <span className={`px-2 py-1 rounded-full 
-                      text-[10px] font-bold ${
-                      order.status === 'delivered' ||
-                      order.status === 'confirmed'
-                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
-                        : order.status === 'shipped' ||
-                          order.status === 'processing'
-                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
-                        : order.status === 'cancelled'
-                        ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-                        : 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
-                    }`}>
+                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${statusBadgeClass(order.status)}`}>
                       {order.status || 'pending'}
                     </span>
                   </td>
@@ -428,10 +432,7 @@ function AdminOrdersTab({ adminAPI, isRTL }) {
                         try {
                           await adminAPI.updateOrderStatus(
                             order._id,
-                            {
-                              status: e.target.value.toUpperCase(),
-                              note: 'Updated by admin',
-                            }
+                            { status: e.target.value }
                           );
                           toast.success(isRTL
                             ? 'تم تحديث الحالة ✅'
@@ -452,10 +453,9 @@ function AdminOrdersTab({ adminAPI, isRTL }) {
                     >
                       <option value="pending">Pending</option>
                       <option value="confirmed">Confirmed</option>
-                      <option value="processing">Processing</option>
                       <option value="shipped">Shipped</option>
                       <option value="delivered">Delivered</option>
-                      <option value="cancelled">Cancelled</option>
+                      <option value="canceled">Canceled</option>
                     </select>
                   </td>
                 </tr>
@@ -1020,10 +1020,21 @@ export default function AdminDashboard() {
             ? (revenueRes.value.data?.data || revenueRes.value.data || null)
             : null,
           topProducts: topProductsRes.status === 'fulfilled'
-            ? (topProductsRes.value.data?.data || topProductsRes.value.data || [])
+            ? (() => {
+                const d = topProductsRes.value.data;
+                const arr = d?.data?.products || d?.products ||
+                  (Array.isArray(d?.data) ? d.data : null) ||
+                  (Array.isArray(d) ? d : []);
+                return arr;
+              })()
             : [],
           topCustomers: topCustomersRes.status === 'fulfilled'
-            ? (topCustomersRes.value.data?.data || topCustomersRes.value.data || [])
+            ? (() => {
+                const d = topCustomersRes.value.data;
+                return d?.data?.customers || d?.customers ||
+                  (Array.isArray(d?.data) ? d.data : null) ||
+                  (Array.isArray(d) ? d : []);
+              })()
             : [],
         });
       } catch {
@@ -1253,7 +1264,7 @@ export default function AdminDashboard() {
               ))}
 
               <div className="border-t border-gray-100 dark:border-dark-border pt-3">
-                <button onClick={() => { logout(); navigate('/'); }} className={`sidebar-item text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 w-full ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+                <button onClick={async () => { await logout(); navigate('/'); }} className={`sidebar-item text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 w-full ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
                   <LogOut size={16} /> {isRTL ? 'تسجيل الخروج' : 'Sign Out'}
                 </button>
               </div>
@@ -1680,16 +1691,32 @@ export default function AdminDashboard() {
                     ) : (
                       <div className="space-y-3">
                         {adminAnalytics.topProducts.slice(0, 5).map((p, i) => {
-                          const max = adminAnalytics.topProducts[0]?.totalSales || 1;
-                          const pct = Math.round(((p.totalSales || p.sales || 0) / max) * 100);
+                          const sales = p.totalSold || p.totalSales || p.sales || 0;
+                          const revenue = p.totalRevenue || 0;
+                          const max = adminAnalytics.topProducts[0]?.totalSold ||
+                            adminAnalytics.topProducts[0]?.totalSales || 1;
+                          const pct = Math.round((sales / max) * 100);
+                          const imageUrl = p.image?.url || p.images?.[0]?.url || null;
                           return (
-                            <div key={p._id || i} className={`flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                              <span className="text-xs text-gray-500 dark:text-dark-muted w-4">{i + 1}</span>
-                              <span className="text-sm text-gray-700 dark:text-dark-text flex-1 truncate">{p.name || p.productName}</span>
-                              <div className="w-20 h-1.5 bg-gray-100 dark:bg-dark-bg rounded-full overflow-hidden">
+                            <div key={p._id || i} className={`flex items-center gap-3 mb-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                              <span className="text-xs text-gray-400 dark:text-dark-muted w-4 flex-shrink-0">{i + 1}</span>
+                              {imageUrl && (
+                                <img
+                                  src={imageUrl}
+                                  alt={p.productName || p.name}
+                                  className="w-8 h-8 rounded-lg object-cover flex-shrink-0"
+                                />
+                              )}
+                              <span className="text-sm text-gray-700 dark:text-dark-text flex-1 truncate">
+                                {p.productName || p.name || 'Product'}
+                              </span>
+                              <div className="w-20 h-1.5 bg-gray-100 dark:bg-dark-bg rounded-full overflow-hidden flex-shrink-0">
                                 <div className="h-full bg-brand-gold rounded-full" style={{ width: `${pct}%` }} />
                               </div>
-                              <span className="text-xs text-gray-500 dark:text-dark-muted w-8 text-right">{p.totalSales || 0}</span>
+                              <div className={`text-right flex-shrink-0 ${isRTL ? 'text-left' : ''}`}>
+                                <p className="text-xs font-semibold text-gray-700 dark:text-dark-text">{sales} sold</p>
+                                <p className="text-xs text-gray-400 dark:text-dark-muted">{revenue.toLocaleString()} EGP</p>
+                              </div>
                             </div>
                           );
                         })}
@@ -1712,20 +1739,27 @@ export default function AdminDashboard() {
                       </p>
                     ) : (
                       <div className="space-y-3">
-                        {adminAnalytics.topCustomers.slice(0, 5).map((c, i) => (
+                        {adminAnalytics.topCustomers.slice(0, 5).map((c, i) => {
+                          const displayName = c.name || c.customerName || c.userName || c.user?.name || 'Customer';
+                          return (
                           <div key={c._id || i} className={`flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
                             <div className="w-8 h-8 rounded-full bg-brand-navy dark:bg-brand-gold flex items-center justify-center flex-shrink-0">
                               <span className="text-white dark:text-brand-navy text-xs font-bold">
-                                {(c.name || c.userName || '?')[0]?.toUpperCase()}
+                                {(displayName || '?')[0]?.toUpperCase()}
                               </span>
                             </div>
                             <div className={`flex-1 min-w-0 ${isRTL ? 'text-right' : ''}`}>
-                              <p className="text-sm font-semibold text-gray-900 dark:text-dark-text truncate">{c.name || c.userName || 'Customer'}</p>
-                              <p className="text-xs text-gray-500 dark:text-dark-muted">{(c.totalSpent || 0).toLocaleString()} {isRTL ? 'ج.م' : 'EGP'}</p>
+                              <p className="text-sm font-semibold text-gray-900 dark:text-dark-text truncate">{displayName}</p>
+                              <p className="text-xs text-gray-500 dark:text-dark-muted">
+                                {(c.totalSpent || c.totalPurchases || c.revenue || 0).toLocaleString()} {isRTL ? 'ج.م' : 'EGP'}
+                              </p>
                             </div>
-                            <span className="text-xs text-gray-400 dark:text-dark-muted">{c.ordersCount || 0} {isRTL ? 'طلب' : 'orders'}</span>
+                            <span className="text-xs text-gray-400 dark:text-dark-muted">
+                              {(c.ordersCount || c.totalOrders || c.orders || 0)} {isRTL ? 'طلب' : 'orders'}
+                            </span>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>

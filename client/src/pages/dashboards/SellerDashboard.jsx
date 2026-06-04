@@ -3,11 +3,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Store, Package, ShoppingBag, DollarSign, Target, Star, Megaphone,
   Settings, MessageSquare, CreditCard, LogOut, Eye, Users,
-  Plus, BarChart3, Bell
+  Plus, BarChart3, Bell, Edit, XCircle
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../../context/AuthContext';
-import { sellerAPI, brandsAPI, productsAPI } from '../../services/api';
+import { sellerAPI, brandsAPI, productsAPI, inventoryAPI } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../../context/LanguageContext';
 import toast from 'react-hot-toast';
@@ -65,18 +65,22 @@ function SellerOrdersTab({ orders, isRTL, sellerAPI, t }) {
     { value: 'processing', label: isRTL ? 'جاري المعالجة' : 'Processing' },
     { value: 'shipped', label: isRTL ? 'تم الشحن' : 'Shipped' },
     { value: 'delivered', label: isRTL ? 'تم التوصيل' : 'Delivered' },
-    { value: 'cancelled', label: isRTL ? 'ملغي' : 'Cancelled' },
+    { value: 'canceled', label: isRTL ? 'ملغي' : 'Canceled' },
   ];
 
   const STATUS_COLORS = {
     pending: 'bg-amber-100 text-amber-700',
     PENDING: 'bg-amber-100 text-amber-700',
+    confirmed: 'bg-blue-100 text-blue-700',
+    CONFIRMED: 'bg-blue-100 text-blue-700',
     processing: 'bg-blue-100 text-blue-700',
     PROCESSING: 'bg-blue-100 text-blue-700',
     shipped: 'bg-purple-100 text-purple-700',
     SHIPPED: 'bg-purple-100 text-purple-700',
     delivered: 'bg-emerald-100 text-emerald-700',
     DELIVERED: 'bg-emerald-100 text-emerald-700',
+    canceled: 'bg-red-100 text-red-700',
+    CANCELED: 'bg-red-100 text-red-700',
     cancelled: 'bg-red-100 text-red-700',
     CANCELLED: 'bg-red-100 text-red-700',
   };
@@ -383,6 +387,14 @@ function SellerBazaarTab({ isRTL, sellerAPI }) {
   const [loading, setLoading] = useState(true);
   const [notifying, setNotifying] = useState(false);
   const [bazaarFetched, setBazaarFetched] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editForm, setEditForm] = useState({
+    description: '',
+    whatsappLink: '',
+    instagramLink: '',
+    facebookLink: '',
+  });
 
   useEffect(() => {
     if (bazaarFetched) return;
@@ -392,8 +404,10 @@ function SellerBazaarTab({ isRTL, sellerAPI }) {
       try {
         const res = await sellerAPI.getBazaar();
         setBazaar(res.data?.data || res.data || null);
-      } catch {
-        // bazaar endpoint not available — skip silently
+      } catch (err) {
+        if (err.response?.status !== 500 && err.response?.status !== 404) {
+          console.error('Bazaar error:', err.message);
+        }
         setBazaar(null);
       } finally {
         setLoading(false);
@@ -401,6 +415,34 @@ function SellerBazaarTab({ isRTL, sellerAPI }) {
     };
     fetchBazaar();
   }, [bazaarFetched]);
+
+  useEffect(() => {
+    if (bazaar) {
+      setEditForm({
+        description: bazaar.description || '',
+        whatsappLink: bazaar.whatsappLink || '',
+        instagramLink: bazaar.instagramLink || '',
+        facebookLink: bazaar.facebookLink || '',
+      });
+    }
+  }, [bazaar]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await sellerAPI.updateBazaar(editForm);
+      setBazaar(res.data?.data || res.data || bazaar);
+      setEditing(false);
+      toast.success(isRTL ? 'تم تحديث البازار ✅' : 'Bazaar updated ✅');
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message ||
+        (isRTL ? 'فشل التحديث' : 'Update failed')
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleNotify = async () => {
     const title = prompt(isRTL 
@@ -439,13 +481,24 @@ function SellerBazaarTab({ isRTL, sellerAPI }) {
           ${isRTL ? 'text-right' : ''}`}>
           {isRTL ? 'بازاري' : 'My Bazaar'}
         </h1>
-        <button
-          onClick={handleNotify}
-          disabled={notifying}
-          className="btn-primary text-sm flex items-center gap-2">
-          <Bell size={14} />
-          {isRTL ? 'إشعار المتابعين' : 'Notify Followers'}
-        </button>
+        <div className={`flex gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          {bazaar && (
+            <button
+              onClick={() => setEditing(!editing)}
+              className="btn-outline text-sm flex items-center gap-2"
+            >
+              <Edit size={14} />
+              {isRTL ? 'تعديل' : 'Edit'}
+            </button>
+          )}
+          <button
+            onClick={handleNotify}
+            disabled={notifying}
+            className="btn-primary text-sm flex items-center gap-2">
+            <Bell size={14} />
+            {isRTL ? 'إشعار المتابعين' : 'Notify Followers'}
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -482,6 +535,77 @@ function SellerBazaarTab({ isRTL, sellerAPI }) {
               </div>
             ))}
           </div>
+          {editing && (
+            <div className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 ${isRTL ? 'text-right' : ''}`}>
+              <h3 className="font-bold text-gray-900 dark:text-dark-text mb-4">
+                {isRTL ? 'تعديل معلومات البازار' : 'Edit Bazaar Info'}
+              </h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 dark:text-dark-muted mb-1">
+                    {isRTL ? 'وصف المتجر' : 'Store Description'}
+                  </label>
+                  <textarea
+                    value={editForm.description}
+                    onChange={e => setEditForm(p => ({ ...p, description: e.target.value }))}
+                    rows={3}
+                    placeholder={isRTL ? 'اكتب وصفاً لمتجرك...' : 'Describe your store...'}
+                    className={`w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-4 py-2.5 text-sm outline-none focus:border-brand-gold resize-none dark:text-white ${isRTL ? 'text-right' : ''}`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 dark:text-dark-muted mb-1">
+                    WhatsApp {isRTL ? 'رابط' : 'Link'}
+                  </label>
+                  <input
+                    value={editForm.whatsappLink}
+                    onChange={e => setEditForm(p => ({ ...p, whatsappLink: e.target.value }))}
+                    placeholder="https://wa.me/..."
+                    className={`w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-4 py-2.5 text-sm outline-none focus:border-brand-gold dark:text-white ${isRTL ? 'text-right' : ''}`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 dark:text-dark-muted mb-1">
+                    Instagram {isRTL ? 'رابط' : 'Link'}
+                  </label>
+                  <input
+                    value={editForm.instagramLink}
+                    onChange={e => setEditForm(p => ({ ...p, instagramLink: e.target.value }))}
+                    placeholder="https://instagram.com/..."
+                    className={`w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-4 py-2.5 text-sm outline-none focus:border-brand-gold dark:text-white ${isRTL ? 'text-right' : ''}`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 dark:text-dark-muted mb-1">
+                    Facebook {isRTL ? 'رابط' : 'Link'}
+                  </label>
+                  <input
+                    value={editForm.facebookLink}
+                    onChange={e => setEditForm(p => ({ ...p, facebookLink: e.target.value }))}
+                    placeholder="https://facebook.com/..."
+                    className={`w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-4 py-2.5 text-sm outline-none focus:border-brand-gold dark:text-white ${isRTL ? 'text-right' : ''}`}
+                  />
+                </div>
+                <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="flex-1 btn-primary text-sm disabled:opacity-50"
+                  >
+                    {saving ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
+                    ) : (isRTL ? 'حفظ التغييرات' : 'Save Changes')}
+                  </button>
+                  <button
+                    onClick={() => setEditing(false)}
+                    className="flex-1 btn-outline text-sm"
+                  >
+                    {isRTL ? 'إلغاء' : 'Cancel'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           {bazaar.description && (
             <div className={`bg-white dark:bg-dark-surface 
               rounded-2xl shadow-card p-6
@@ -493,6 +617,33 @@ function SellerBazaarTab({ isRTL, sellerAPI }) {
               <p className="text-gray-600 dark:text-dark-muted">
                 {bazaar.description}
               </p>
+            </div>
+          )}
+          {(bazaar.whatsappLink || bazaar.instagramLink || bazaar.facebookLink) && (
+            <div className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5 ${isRTL ? 'text-right' : ''}`}>
+              <h3 className="font-bold text-gray-900 dark:text-dark-text mb-3 text-sm">
+                {isRTL ? 'روابط التواصل الاجتماعي' : 'Social Links'}
+              </h3>
+              <div className="space-y-2">
+                {bazaar.whatsappLink && (
+                  <a href={bazaar.whatsappLink} target="_blank" rel="noreferrer"
+                    className={`flex items-center gap-2 text-sm text-emerald-600 hover:underline ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    📱 WhatsApp
+                  </a>
+                )}
+                {bazaar.instagramLink && (
+                  <a href={bazaar.instagramLink} target="_blank" rel="noreferrer"
+                    className={`flex items-center gap-2 text-sm text-pink-600 hover:underline ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    📸 Instagram
+                  </a>
+                )}
+                {bazaar.facebookLink && (
+                  <a href={bazaar.facebookLink} target="_blank" rel="noreferrer"
+                    className={`flex items-center gap-2 text-sm text-blue-600 hover:underline ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    👥 Facebook
+                  </a>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -613,6 +764,290 @@ function SellerProductsTab({ products, isRTL, navigate, t }) {
   );
 }
 
+function SellerInventoryTab({ isRTL, t }) {
+  const [logs, setLogs] = useState([]);
+  const [logsLoading, setLogsLoading] = useState(true);
+  const [adjustModal, setAdjustModal] = useState(false);
+  const [adjustForm, setAdjustForm] = useState({
+    productId: '',
+    quantity: '',
+    reason: 'restock',
+    notes: '',
+  });
+  const [adjustLoading, setAdjustLoading] = useState(false);
+  const [products, setProducts] = useState([]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLogsLoading(true);
+      try {
+        const [logsRes, productsRes] = await Promise.allSettled([
+          inventoryAPI.getLogs({ limit: 20 }),
+          sellerAPI.getProducts(),
+        ]);
+        if (logsRes.status === 'fulfilled') {
+          const data = logsRes.value.data?.data || logsRes.value.data || [];
+          setLogs(Array.isArray(data) ? data : []);
+        }
+        if (productsRes.status === 'fulfilled') {
+          const data = productsRes.value.data?.data || productsRes.value.data?.products || [];
+          setProducts(Array.isArray(data) ? data : []);
+        }
+      } catch {
+        setLogs([]);
+      } finally {
+        setLogsLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  const handleAdjust = async () => {
+    if (!adjustForm.productId || !adjustForm.quantity) {
+      toast.error(isRTL ? 'يرجى ملء جميع الحقول' : 'Please fill all fields');
+      return;
+    }
+    setAdjustLoading(true);
+    try {
+      await inventoryAPI.adjust({
+        productId: adjustForm.productId,
+        quantity: Number(adjustForm.quantity),
+        reason: adjustForm.reason,
+        notes: adjustForm.notes,
+      });
+      toast.success(isRTL ? 'تم تعديل المخزون ✅' : 'Stock adjusted ✅');
+      setAdjustModal(false);
+      setAdjustForm({ productId: '', quantity: '', reason: 'restock', notes: '' });
+      const res = await inventoryAPI.getLogs({ limit: 20 });
+      const data = res.data?.data || res.data || [];
+      setLogs(Array.isArray(data) ? data : []);
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message ||
+        (isRTL ? 'فشل تعديل المخزون' : 'Failed to adjust stock')
+      );
+    } finally {
+      setAdjustLoading(false);
+    }
+  };
+
+  const REASON_OPTIONS = [
+    { value: 'restock', label: isRTL ? 'إعادة تخزين' : 'Restock' },
+    { value: 'damage', label: isRTL ? 'تلف' : 'Damage' },
+    { value: 'return', label: isRTL ? 'مرتجع' : 'Return' },
+    { value: 'correction', label: isRTL ? 'تصحيح' : 'Correction' },
+    { value: 'sale', label: isRTL ? 'بيع' : 'Sale' },
+  ];
+
+  const REASON_COLORS = {
+    restock: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400',
+    damage: 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400',
+    return: 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
+    correction: 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400',
+    sale: 'bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400',
+  };
+
+  const lowStockProducts = products.filter(p => (p.stock || 0) <= 5);
+
+  return (
+    <div>
+      <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+        <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text ${isRTL ? 'text-right' : ''}`}>
+          {isRTL ? 'إدارة المخزون' : 'Inventory Management'}
+        </h1>
+        <button
+          onClick={() => setAdjustModal(true)}
+          className="btn-primary text-sm flex items-center gap-2"
+        >
+          <Plus size={14} />
+          {isRTL ? 'تعديل مخزون' : 'Adjust Stock'}
+        </button>
+      </div>
+
+      {lowStockProducts.length > 0 && (
+        <div className={`mb-6 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-2xl p-4 ${isRTL ? 'text-right' : ''}`}>
+          <p className={`font-bold text-red-700 dark:text-red-400 text-sm mb-2 flex items-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            ⚠️ {isRTL ? 'منتجات بمخزون منخفض' : 'Low Stock Products'}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {lowStockProducts.map(p => (
+              <span
+                key={p._id || p.id}
+                className={`text-xs px-2 py-1 rounded-full ${
+                  (p.stock || 0) === 0
+                    ? 'bg-red-200 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                    : 'bg-amber-100 text-amber-800 dark:bg-amber-900/20 dark:text-amber-400'
+                }`}
+              >
+                {p.name} — {p.stock || 0} {isRTL ? 'متبقي' : 'left'}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
+        <h3 className={`font-bold text-gray-900 dark:text-dark-text mb-4 ${isRTL ? 'text-right' : ''}`}>
+          {isRTL ? 'سجل المخزون' : 'Inventory Log'}
+        </h3>
+
+        {logsLoading ? (
+          <div className="space-y-3">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-12 bg-gray-100 dark:bg-dark-surface rounded-xl animate-pulse" />
+            ))}
+          </div>
+        ) : logs.length === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-4xl mb-2">📦</p>
+            <p className="text-gray-500 dark:text-dark-muted text-sm">
+              {isRTL ? 'لا توجد سجلات بعد' : 'No inventory logs yet'}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className={`w-full text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
+              <thead>
+                <tr className="border-b border-gray-100 dark:border-dark-border">
+                  {[
+                    isRTL ? 'المنتج' : 'Product',
+                    isRTL ? 'التغيير' : 'Change',
+                    isRTL ? 'السبب' : 'Reason',
+                    isRTL ? 'المخزون بعد' : 'Stock After',
+                    isRTL ? 'التاريخ' : 'Date',
+                  ].map(h => (
+                    <th key={h} className="text-xs font-semibold text-gray-400 dark:text-dark-muted uppercase pb-3 px-2">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {logs.map((log, i) => (
+                  <tr key={log._id || i} className="border-b border-gray-50 dark:border-dark-border/50 last:border-0 hover:bg-gray-50/50 dark:hover:bg-dark-bg/50">
+                    <td className="py-3 px-2 font-medium text-gray-900 dark:text-dark-text truncate max-w-[150px]">
+                      {log.product?.name || log.productName || '—'}
+                    </td>
+                    <td className={`py-3 px-2 font-bold ${
+                      (log.quantityChange || log.change || 0) > 0
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-red-600 dark:text-red-400'
+                    }`}>
+                      {(log.quantityChange || log.change || 0) > 0 ? '+' : ''}
+                      {log.quantityChange || log.change || 0}
+                    </td>
+                    <td className="py-3 px-2">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${REASON_COLORS[log.reason] || REASON_COLORS.correction}`}>
+                        {REASON_OPTIONS.find(r => r.value === log.reason)?.label || log.reason || '—'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-2 text-gray-600 dark:text-dark-muted">
+                      {log.stockAfter ?? log.currentStock ?? '—'}
+                    </td>
+                    <td className="py-3 px-2 text-gray-400 dark:text-dark-muted text-xs">
+                      {log.createdAt ? new Date(log.createdAt).toLocaleDateString(isRTL ? 'ar-EG' : 'en-US') : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {adjustModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+          <div className={`bg-white dark:bg-dark-surface rounded-3xl shadow-2xl p-8 w-full max-w-md ${isRTL ? 'text-right' : ''}`}>
+            <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <h3 className="text-xl font-display font-bold text-gray-900 dark:text-dark-text">
+                {isRTL ? 'تعديل المخزون' : 'Adjust Stock'}
+              </h3>
+              <button onClick={() => setAdjustModal(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-dark-text">
+                <XCircle size={24} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-dark-muted mb-1">
+                  {isRTL ? 'المنتج' : 'Product'} *
+                </label>
+                <select
+                  value={adjustForm.productId}
+                  onChange={e => setAdjustForm(p => ({ ...p, productId: e.target.value }))}
+                  className={`w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-4 py-2.5 text-sm outline-none focus:border-brand-gold dark:text-white ${isRTL ? 'text-right' : ''}`}
+                >
+                  <option value="">{isRTL ? 'اختر منتجاً' : 'Select a product'}</option>
+                  {products.map(p => (
+                    <option key={p._id || p.id} value={p._id || p.id}>
+                      {p.name} ({isRTL ? 'مخزون:' : 'Stock:'} {p.stock || 0})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-dark-muted mb-1">
+                  {isRTL ? 'الكمية (+ للإضافة، - للخصم)' : 'Quantity (+ to add, - to deduct)'} *
+                </label>
+                <input
+                  type="number"
+                  value={adjustForm.quantity}
+                  onChange={e => setAdjustForm(p => ({ ...p, quantity: e.target.value }))}
+                  placeholder={isRTL ? 'مثال: +50 أو -10' : 'e.g. 50 or -10'}
+                  className={`w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-4 py-2.5 text-sm outline-none focus:border-brand-gold dark:text-white`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-dark-muted mb-1">
+                  {isRTL ? 'السبب' : 'Reason'} *
+                </label>
+                <select
+                  value={adjustForm.reason}
+                  onChange={e => setAdjustForm(p => ({ ...p, reason: e.target.value }))}
+                  className={`w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-4 py-2.5 text-sm outline-none focus:border-brand-gold dark:text-white ${isRTL ? 'text-right' : ''}`}
+                >
+                  {REASON_OPTIONS.map(r => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-dark-muted mb-1">
+                  {isRTL ? 'ملاحظات (اختياري)' : 'Notes (optional)'}
+                </label>
+                <input
+                  value={adjustForm.notes}
+                  onChange={e => setAdjustForm(p => ({ ...p, notes: e.target.value }))}
+                  placeholder={isRTL ? 'أي ملاحظات إضافية...' : 'Any additional notes...'}
+                  className={`w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-4 py-2.5 text-sm outline-none focus:border-brand-gold dark:text-white`}
+                />
+              </div>
+
+              <div className={`flex gap-3 pt-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <button
+                  onClick={handleAdjust}
+                  disabled={adjustLoading || !adjustForm.productId || !adjustForm.quantity}
+                  className="flex-1 btn-primary text-sm disabled:opacity-50"
+                >
+                  {adjustLoading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
+                  ) : (isRTL ? 'تأكيد التعديل' : 'Confirm Adjustment')}
+                </button>
+                <button onClick={() => setAdjustModal(false)} className="flex-1 btn-outline text-sm">
+                  {isRTL ? 'إلغاء' : 'Cancel'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 export default function SellerDashboard() {
   const { t } = useTranslation();
@@ -628,6 +1063,7 @@ export default function SellerDashboard() {
   const [loading, setLoading] = useState(true);
   const [analytics, setAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [stockAlerts, setStockAlerts] = useState([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -694,6 +1130,9 @@ export default function SellerDashboard() {
         setAnalyticsLoading(false);
       }
 
+      // Stock alerts endpoint not available yet
+      setStockAlerts([]);
+
       setLoading(false);
     };
     fetchData();
@@ -701,7 +1140,10 @@ export default function SellerDashboard() {
 
   const brandName = user?.name || 'Seller';
 
-  const handleLogout = () => { logout(); navigate('/'); };
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
+  };
 
   const navSections = [
     {
@@ -711,6 +1153,7 @@ export default function SellerDashboard() {
         { icon: Store, label: isRTL ? 'البازار الخاص بي' : 'My Bazaar', tab: 'bazaar' },
         { icon: Package, label: isRTL ? 'الطلبات' : 'Orders', tab: 'orders' },
         { icon: ShoppingBag, label: isRTL ? 'المنتجات' : 'Products', tab: 'products' },
+        { icon: Package, label: isRTL ? 'المخزون' : 'Inventory', tab: 'inventory' },
         { icon: DollarSign, label: isRTL ? 'الأرباح' : 'Revenue', tab: 'revenue' },
       ],
     },
@@ -806,6 +1249,41 @@ export default function SellerDashboard() {
                     </button>
                   </div>
                 </div>
+
+                {stockAlerts.length > 0 && (
+                  <div className={`mb-6 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-2xl p-4 ${isRTL ? 'text-right' : ''}`}>
+                    <div className={`flex items-center gap-2 mb-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                      <span className="text-red-500">⚠️</span>
+                      <h3 className="font-bold text-red-700 dark:text-red-400 text-sm">
+                        {isRTL ? `تحذير: ${stockAlerts.length} منتج بمخزون منخفض` : `Warning: ${stockAlerts.length} product${stockAlerts.length > 1 ? 's' : ''} with low stock`}
+                      </h3>
+                    </div>
+                    <div className="space-y-2">
+                      {stockAlerts.slice(0, 3).map((alert, i) => (
+                        <div key={alert._id || i} className={`flex items-center justify-between gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <span className="text-sm text-gray-700 dark:text-dark-text truncate">
+                            {alert.name || alert.productName || 'Product'}
+                          </span>
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                            (alert.stock || alert.quantity || 0) === 0
+                              ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                              : 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+                          }`}>
+                            {(alert.stock || alert.quantity || 0) === 0
+                              ? (isRTL ? 'نفد المخزون' : 'Out of stock')
+                              : `${alert.stock || alert.quantity} ${isRTL ? 'متبقي' : 'left'}`
+                            }
+                          </span>
+                        </div>
+                      ))}
+                      {stockAlerts.length > 3 && (
+                        <p className="text-xs text-gray-500 dark:text-dark-muted">
+                          {isRTL ? `+${stockAlerts.length - 3} منتجات أخرى` : `+${stockAlerts.length - 3} more products`}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Stat cards */}
                 <div className={`grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8 ${isRTL ? 'flex-row-reverse' : ''}`}>
@@ -1009,6 +1487,10 @@ export default function SellerDashboard() {
                 navigate={navigate}
                 t={t}
               />
+            )}
+
+            {activeTab === 'inventory' && (
+              <SellerInventoryTab isRTL={isRTL} t={t} />
             )}
 
             {['messages', 'payouts'].includes(activeTab) && (

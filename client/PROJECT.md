@@ -400,3 +400,23 @@ To ensure consistency between backend responses and frontend UI, we use mappers 
 - Fixed adminAPI.getOrders endpoint from /admin/orders to /orders/admin/all
 - Fixed Admin orders display — uses subtotal for amount, user email prefix for customer name, added status update dropdown per order
 - Fixed Admin Dashboard Overview — mapped correct API field names (overview.totalRevenue, overview.totalOrders etc), added real orders by status bars, real category breakdown from products, added alerts section for pending orders and low stock
+- Added Payment Retry button for failed/pending_payment orders in UserDashboard
+- Added Stock Alerts banner in SellerDashboard dashboard tab
+- Fixed Top Products response shape parsing in Admin Revenue tab
+- Fixed Wishlist items mapper to handle product/productId field variations
+- Disabled stock-alerts call (404 endpoint)
+- Fixed logout: fire-and-forget API call, await logout in Navbar/Admin/Seller so finally always clears local state
+- Fixed admin order status update: lowercase status values sent to /orders/admin/:id/status
+- Silenced bazaar 500 error
+- Fixed order status: canceled (single L) to match backend validation
+- Applied fix across AdminDashboard, UserDashboard, SellerDashboard, CartPage
+- Fixed top products parsing: API returns array directly in data field
+- Fixed top products display: uses productName, totalSold, image.url
+- Fixed top customers parsing and field name fallbacks
+- Added bazaar edit form with description, WhatsApp, Instagram, Facebook links
+- Added social links display in bazaar tab
+- Wired GET /search/facets for dynamic price range hints in ListingPage filters
+- Added Inventory tab to SellerDashboard
+- Inventory tab shows: low stock alerts, inventory logs table, adjust stock modal
+- Added inventoryAPI with getLogs, adjust, getAlerts methods
+- Inventory adjustment supports: restock, damage, return, correction, sale reasons

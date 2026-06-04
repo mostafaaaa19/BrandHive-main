@@ -4,7 +4,7 @@ import { SlidersHorizontal, Grid3X3, LayoutGrid, List, X, ChevronDown, ChevronUp
 import ProductCard from '../components/ProductCard';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
-import { productsAPI, categoriesAPI } from '../services/api';
+import { productsAPI, categoriesAPI, searchAPI } from '../services/api';
 import { mapProduct, mapCategory, deduplicateProducts } from '../utils/mappers';
 import { categories as mockCategories } from '../data/mockData';
 
@@ -76,6 +76,7 @@ export default function ListingPage() {
 
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState(mockCategories);
+  const [facets, setFacets] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [totalPages, setTotalPages] = useState(1);
@@ -136,6 +137,20 @@ export default function ListingPage() {
     };
     fetchCategories();
   }, []);
+
+  useEffect(() => {
+    const fetchFacets = async () => {
+      try {
+        const res = await searchAPI.getFacets();
+        setFacets(res.data?.data || res.data || null);
+      } catch {
+        // keep existing filters
+      }
+    };
+    fetchFacets();
+  }, []);
+
+  const priceHint = facets?.priceRange || null;
 
   // Use categoryParam directly for filtering
   // Real products have category.name from API
@@ -289,7 +304,7 @@ export default function ListingPage() {
             type="number"
             value={priceMin}
             onChange={e => setPriceMin(e.target.value)}
-            placeholder={isRTL ? 'الأقل' : 'Min'}
+            placeholder={priceHint ? `Min (${priceHint.min} EGP)` : (isRTL ? 'الأقل' : 'Min')}
             className={`input-field py-2 text-sm ${isRTL ? 'text-right' : ''}`}
           />
           <span className="text-gray-400 dark:text-dark-muted text-sm">—</span>
@@ -297,7 +312,7 @@ export default function ListingPage() {
             type="number"
             value={priceMax}
             onChange={e => setPriceMax(e.target.value)}
-            placeholder={isRTL ? 'الأعلى' : 'Max'}
+            placeholder={priceHint ? `Max (${priceHint.max} EGP)` : (isRTL ? 'الأعلى' : 'Max')}
             className={`input-field py-2 text-sm ${isRTL ? 'text-right' : ''}`}
           />
         </div>

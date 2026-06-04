@@ -27,6 +27,12 @@ const STATUS_COLORS = {
   pending: 'bg-gray-100 text-gray-600 dark:bg-gray-500/10 dark:text-gray-400',
   PENDING: 'bg-gray-100 text-gray-600 dark:bg-gray-500/10 dark:text-gray-400',
   Pending: 'bg-gray-100 text-gray-600 dark:bg-gray-500/10 dark:text-gray-400',
+  confirmed: 'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
+  CONFIRMED: 'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
+  Confirmed: 'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
+  canceled: 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400',
+  CANCELED: 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400',
+  Canceled: 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400',
   cancelled: 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400',
   CANCELLED: 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400',
   Cancelled: 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400',
@@ -149,6 +155,7 @@ export default function UserDashboard() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [cancellingId, setCancellingId] = useState(null);
   const [reorderLoading, setReorderLoading] = useState(null);
+  const [retryLoading, setRetryLoading] = useState(null);
 
   // Addresses state
   const [addresses, setAddresses] = useState([]);
@@ -394,7 +401,31 @@ export default function UserDashboard() {
   };
 
   const canReorder = (status) =>
-    ['delivered', 'cancelled', 'Delivered', 'Cancelled'].includes(status);
+    ['delivered', 'canceled', 'cancelled', 'Delivered', 'Canceled', 'Cancelled'].includes(status);
+
+  const needsPaymentRetry = (status) =>
+    ['pending_payment', 'payment_failed'].includes(
+      (status || '').toLowerCase()
+    );
+
+  const handleRetryPayment = async (orderId) => {
+    setRetryLoading(orderId);
+    try {
+      const res = await ordersAPI.retryPayment(orderId);
+      const paymentUrl = res.data?.data?.paymentUrl || res.data?.paymentUrl;
+      if (paymentUrl) {
+        window.location.href = paymentUrl;
+      } else {
+        toast.success(isRTL ? 'تم إعادة تفعيل الطلب' : 'Order reactivated successfully');
+      }
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || (isRTL ? 'فشل إعادة المحاولة' : 'Retry failed')
+      );
+    } finally {
+      setRetryLoading(null);
+    }
+  };
 
   const fetchAddresses = async () => {
     try {
@@ -457,6 +488,8 @@ export default function UserDashboard() {
       'Delivered': 'تم التوصيل',
       'Processing': 'جاري المعالجة',
       'Pending': 'قيد الانتظار',
+      'Confirmed': 'مؤكد',
+      'Canceled': 'ملغي',
       'Cancelled': 'ملغي'
     };
     return map[status] || status;
@@ -721,6 +754,19 @@ export default function UserDashboard() {
                                           <div className="w-3 h-3 border-2 border-brand-gold border-t-transparent rounded-full animate-spin" />
                                         ) : (
                                           <>🔄 {isRTL ? 'إعادة الطلب' : 'Reorder'}</>
+                                        )}
+                                      </button>
+                                    )}
+                                    {needsPaymentRetry(status) && (
+                                      <button
+                                        onClick={() => handleRetryPayment(order._id || order.id)}
+                                        disabled={retryLoading === (order._id || order.id)}
+                                        className="text-xs px-3 py-1.5 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 hover:bg-red-100 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-1"
+                                      >
+                                        {retryLoading === (order._id || order.id) ? (
+                                          <div className="w-3 h-3 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                                        ) : (
+                                          <>💳 {isRTL ? 'إعادة الدفع' : 'Retry Payment'}</>
                                         )}
                                       </button>
                                     )}
@@ -1410,6 +1456,19 @@ export default function UserDashboard() {
                             <div className="w-3 h-3 border-2 border-brand-gold border-t-transparent rounded-full animate-spin" />
                           ) : (
                             <>🔄 {isRTL ? 'إعادة الطلب' : 'Reorder'}</>
+                          )}
+                        </button>
+                      )}
+                      {needsPaymentRetry(orderDetail.status || orderDetail.orderStatus) && (
+                        <button
+                          onClick={() => handleRetryPayment(orderDetail._id || orderDetail.id)}
+                          disabled={retryLoading === (orderDetail._id || orderDetail.id)}
+                          className="text-xs px-3 py-1.5 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 hover:bg-red-100 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-1"
+                        >
+                          {retryLoading === (orderDetail._id || orderDetail.id) ? (
+                            <div className="w-3 h-3 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <>💳 {isRTL ? 'إعادة الدفع' : 'Retry Payment'}</>
                           )}
                         </button>
                       )}

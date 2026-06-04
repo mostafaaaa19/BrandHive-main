@@ -221,50 +221,44 @@ export const WishlistProvider = ({ children }) => {
 
       if (list.length === 0) return;
 
+      const mapWishlistItem = (item) => {
+        const prod = item.product || item.productId || item;
+        if (!prod || typeof prod !== 'object') return null;
+        const id = prod?._id || prod?.id || item._id || item.id;
+        if (!id) return null;
+        return {
+          id,
+          name: prod?.name || item.name || '',
+          price: Number(
+            prod?.finalPrice || prod?.discountPrice || prod?.price ||
+            item.price || 0
+          ),
+          image: prod?.images?.[0]?.url || prod?.images?.[0] ||
+                 prod?.image || prod?.mainImage || item.image || null,
+          brandName: prod?.brand?.name || item.brandName || '',
+          brandSlug: prod?.brand?.slug || item.brandSlug || '',
+          slug: prod?.slug || item.slug || '',
+          category: prod?.category?.name || item.category || '',
+        };
+      };
+
       const mapped = await Promise.all(
         list.map(async (item) => {
-          if (
-            item.productId &&
-            typeof item.productId === 'object' &&
-            item.productId.name
-          ) {
-            return {
-              id: item.productId._id || item.productId.id,
-              name: item.productId.name,
-              price:
-                item.productId.finalPrice ||
-                item.productId.price ||
-                0,
-              image:
-                item.productId.mainImage ||
-                item.productId.images?.[0] ||
-                null,
-              brandName: item.productId.brand?.name || '',
-              brandSlug: item.productId.brand?.slug || '',
-              slug: item.productId.slug || '',
-              category: item.productId.category?.name || '',
-            };
-          }
+          const quick = mapWishlistItem(item);
+          if (quick?.name) return quick;
 
           const productId =
-            item.productId || item._id || item.product;
-          if (!productId) return null;
+            typeof item.productId === 'string'
+              ? item.productId
+              : item.product || item._id;
+          if (!productId || typeof productId === 'object') return null;
 
           try {
             const { productsAPI } = await import('../services/api');
             const prodRes = await productsAPI.getOne(productId);
             const p = prodRes.data?.data || prodRes.data;
             if (!p) return null;
-            return {
-              id: p.id || p._id,
-              name: p.name,
-              price: p.finalPrice || p.price || 0,
-              image: p.mainImage || p.images?.[0] || null,
-              brandName: p.brand?.name || '',
-              brandSlug: p.brand?.slug || '',
-              slug: p.slug || '',
-              category: p.category?.name || '',
-            };
+            return mapWishlistItem({ product: p, _id: item._id });
           } catch {
             return null;
           }

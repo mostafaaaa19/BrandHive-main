@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useAuth } from '../../context/AuthContext';
-import { adminAPI, productsAPI, couponsAPI } from '../../services/api';
+import { adminAPI, productsAPI, notificationsAPI, couponsAPI, categoriesAPI } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../../context/LanguageContext';
 import toast from 'react-hot-toast';
@@ -616,7 +616,7 @@ function AdminProductsTab({ adminAPI, isRTL }) {
 }
 
 function AdminNotificationSender({ isRTL, adminAPI }) {
-  const [form, setForm] = useState({ title: '', body: '' });
+  const [form, setForm] = useState({ title: '', body: '', type: 'general' });
   const [loading, setLoading] = useState(false);
 
   const handleSend = async () => {
@@ -628,7 +628,7 @@ function AdminNotificationSender({ isRTL, adminAPI }) {
     try {
       await adminAPI.sendNotification(form);
       toast.success(isRTL ? 'تم إرسال الإشعار!' : 'Notification sent!');
-      setForm({ title: '', body: '' });
+      setForm({ title: '', body: '', type: 'general' });
     } catch (err) {
       toast.error(err.response?.data?.message || (isRTL ? 'فشل الإرسال' : 'Failed to send'));
     } finally {
@@ -638,6 +638,27 @@ function AdminNotificationSender({ isRTL, adminAPI }) {
 
   return (
     <div className={`space-y-4 ${isRTL ? 'text-right' : ''}`}>
+      <div>
+        <label className={`block text-sm font-semibold text-gray-700 dark:text-dark-text mb-1 ${isRTL ? 'text-right' : ''}`}>
+          {isRTL ? 'نوع الإشعار' : 'Notification Type'}
+        </label>
+        <select
+          value={form.type}
+          onChange={e => setForm(p => ({ ...p, type: e.target.value }))}
+          className={`w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-4 py-2 text-sm outline-none focus:border-brand-gold dark:text-white ${isRTL ? 'text-right' : ''}`}
+        >
+          <option value="general">{isRTL ? 'عام' : 'General'}</option>
+          <option value="price_drop">{isRTL ? 'انخفاض سعر' : 'Price Drop'}</option>
+          <option value="stock_alert">{isRTL ? 'تنبيه مخزون' : 'Stock Alert'}</option>
+          <option value="bazaar_update">{isRTL ? 'تحديث بازار' : 'Bazaar Update'}</option>
+          <option value="bazaar_new">{isRTL ? 'بازار جديد' : 'New Bazaar'}</option>
+          <option value="order_placed">{isRTL ? 'طلب جديد' : 'Order Placed'}</option>
+          <option value="order_confirmed">{isRTL ? 'تأكيد طلب' : 'Order Confirmed'}</option>
+          <option value="order_shipped">{isRTL ? 'شحن طلب' : 'Order Shipped'}</option>
+          <option value="order_delivered">{isRTL ? 'تسليم طلب' : 'Order Delivered'}</option>
+          <option value="order_canceled">{isRTL ? 'إلغاء طلب' : 'Order Canceled'}</option>
+        </select>
+      </div>
       <div>
         <label className="block text-sm font-semibold text-gray-700 dark:text-dark-text mb-1">
           {isRTL ? 'عنوان الإشعار' : 'Notification Title'}
@@ -898,6 +919,181 @@ function AdminCouponsTab({ isRTL, toast }) {
   );
 }
 
+function AdminFeaturedSlotsTab({ isRTL, productsAPI }) {
+  const STORAGE_KEY = 'brandhive_featured_slots';
+  const MAX_SLOTS = 4;
+
+  const [allProducts, setAllProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [featuredIds, setFeaturedIds] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+    catch { return []; }
+  });
+
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        const res = await productsAPI.getAll({ limit: 50 });
+        const data = res.data?.data || [];
+        setAllProducts(Array.isArray(data) ? data : []);
+      } catch {
+        setAllProducts([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProducts();
+  }, []);
+
+  const toggleFeatured = (product) => {
+    const id = product._id || product.id;
+    let updated;
+    if (featuredIds.includes(id)) {
+      updated = featuredIds.filter(fid => fid !== id);
+      toast.success(isRTL ? 'تم إزالة المنتج من المميزة' : 'Removed from featured');
+    } else {
+      if (featuredIds.length >= MAX_SLOTS) {
+        toast.error(isRTL ? `الحد الأقصى ${MAX_SLOTS} منتجات` : `Maximum ${MAX_SLOTS} products`);
+        return;
+      }
+      updated = [...featuredIds, id];
+      toast.success(isRTL ? 'تم إضافة المنتج للمميزة ⭐' : 'Added to featured ⭐');
+    }
+    setFeaturedIds(updated);
+    const featuredProducts = allProducts.filter(p =>
+      updated.includes(p._id || p.id)
+    );
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    localStorage.setItem('brandhive_featured_products', JSON.stringify(featuredProducts));
+  };
+
+  const filtered = allProducts.filter(p =>
+    p.name?.toLowerCase().includes(search.toLowerCase()) ||
+    p.brand?.name?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const featuredProducts = allProducts.filter(p => featuredIds.includes(p._id || p.id));
+
+  return (
+    <div>
+      <h2 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-2 ${isRTL ? 'text-right' : ''}`}>
+        {isRTL ? 'الخانات المميزة' : 'Featured Slots'}
+      </h2>
+      <p className={`text-sm text-gray-500 dark:text-dark-muted mb-6 ${isRTL ? 'text-right' : ''}`}>
+        {isRTL
+          ? `اختر حتى ${MAX_SLOTS} منتجات لعرضها في الصفحة الرئيسية`
+          : `Choose up to ${MAX_SLOTS} products to display on the homepage`}
+      </p>
+
+      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 mb-6">
+        <h3 className={`font-bold text-gray-900 dark:text-dark-text mb-4 flex items-center gap-2 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+          ⭐ {isRTL ? 'المنتجات المميزة حالياً' : 'Currently Featured'}
+          <span className="text-xs bg-brand-gold/10 text-brand-gold px-2 py-0.5 rounded-full font-semibold">
+            {featuredIds.length}/{MAX_SLOTS}
+          </span>
+        </h3>
+
+        {featuredProducts.length === 0 ? (
+          <p className="text-gray-400 dark:text-dark-muted text-sm italic">
+            {isRTL ? 'لم يتم اختيار أي منتجات بعد' : 'No products selected yet'}
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {featuredProducts.map(p => {
+              const imageUrl = p.images?.[0]?.url || p.images?.[0] || p.image || null;
+              return (
+                <div key={p._id || p.id} className="relative group">
+                  <div className="bg-gray-50 dark:bg-dark-bg rounded-xl p-3 text-center">
+                    <div className="w-full h-20 rounded-lg overflow-hidden mb-2 bg-gray-100 dark:bg-dark-surface flex items-center justify-center">
+                      {imageUrl
+                        ? <img src={imageUrl} alt={p.name} className="w-full h-full object-cover" />
+                        : <span className="text-2xl">📦</span>
+                      }
+                    </div>
+                    <p className="text-xs font-semibold text-gray-900 dark:text-dark-text truncate">{p.name}</p>
+                    <p className="text-xs text-brand-gold font-bold">{(p.price || 0).toLocaleString()} EGP</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleFeatured(p)}
+                    className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })}
+            {[...Array(MAX_SLOTS - featuredProducts.length)].map((_, i) => (
+              <div key={i} className="bg-gray-50 dark:bg-dark-bg rounded-xl p-3 border-2 border-dashed border-gray-200 dark:border-dark-border flex items-center justify-center h-28">
+                <p className="text-xs text-gray-300 dark:text-dark-muted">
+                  {isRTL ? 'خانة فارغة' : 'Empty slot'}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
+        <div className={`flex items-center justify-between gap-4 mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <h3 className="font-bold text-gray-900 dark:text-dark-text">
+            {isRTL ? 'اختر من المنتجات' : 'Pick from Products'}
+          </h3>
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder={isRTL ? 'بحث...' : 'Search...'}
+            className="px-4 py-2 rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg text-sm outline-none focus:border-brand-gold dark:text-white w-48"
+          />
+        </div>
+
+        {loading ? (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="h-36 bg-gray-100 dark:bg-dark-surface rounded-xl animate-pulse" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-h-96 overflow-y-auto">
+            {filtered.map(p => {
+              const id = p._id || p.id;
+              const isFeatured = featuredIds.includes(id);
+              const imageUrl = p.images?.[0]?.url || p.images?.[0] || p.image || null;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => toggleFeatured(p)}
+                  className={`relative p-3 rounded-xl border-2 transition-all text-left ${
+                    isFeatured
+                      ? 'border-brand-gold bg-brand-gold/5'
+                      : 'border-gray-200 dark:border-dark-border hover:border-brand-gold/50 bg-gray-50 dark:bg-dark-bg'
+                  }`}
+                >
+                  {isFeatured && (
+                    <span className="absolute top-1 right-1 text-xs bg-brand-gold text-white px-1.5 py-0.5 rounded-full">⭐</span>
+                  )}
+                  <div className="w-full h-20 rounded-lg overflow-hidden mb-2 bg-gray-100 dark:bg-dark-surface flex items-center justify-center">
+                    {imageUrl
+                      ? <img src={imageUrl} alt={p.name} className="w-full h-full object-cover" />
+                      : <span className="text-2xl">📦</span>
+                    }
+                  </div>
+                  <p className="text-xs font-semibold text-gray-900 dark:text-dark-text truncate">{p.name}</p>
+                  <p className="text-xs text-brand-gold font-bold">{(p.price || 0).toLocaleString()} EGP</p>
+                  <p className="text-xs text-gray-400 dark:text-dark-muted truncate">{p.brand?.name || ''}</p>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminDashboard() {
   const { t } = useTranslation();
   const { isRTL } = useLanguage();
@@ -907,6 +1103,7 @@ export default function AdminDashboard() {
   const [dashboard, setDashboard] = useState(null);
   const [stats, setStats] = useState(null);
   const [categoryBreakdown, setCategoryBreakdown] = useState([]);
+  const [categoriesMap, setCategoriesMap] = useState({});
   const [users, setUsers] = useState([]);
   const [brands, setBrands] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1046,6 +1243,31 @@ export default function AdminDashboard() {
       setLoading(false);
     };
     fetchData();
+  }, []);
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const catRes = await categoriesAPI.getAll();
+        const cats =
+          catRes.data?.data ||
+          catRes.data?.categories ||
+          catRes.data || [];
+
+        if (Array.isArray(cats) && cats.length > 0) {
+          const map = {};
+          cats.forEach(c => {
+            const id = c._id || c.id;
+            if (id) map[id] = c.name;
+          });
+          console.log('Categories map:', map);
+          setCategoriesMap(map);
+        }
+      } catch (err) {
+        console.error('Categories fetch error:', err);
+      }
+    };
+    fetchCategories();
   }, []);
 
   const sellers = brands.filter(b => b.status === 'pending');
@@ -1473,7 +1695,15 @@ export default function AdminDashboard() {
                             <tr key={brand._id || brand.id} className="border-b border-gray-50 dark:border-dark-border/50 last:border-0 hover:bg-gray-50/50 dark:hover:bg-dark-bg/50">
                               <td className="py-3 px-2 font-medium text-gray-900 dark:text-dark-text">{brand.owner?.name || 'Seller'}</td>
                               <td className="py-3 px-2 font-semibold text-brand-navy dark:text-brand-gold">{brand.name}</td>
-                              <td className="py-3 px-2 text-gray-600 dark:text-dark-muted">{brand.category?.name || 'Category'}</td>
+                              <td className="py-3 px-2 text-gray-600 dark:text-dark-muted">
+                                {brand.categories?.length > 0
+                                  ? brand.categories.map(catId => {
+                                      const id = typeof catId === 'object' ? (catId._id || catId.id) : catId;
+                                      return categoriesMap[id] || catId?.name || null;
+                                    }).filter(Boolean).join(', ') || '—'
+                                  : brand.category?.name || '—'
+                                }
+                              </td>
                               <td className="py-3 px-2 text-gray-500 dark:text-dark-muted">{brand.location || 'Egypt'}</td>
                               <td className="py-3 px-2 text-gray-500 dark:text-dark-muted">{new Date(brand.createdAt).toLocaleDateString()}</td>
                               <td className="py-3 px-2">
@@ -1593,7 +1823,18 @@ export default function AdminDashboard() {
                             <tr key={brand._id || brand.id} className="border-b border-gray-50 dark:border-dark-border/50 last:border-0 hover:bg-gray-50/50 dark:hover:bg-dark-bg/50">
                               <td className="py-3 px-2 font-medium text-gray-900 dark:text-dark-text">{brand.owner?.name || 'Seller'}</td>
                               <td className="py-3 px-2 font-semibold text-brand-navy dark:text-brand-gold">{brand.name}</td>
-                              <td className="py-3 px-2 text-gray-600 dark:text-dark-muted">{brand.categories?.[0]?.name || brand.category?.name || '—'}</td>
+                              <td className="py-3 px-2 text-gray-600 dark:text-dark-muted">
+                                {brand.categories?.length > 0
+                                  ? brand.categories.map(c => {
+                                      const id = typeof c === 'object' ? (c._id || c.id) : c;
+                                      if (typeof c === 'object' && c?.name) return c.name;
+                                      const name = categoriesMap[id];
+                                      return name || null;
+                                    })
+                                    .filter(Boolean)
+                                    .join(', ') || '—'
+                                  : '—'}
+                              </td>
                               <td className="py-3 px-2 text-gray-500 dark:text-dark-muted">{brand.country || 'Egypt'}</td>
                               <td className="py-3 px-2 text-gray-500 dark:text-dark-muted">
                                 {brand.createdAt ? new Date(brand.createdAt).toLocaleDateString(isRTL ? 'ar-EG' : 'en-US') : '—'}
@@ -1655,13 +1896,25 @@ export default function AdminDashboard() {
                       {
                         icon: '🏪',
                         label: isRTL ? 'متوسط قيمة الطلب' : 'Avg Order Value',
-                        value: `${(adminAnalytics?.revenue?.avgOrderValue || 0).toLocaleString()} ${isRTL ? 'ج.م' : 'EGP'}`,
+                        value: (() => {
+                          const revenue = adminAnalytics?.revenue?.total ||
+                            stats?.totalRevenue || 0;
+                          const orders = stats?.totalOrders || 0;
+                          const avg = orders > 0
+                            ? Math.round(revenue / orders)
+                            : 0;
+                          return `${avg.toLocaleString()} ${isRTL ? 'ج.م' : 'EGP'}`;
+                        })(),
                         color: 'bg-purple-50 dark:bg-purple-900/10 text-purple-700 dark:text-purple-400',
                       },
                       {
                         icon: '🏷️',
                         label: isRTL ? 'عمولة المنصة (5%)' : 'Platform Commission (5%)',
-                        value: `${Math.round((adminAnalytics?.revenue?.total || 0) * 0.05).toLocaleString()} ${isRTL ? 'ج.م' : 'EGP'}`,
+                        value: (() => {
+                          const revenue = adminAnalytics?.revenue?.total ||
+                            stats?.totalRevenue || 0;
+                          return `${Math.round(revenue * 0.05).toLocaleString()} ${isRTL ? 'ج.م' : 'EGP'}`;
+                        })(),
                         color: 'bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400',
                       },
                     ].map(s => (
@@ -1693,9 +1946,7 @@ export default function AdminDashboard() {
                         {adminAnalytics.topProducts.slice(0, 5).map((p, i) => {
                           const sales = p.totalSold || p.totalSales || p.sales || 0;
                           const revenue = p.totalRevenue || 0;
-                          const max = adminAnalytics.topProducts[0]?.totalSold ||
-                            adminAnalytics.topProducts[0]?.totalSales || 1;
-                          const pct = Math.round((sales / max) * 100);
+                          const topProducts = adminAnalytics.topProducts;
                           const imageUrl = p.image?.url || p.images?.[0]?.url || null;
                           return (
                             <div key={p._id || i} className={`flex items-center gap-3 mb-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
@@ -1711,7 +1962,14 @@ export default function AdminDashboard() {
                                 {p.productName || p.name || 'Product'}
                               </span>
                               <div className="w-20 h-1.5 bg-gray-100 dark:bg-dark-bg rounded-full overflow-hidden flex-shrink-0">
-                                <div className="h-full bg-brand-gold rounded-full" style={{ width: `${pct}%` }} />
+                                <div
+                                  className="h-full bg-brand-gold rounded-full"
+                                  style={{
+                                    width: topProducts.length > 0
+                                      ? `${Math.max(10, 100 - (i * 15))}%`
+                                      : '0%',
+                                  }}
+                                />
                               </div>
                               <div className={`text-right flex-shrink-0 ${isRTL ? 'text-left' : ''}`}>
                                 <p className="text-xs font-semibold text-gray-700 dark:text-dark-text">{sales} sold</p>
@@ -1741,6 +1999,8 @@ export default function AdminDashboard() {
                       <div className="space-y-3">
                         {adminAnalytics.topCustomers.slice(0, 5).map((c, i) => {
                           const displayName = c.name || c.customerName || c.userName || c.user?.name || 'Customer';
+                          const orderCount = c.ordersCount || c.totalOrders || c.orders || 0;
+                          const customerRevenue = c.totalSpent || c.totalPurchases || c.revenue || 0;
                           return (
                           <div key={c._id || i} className={`flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
                             <div className="w-8 h-8 rounded-full bg-brand-navy dark:bg-brand-gold flex items-center justify-center flex-shrink-0">
@@ -1751,11 +2011,15 @@ export default function AdminDashboard() {
                             <div className={`flex-1 min-w-0 ${isRTL ? 'text-right' : ''}`}>
                               <p className="text-sm font-semibold text-gray-900 dark:text-dark-text truncate">{displayName}</p>
                               <p className="text-xs text-gray-500 dark:text-dark-muted">
-                                {(c.totalSpent || c.totalPurchases || c.revenue || 0).toLocaleString()} {isRTL ? 'ج.م' : 'EGP'}
+                                {customerRevenue.toLocaleString()} {isRTL ? 'ج.م' : 'EGP'}
                               </p>
                             </div>
                             <span className="text-xs text-gray-400 dark:text-dark-muted">
-                              {(c.ordersCount || c.totalOrders || c.orders || 0)} {isRTL ? 'طلب' : 'orders'}
+                              {orderCount > 0
+                                ? `${orderCount} ${isRTL ? 'طلب' : 'orders'}`
+                                : customerRevenue > 0
+                                  ? `${customerRevenue.toLocaleString()} ${isRTL ? 'ج.م' : 'EGP'}`
+                                  : (isRTL ? '0 طلب' : '0 orders')}
                             </span>
                           </div>
                           );
@@ -1840,28 +2104,7 @@ export default function AdminDashboard() {
             )}
 
             {activeTab === 'featured' && (
-              <div>
-                <h2 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
-                  {isRTL ? 'الخانات المميزة' : 'Featured Slots'}
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {[
-                    { icon: '🏠', title: isRTL ? 'الصفحة الرئيسية' : 'Homepage', slots: 4, desc: isRTL ? 'خانات المنتجات المميزة في الصفحة الرئيسية' : 'Featured product slots on the homepage' },
-                    { icon: '🔍', title: isRTL ? 'نتائج البحث' : 'Search Results', slots: 3, desc: isRTL ? 'منتجات تظهر في أعلى نتائج البحث' : 'Products appearing at the top of search results' },
-                    { icon: '🏷️', title: isRTL ? 'صفحة الفئات' : 'Category Pages', slots: 2, desc: isRTL ? 'ماركات مميزة في صفحات الفئات' : 'Featured brands on category pages' },
-                  ].map((item, i) => (
-                    <div key={i} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 ${isRTL ? 'text-right' : ''}`}>
-                      <div className="text-3xl mb-3">{item.icon}</div>
-                      <h3 className="font-bold text-gray-900 dark:text-dark-text mb-1">{item.title}</h3>
-                      <p className="text-xs text-brand-gold font-semibold mb-2">{item.slots} {isRTL ? 'خانات متاحة' : 'slots available'}</p>
-                      <p className="text-sm text-gray-500 dark:text-dark-muted mb-4">{item.desc}</p>
-                      <button type="button" disabled className="w-full py-2 text-xs bg-gray-100 dark:bg-dark-bg text-gray-400 rounded-xl font-semibold cursor-not-allowed">
-                        {isRTL ? 'إدارة الخانات — قريباً' : 'Manage Slots — Coming Soon'}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <AdminFeaturedSlotsTab isRTL={isRTL} productsAPI={productsAPI} />
             )}
 
             {activeTab === 'notifications' && (
@@ -1943,7 +2186,11 @@ export default function AdminDashboard() {
               {[
                 { label: isRTL ? 'الوصف' : 'Description', value: reviewModal.brand.description || '—' },
                 { label: isRTL ? 'الدولة' : 'Country', value: reviewModal.brand.country || 'Egypt' },
-                { label: isRTL ? 'الفئات' : 'Categories', value: reviewModal.brand.categories?.map(c => c.name || c).join(', ') || reviewModal.brand.category?.name || '—' },
+                { label: isRTL ? 'الفئات' : 'Categories',
+                  value: reviewModal.brand.categories?.map(c => {
+                    const id = typeof c === 'object' ? (c._id || c.id) : c;
+                    return categoriesMap[id] || c?.name || null;
+                  }).filter(Boolean).join(', ') || '—' },
                 { label: isRTL ? 'الموقع الإلكتروني' : 'Website', value: reviewModal.brand.website || '—' },
                 { label: isRTL ? 'تاريخ التقديم' : 'Submitted', value: reviewModal.brand.createdAt ? new Date(reviewModal.brand.createdAt).toLocaleDateString(isRTL ? 'ar-EG' : 'en-US') : '—' },
               ].map(item => (

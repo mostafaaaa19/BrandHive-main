@@ -375,6 +375,10 @@ export default function UserDashboard() {
   };
 
   const handleReorder = async (orderId) => {
+    if (!orderId) {
+      toast.error(isRTL ? 'معرّف الطلب غير صالح' : 'Invalid order ID');
+      return;
+    }
     setReorderLoading(orderId);
     try {
       await ordersAPI.reorder(orderId);
@@ -497,8 +501,8 @@ export default function UserDashboard() {
 
   return (
     <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200 ${isRTL ? 'text-right' : 'text-left'}`}>
-      <div className="page-container py-8">
-        <div className={`flex gap-8 ${isRTL ? 'flex-row-reverse' : ''}`}>
+      <div className="page-container py-4 sm:py-8">
+        <div className={`flex flex-col md:flex-row gap-4 md:gap-8 ${isRTL ? 'md:flex-row-reverse' : ''}`}>
           {/* Sidebar */}
           <aside className="hidden md:block w-60 flex-shrink-0">
             <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-4 sticky top-24">
@@ -540,24 +544,28 @@ export default function UserDashboard() {
             </div>
           </aside>
 
-          {/* Mobile Tab Bar */}
-          <div className="md:hidden w-full overflow-x-auto pb-4 mb-2">
-            <div className={`flex gap-2 whitespace-nowrap ${isRTL ? 'flex-row-reverse' : ''}`}>
-              {[...TABS, ...PROFILE_TABS, ...SUPPORT_TABS].map(t => (
-                <button
-                  key={t.tab}
-                  onClick={() => setActiveTab(t.tab)}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium flex-shrink-0 transition-all ${activeTab === t.tab ? 'bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy' : 'bg-white dark:bg-dark-surface text-gray-600 dark:text-dark-text'
-                    }`}
-                >
-                  <t.icon size={13} /> {t.label}
-                </button>
-              ))}
+          {/* Content + mobile tabs */}
+          <div className="flex-1 min-w-0 w-full">
+            <div className="md:hidden overflow-x-auto pb-4 mb-2 -mx-1">
+              <div className={`flex gap-2 whitespace-nowrap px-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                {[...TABS, ...PROFILE_TABS, ...SUPPORT_TABS].map(t => (
+                  <button
+                    key={t.tab}
+                    type="button"
+                    onClick={() => setActiveTab(t.tab)}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium flex-shrink-0 transition-all ${
+                      activeTab === t.tab
+                        ? 'bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy'
+                        : 'bg-white dark:bg-dark-surface text-gray-600 dark:text-dark-text border border-gray-100 dark:border-dark-border'
+                    } ${isRTL ? 'flex-row-reverse' : ''}`}
+                  >
+                    <t.icon size={13} /> {t.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
 
-          {/* Content */}
-          <div className="flex-1 min-w-0">
+            <div className="min-w-0">
             {/* Dashboard Overview */}
             {activeTab === 'dashboard' && (
               <div>
@@ -661,11 +669,11 @@ export default function UserDashboard() {
 
             {/* Orders Tab */}
             {activeTab === 'orders' && (
-              <div>
-                <h1 className="text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6">
+              <div className="min-w-0">
+                <h1 className={`text-xl sm:text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-4 sm:mb-6 ${isRTL ? 'text-right' : ''}`}>
                   {isRTL ? 'طلباتي' : 'My Orders'}
                 </h1>
-                <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
+                <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-4 sm:p-6">
                   {ordersLoading ? (
                     <div className="space-y-4">
                       {[...Array(3)].map((_, i) => (
@@ -694,90 +702,160 @@ export default function UserDashboard() {
                       </Link>
                     </div>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className={`w-full text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
-                        <thead>
-                          <tr className="border-b border-gray-100 dark:border-dark-border">
-                            {[
-                              isRTL ? 'رقم الطلب' : 'Order ID',
-                              isRTL ? 'المنتج' : 'Product',
-                              isRTL ? 'الماركة' : 'Brand',
-                              isRTL ? 'التاريخ' : 'Date',
-                              isRTL ? 'المبلغ' : 'Amount',
-                              isRTL ? 'الحالة' : 'Status',
-                              isRTL ? 'إجراءات' : 'Actions'
-                            ].map(h => (
-                              <th key={h} className="text-xs font-semibold text-gray-400 dark:text-dark-muted uppercase tracking-wider pb-3 px-2">{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {orders.map(order => {
-                            const orderId = order._id || order.id || order.orderId;
-                            const date = new Date(order.createdAt || order.date || Date.now()).toLocaleDateString();
-                            const amount = Number(order.totalAmount || order.total || order.amount || 0);
-                            const status = order.status || order.orderStatus || 'Pending';
-                            const items = order.items || order.products || [];
-                            const productName = items[0]?.product?.name || items[0]?.name || order.product || 'Multiple items';
-                            const brandName = items[0]?.product?.brand?.name || items[0]?.brandName || order.brand || '-';
+                    <>
+                      <div className="md:hidden space-y-4">
+                        {orders.map(order => {
+                          const orderId = order._id || order.id || order.orderId;
+                          const date = new Date(order.createdAt || order.date || Date.now()).toLocaleDateString();
+                          const amount = Number(order.totalAmount || order.total || order.amount || 0);
+                          const status = order.status || order.orderStatus || 'Pending';
+                          const items = order.items || order.products || [];
+                          const productName = items[0]?.product?.name || items[0]?.name || order.product || (isRTL ? 'عدة منتجات' : 'Multiple items');
+                          const brandName = items[0]?.product?.brand?.name || items[0]?.brandName || order.brand || '-';
 
-                            return (
-                              <tr key={orderId} className="border-b border-gray-50 dark:border-dark-border/50 last:border-0 hover:bg-gray-50/50 dark:hover:bg-dark-bg/50">
-                                <td className="py-3 px-2 font-mono text-xs text-brand-navy dark:text-brand-gold font-semibold">#{orderId.toString().slice(-6).toUpperCase()}</td>
-                                <td className="py-3 px-2 font-medium text-gray-900 dark:text-dark-text max-w-[140px] truncate">{productName}</td>
-                                <td className="py-3 px-2 text-gray-600 dark:text-dark-muted">{brandName}</td>
-                                <td className="py-3 px-2 text-gray-500 dark:text-dark-muted">{date}</td>
-                                <td className="py-3 px-2 font-semibold text-gray-900 dark:text-dark-text">{amount.toLocaleString()} {t('common.egp')}</td>
-                                <td className="py-3 px-2">
-                                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${STATUS_COLORS[status] || 'bg-gray-100 text-gray-600'}`}>
-                                    {translateStatus(status)}
-                                  </span>
-                                </td>
-                                <td className="py-3 px-2">
-                                  <div className={`flex items-center gap-2 flex-wrap ${isRTL ? 'flex-row-reverse' : ''}`}>
-                                    <button
-                                      onClick={() => {
-                                        setSelectedOrder(order);
-                                        fetchOrderDetail(orderId);
-                                      }}
-                                      className="text-xs text-brand-navy dark:text-brand-gold hover:underline"
-                                    >
-                                      {isRTL ? 'تتبع' : 'Track'}
-                                    </button>
-                                    {canReorder(status) && (
+                          return (
+                            <div
+                              key={orderId}
+                              className={`rounded-xl border border-gray-100 dark:border-dark-border p-4 ${isRTL ? 'text-right' : 'text-left'}`}
+                            >
+                              <div className={`flex items-start justify-between gap-2 mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                                <span className="font-mono text-xs text-brand-navy dark:text-brand-gold font-semibold">
+                                  #{orderId.toString().slice(-6).toUpperCase()}
+                                </span>
+                                <span className={`px-2 py-1 rounded-full text-[10px] font-bold shrink-0 ${STATUS_COLORS[status] || 'bg-gray-100 text-gray-600'}`}>
+                                  {translateStatus(status)}
+                                </span>
+                              </div>
+                              <p className="font-medium text-gray-900 dark:text-dark-text text-sm truncate">{productName}</p>
+                              <p className="text-xs text-gray-500 dark:text-dark-muted mt-0.5">{brandName} · {date}</p>
+                              <p className="font-semibold text-gray-900 dark:text-dark-text mt-2">
+                                {amount.toLocaleString()} {t('common.egp')}
+                              </p>
+                              <div className={`flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-50 dark:border-dark-border/50 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedOrder(order);
+                                    fetchOrderDetail(orderId);
+                                  }}
+                                  className="text-xs text-brand-navy dark:text-brand-gold hover:underline"
+                                >
+                                  {isRTL ? 'تتبع' : 'Track'}
+                                </button>
+                                {canReorder(status) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleReorder(orderId)}
+                                    disabled={reorderLoading === orderId}
+                                    className="text-xs px-3 py-1.5 bg-brand-gold/10 text-brand-gold hover:bg-brand-gold/20 rounded-lg font-semibold transition-colors disabled:opacity-50"
+                                  >
+                                    {reorderLoading === orderId ? '…' : (isRTL ? '🔄 إعادة الطلب' : '🔄 Reorder')}
+                                  </button>
+                                )}
+                                {needsPaymentRetry(status) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRetryPayment(order._id || order.id)}
+                                    disabled={retryLoading === (order._id || order.id)}
+                                    className="text-xs px-3 py-1.5 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 rounded-lg font-semibold disabled:opacity-50"
+                                  >
+                                    {retryLoading === (order._id || order.id) ? '…' : (isRTL ? '💳 إعادة الدفع' : '💳 Retry Payment')}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="hidden md:block overflow-x-auto">
+                        <table className={`w-full text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
+                          <thead>
+                            <tr className="border-b border-gray-100 dark:border-dark-border">
+                              {[
+                                isRTL ? 'رقم الطلب' : 'Order ID',
+                                isRTL ? 'المنتج' : 'Product',
+                                isRTL ? 'الماركة' : 'Brand',
+                                isRTL ? 'التاريخ' : 'Date',
+                                isRTL ? 'المبلغ' : 'Amount',
+                                isRTL ? 'الحالة' : 'Status',
+                                isRTL ? 'إجراءات' : 'Actions'
+                              ].map(h => (
+                                <th key={h} className="text-xs font-semibold text-gray-400 dark:text-dark-muted uppercase tracking-wider pb-3 px-2">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {orders.map(order => {
+                              const orderId = order._id || order.id || order.orderId;
+                              const date = new Date(order.createdAt || order.date || Date.now()).toLocaleDateString();
+                              const amount = Number(order.totalAmount || order.total || order.amount || 0);
+                              const status = order.status || order.orderStatus || 'Pending';
+                              const items = order.items || order.products || [];
+                              const productName = items[0]?.product?.name || items[0]?.name || order.product || 'Multiple items';
+                              const brandName = items[0]?.product?.brand?.name || items[0]?.brandName || order.brand || '-';
+
+                              return (
+                                <tr key={orderId} className="border-b border-gray-50 dark:border-dark-border/50 last:border-0 hover:bg-gray-50/50 dark:hover:bg-dark-bg/50">
+                                  <td className="py-3 px-2 font-mono text-xs text-brand-navy dark:text-brand-gold font-semibold">#{orderId.toString().slice(-6).toUpperCase()}</td>
+                                  <td className="py-3 px-2 font-medium text-gray-900 dark:text-dark-text max-w-[140px] truncate">{productName}</td>
+                                  <td className="py-3 px-2 text-gray-600 dark:text-dark-muted">{brandName}</td>
+                                  <td className="py-3 px-2 text-gray-500 dark:text-dark-muted">{date}</td>
+                                  <td className="py-3 px-2 font-semibold text-gray-900 dark:text-dark-text">{amount.toLocaleString()} {t('common.egp')}</td>
+                                  <td className="py-3 px-2">
+                                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${STATUS_COLORS[status] || 'bg-gray-100 text-gray-600'}`}>
+                                      {translateStatus(status)}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-2">
+                                    <div className={`flex items-center gap-2 flex-wrap ${isRTL ? 'flex-row-reverse' : ''}`}>
                                       <button
-                                        onClick={() => handleReorder(order._id || order.id)}
-                                        disabled={reorderLoading === (order._id || order.id)}
-                                        className="text-xs px-3 py-1.5 bg-brand-gold/10 text-brand-gold hover:bg-brand-gold/20 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-1"
+                                        type="button"
+                                        onClick={() => {
+                                          setSelectedOrder(order);
+                                          fetchOrderDetail(orderId);
+                                        }}
+                                        className="text-xs text-brand-navy dark:text-brand-gold hover:underline"
                                       >
-                                        {reorderLoading === (order._id || order.id) ? (
-                                          <div className="w-3 h-3 border-2 border-brand-gold border-t-transparent rounded-full animate-spin" />
-                                        ) : (
-                                          <>🔄 {isRTL ? 'إعادة الطلب' : 'Reorder'}</>
-                                        )}
+                                        {isRTL ? 'تتبع' : 'Track'}
                                       </button>
-                                    )}
-                                    {needsPaymentRetry(status) && (
-                                      <button
-                                        onClick={() => handleRetryPayment(order._id || order.id)}
-                                        disabled={retryLoading === (order._id || order.id)}
-                                        className="text-xs px-3 py-1.5 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 hover:bg-red-100 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-1"
-                                      >
-                                        {retryLoading === (order._id || order.id) ? (
-                                          <div className="w-3 h-3 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
-                                        ) : (
-                                          <>💳 {isRTL ? 'إعادة الدفع' : 'Retry Payment'}</>
-                                        )}
-                                      </button>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                                      {canReorder(status) && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleReorder(orderId)}
+                                          disabled={reorderLoading === orderId}
+                                          className="text-xs px-3 py-1.5 bg-brand-gold/10 text-brand-gold hover:bg-brand-gold/20 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-1"
+                                        >
+                                          {reorderLoading === orderId ? (
+                                            <div className="w-3 h-3 border-2 border-brand-gold border-t-transparent rounded-full animate-spin" />
+                                          ) : (
+                                            <>🔄 {isRTL ? 'إعادة الطلب' : 'Reorder'}</>
+                                          )}
+                                        </button>
+                                      )}
+                                      {needsPaymentRetry(status) && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRetryPayment(order._id || order.id)}
+                                          disabled={retryLoading === (order._id || order.id)}
+                                          className="text-xs px-3 py-1.5 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 hover:bg-red-100 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-1"
+                                        >
+                                          {retryLoading === (order._id || order.id) ? (
+                                            <div className="w-3 h-3 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                                          ) : (
+                                            <>💳 {isRTL ? 'إعادة الدفع' : 'Retry Payment'}</>
+                                          )}
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
@@ -1324,6 +1402,7 @@ export default function UserDashboard() {
                 </div>
               </div>
             )}
+            </div>
           </div>
         </div>
       </div>
@@ -1448,11 +1527,11 @@ export default function UserDashboard() {
                     <div className={`border-t border-gray-100 dark:border-dark-border pt-4 flex gap-2 flex-wrap ${isRTL ? 'justify-start flex-row-reverse' : 'justify-end'}`}>
                       {canReorder(orderDetail.status || orderDetail.orderStatus) && (
                         <button
-                          onClick={() => handleReorder(orderDetail._id || orderDetail.id)}
-                          disabled={reorderLoading === (orderDetail._id || orderDetail.id)}
+                          onClick={() => handleReorder(orderDetail._id || orderDetail.id || orderDetail.orderId)}
+                          disabled={reorderLoading === (orderDetail._id || orderDetail.id || orderDetail.orderId)}
                           className="text-xs px-3 py-1.5 bg-brand-gold/10 text-brand-gold hover:bg-brand-gold/20 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-1"
                         >
-                          {reorderLoading === (orderDetail._id || orderDetail.id) ? (
+                          {reorderLoading === (orderDetail._id || orderDetail.id || orderDetail.orderId) ? (
                             <div className="w-3 h-3 border-2 border-brand-gold border-t-transparent rounded-full animate-spin" />
                           ) : (
                             <>🔄 {isRTL ? 'إعادة الطلب' : 'Reorder'}</>

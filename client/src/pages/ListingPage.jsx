@@ -150,6 +150,15 @@ export default function ListingPage() {
     fetchFacets();
   }, []);
 
+  useEffect(() => {
+    if (!showMobileFilters) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [showMobileFilters]);
+
   const priceHint = facets?.priceRange || null;
 
   // Use categoryParam directly for filtering
@@ -299,21 +308,21 @@ export default function ListingPage() {
       </div>
 
       <FilterSection title={isRTL ? 'نطاق السعر' : 'Price Range'} isRTL={isRTL}>
-        <div className={`flex items-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+        <div className={`flex flex-col sm:flex-row items-stretch sm:items-center gap-2 ${isRTL ? 'sm:flex-row-reverse' : ''}`}>
           <input
             type="number"
             value={priceMin}
             onChange={e => setPriceMin(e.target.value)}
-            placeholder={priceHint ? `Min (${priceHint.min} EGP)` : (isRTL ? 'الأقل' : 'Min')}
-            className={`input-field py-2 text-sm ${isRTL ? 'text-right' : ''}`}
+            placeholder={priceHint ? `${isRTL ? 'من' : 'Min'} ${priceHint.min}` : (isRTL ? 'الأقل' : 'Min')}
+            className={`input-field py-2 text-sm min-w-0 flex-1 ${isRTL ? 'text-right' : ''}`}
           />
-          <span className="text-gray-400 dark:text-dark-muted text-sm">—</span>
+          <span className="text-gray-400 dark:text-dark-muted text-sm hidden sm:inline shrink-0">—</span>
           <input
             type="number"
             value={priceMax}
             onChange={e => setPriceMax(e.target.value)}
-            placeholder={priceHint ? `Max (${priceHint.max} EGP)` : (isRTL ? 'الأعلى' : 'Max')}
-            className={`input-field py-2 text-sm ${isRTL ? 'text-right' : ''}`}
+            placeholder={priceHint ? `${isRTL ? 'إلى' : 'Max'} ${priceHint.max}` : (isRTL ? 'الأعلى' : 'Max')}
+            className={`input-field py-2 text-sm min-w-0 flex-1 ${isRTL ? 'text-right' : ''}`}
           />
         </div>
         <div className={`flex gap-2 mt-2 flex-wrap ${isRTL ? 'flex-row-reverse' : ''}`}>
@@ -420,27 +429,29 @@ export default function ListingPage() {
     <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200 ${isRTL ? 'text-right' : 'text-left'}`}>
       {/* Breadcrumb */}
       <div className="bg-white dark:bg-dark-surface border-b border-gray-100 dark:border-dark-border">
-        <div className={`page-container py-3 text-sm text-gray-500 dark:text-dark-muted flex items-center ${isRTL ? 'flex-row-reverse' : ''}`}>
-          <Link to="/" className="hover:text-brand-navy dark:hover:text-brand-gold">{isRTL ? 'الرئيسية' : 'Home'}</Link>
-          <span className="mx-2">›</span>
-          <Link to="/products" className="hover:text-brand-navy dark:hover:text-brand-gold">{isRTL ? 'الفئات' : 'Categories'}</Link>
+        <div className={`page-container py-3 text-sm text-gray-500 dark:text-dark-muted flex flex-wrap items-center gap-x-2 gap-y-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <Link to="/" className="hover:text-brand-navy dark:hover:text-brand-gold shrink-0">{isRTL ? 'الرئيسية' : 'Home'}</Link>
+          <span className="shrink-0">›</span>
+          <Link to="/products" className="hover:text-brand-navy dark:hover:text-brand-gold shrink-0">{isRTL ? 'الفئات' : 'Categories'}</Link>
           {activeCategory && (
             <>
-              <span className="mx-2">›</span>
-              <span className="text-gray-900 dark:text-dark-text font-medium">{activeCategory}</span>
+              <span className="shrink-0">›</span>
+              <span className="text-gray-900 dark:text-dark-text font-medium truncate max-w-[10rem] sm:max-w-none">{activeCategory}</span>
             </>
           )}
           {searchParam && (
             <>
-              <span className="mx-2">›</span>
-              <span className="text-gray-900 dark:text-dark-text font-medium">{isRTL ? 'بحث' : 'Search'}: "{searchParam}"</span>
+              <span className="shrink-0">›</span>
+              <span className="text-gray-900 dark:text-dark-text font-medium truncate max-w-[12rem] sm:max-w-xs md:max-w-md">
+                {isRTL ? 'بحث' : 'Search'}: &quot;{searchParam}&quot;
+              </span>
             </>
           )}
         </div>
       </div>
 
-      <div className="page-container py-8">
-        <div className={`flex gap-8 ${isRTL ? 'flex-row-reverse' : ''}`}>
+      <div className="page-container py-4 sm:py-8">
+        <div className={`flex flex-col lg:flex-row gap-4 lg:gap-8 ${isRTL ? 'lg:flex-row-reverse' : ''}`}>
           {/* Sidebar - Desktop */}
           <aside className="hidden lg:block w-64 flex-shrink-0">
             <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 sticky top-24">
@@ -451,9 +462,9 @@ export default function ListingPage() {
           {/* Main Content */}
           <div className="flex-1 min-w-0">
             {/* Header */}
-            <div className={`flex flex-wrap items-center justify-between gap-3 mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
-              <div className={isRTL ? 'text-right' : 'text-left'}>
-                <h1 className="text-xl font-display font-bold text-gray-900 dark:text-dark-text">
+            <div className={`flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 mb-6 ${isRTL ? 'sm:flex-row-reverse' : ''}`}>
+              <div className={`min-w-0 ${isRTL ? 'text-right' : 'text-left'}`}>
+                <h1 className="text-lg sm:text-xl font-display font-bold text-gray-900 dark:text-dark-text truncate">
                   {searchParam ? (isRTL ? `نتائج البحث عن "${searchParam}"` : `Results for "${searchParam}"`) : activeCategory ? activeCategory : (isRTL ? 'جميع المنتجات' : 'All Products')}
                 </h1>
                 <p className="text-gray-500 dark:text-dark-muted text-sm mt-0.5">
@@ -465,11 +476,11 @@ export default function ListingPage() {
                 </p>
               </div>
 
-              <div className={`flex items-center gap-2 flex-wrap ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto min-w-0 ${isRTL ? 'sm:flex-row-reverse' : ''}`}>
                 {/* Mobile filter button */}
                 <button
                   onClick={() => setShowMobileFilters(true)}
-                  className={`lg:hidden flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface text-sm font-medium hover:border-brand-navy dark:hover:border-brand-gold transition-colors text-gray-700 dark:text-dark-text ${isRTL ? 'flex-row-reverse' : ''}`}
+                  className={`lg:hidden flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface text-sm font-medium hover:border-brand-navy dark:hover:border-brand-gold transition-colors text-gray-700 dark:text-dark-text ${isRTL ? 'flex-row-reverse' : ''}`}
                 >
                   <SlidersHorizontal size={15} />
                   {isRTL ? 'الفلاتر' : 'Filters'}
@@ -479,13 +490,13 @@ export default function ListingPage() {
                 <select
                   value={sort}
                   onChange={e => setSort(e.target.value)}
-                  className={`input-field py-2.5 text-sm w-44 ${isRTL ? 'text-right' : ''}`}
+                  className={`input-field py-2.5 text-sm w-full sm:flex-1 sm:w-44 sm:max-w-[11rem] min-w-0 ${isRTL ? 'text-right' : ''}`}
                 >
                   {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
 
                 {/* View */}
-                <div className={`flex items-center gap-1 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl p-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex items-center justify-center gap-1 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl p-1 shrink-0 ${isRTL ? 'flex-row-reverse' : ''}`}>
                   {[
                     { key: 'grid4', icon: <LayoutGrid size={15} /> },
                     { key: 'grid2', icon: <Grid3X3 size={15} /> },
@@ -559,8 +570,8 @@ export default function ListingPage() {
       {/* Mobile Filter Drawer */}
       {showMobileFilters && (
         <div className="fixed inset-0 z-50 flex lg:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setShowMobileFilters(false)} />
-          <div className={`relative ${isRTL ? 'mr-auto animate-slide-in-left' : 'ml-auto animate-slide-in-right'} w-80 max-w-full h-full bg-white dark:bg-dark-surface p-6 overflow-y-auto shadow-2xl`}>
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowMobileFilters(false)} aria-hidden="true" />
+          <div className={`relative ${isRTL ? 'mr-auto animate-slide-in-left' : 'ml-auto animate-slide-in-right'} w-full max-w-sm sm:w-80 h-full bg-white dark:bg-dark-surface p-4 sm:p-6 pb-8 overflow-y-auto shadow-2xl`}>
             <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
               <h2 className="font-bold text-xl text-gray-900 dark:text-dark-text">{isRTL ? 'الفلاتر' : 'Filters'}</h2>
               <button onClick={() => setShowMobileFilters(false)} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-dark-bg text-gray-600 dark:text-dark-muted">

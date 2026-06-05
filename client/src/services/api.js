@@ -358,7 +358,7 @@ export const adminAPI = {
 };
 
 export const categoriesAPI = {
-  getAll: () => getPublicCategories(),
+  getAll: () => api.get('/category'),
   getOne: (id) => api.get(`/category/${id}`),
 };
 
@@ -380,7 +380,7 @@ export const ordersAPI = {
   getMyOrder: (orderId) => api.get(`/orders/my-orders/${orderId}`),
   getAll: () => api.get('/orders/my-orders'),
   cancelOrder: (orderId, data) => api.post(`/orders/my-orders/${orderId}/cancel`, data),
-  reorder: (orderId) => api.post(`/orders/${orderId}/reorder`),
+  reorder: (orderId) => api.post(`/orders/my-orders/${orderId}/reorder`),
   retryPayment: (orderId) => api.post('/payment/retry', { orderId }),
 };
 

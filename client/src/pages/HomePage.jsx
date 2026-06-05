@@ -67,25 +67,39 @@ export default function HomePage() {
       // Fetch products
       try {
         setProductsLoading(true);
-        const res = await productsAPI.getAll({ page: 1, limit: 50 });
-        const raw =
-          res.data?.data ||
-          res.data?.products ||
-          res.data?.items ||
-          (Array.isArray(res.data) ? res.data : []);
-        console.log('[HomePage] raw products count:', Array.isArray(raw) ? raw.length : raw);
-        if (Array.isArray(raw) && raw.length > 0) {
-          const mapped = raw.map(mapProduct);
-          const seen = new Set();
-          const unique = mapped.filter(p => {
-            const key = p.id || p.slug || p.name;
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          });
-          setFeaturedProducts(unique);
-        } else {
-          setFeaturedProducts([]);
+        let loadedFromStorage = false;
+        const adminFeatured = localStorage.getItem('brandhive_featured_products');
+        if (adminFeatured) {
+          try {
+            const parsed = JSON.parse(adminFeatured);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setFeaturedProducts(parsed.map(mapProduct));
+              loadedFromStorage = true;
+            }
+          } catch { /* fall through to API */ }
+        }
+
+        if (!loadedFromStorage) {
+          const res = await productsAPI.getAll({ page: 1, limit: 50 });
+          const raw =
+            res.data?.data ||
+            res.data?.products ||
+            res.data?.items ||
+            (Array.isArray(res.data) ? res.data : []);
+          console.log('[HomePage] raw products count:', Array.isArray(raw) ? raw.length : raw);
+          if (Array.isArray(raw) && raw.length > 0) {
+            const mapped = raw.map(mapProduct);
+            const seen = new Set();
+            const unique = mapped.filter(p => {
+              const key = p.id || p.slug || p.name;
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+            setFeaturedProducts(unique);
+          } else {
+            setFeaturedProducts([]);
+          }
         }
       } catch {
         setFeaturedProducts([]);

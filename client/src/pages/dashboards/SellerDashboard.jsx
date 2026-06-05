@@ -510,7 +510,7 @@ function SellerBazaarTab({ isRTL, sellerAPI }) {
         </div>
       ) : bazaar ? (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
             {[
               { label: isRTL ? 'المتابعون' : 'Followers', 
                 value: bazaar.followersCount || 0, emoji: '👥' },
@@ -851,13 +851,13 @@ function SellerInventoryTab({ isRTL, t }) {
 
   return (
     <div>
-      <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
-        <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text ${isRTL ? 'text-right' : ''}`}>
+      <div className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 ${isRTL ? 'sm:flex-row-reverse' : ''}`}>
+        <h1 className={`text-xl sm:text-2xl font-display font-bold text-gray-900 dark:text-dark-text ${isRTL ? 'text-right' : ''}`}>
           {isRTL ? 'إدارة المخزون' : 'Inventory Management'}
         </h1>
         <button
           onClick={() => setAdjustModal(true)}
-          className="btn-primary text-sm flex items-center gap-2"
+          className="btn-primary text-sm flex items-center justify-center gap-2 w-full sm:w-auto shrink-0"
         >
           <Plus size={14} />
           {isRTL ? 'تعديل مخزون' : 'Adjust Stock'}
@@ -905,8 +905,8 @@ function SellerInventoryTab({ isRTL, t }) {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className={`w-full text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
+          <div className="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
+            <table className={`w-full min-w-[32rem] text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
               <thead>
                 <tr className="border-b border-gray-100 dark:border-dark-border">
                   {[
@@ -1145,6 +1145,17 @@ export default function SellerDashboard() {
     navigate('/');
   };
 
+  const mobileNavItems = [
+    { icon: LayoutDashboard, label: isRTL ? 'لوحة التحكم' : 'Dashboard', tab: 'dashboard' },
+    { icon: Store, label: isRTL ? 'البازار' : 'Bazaar', tab: 'bazaar' },
+    { icon: Package, label: isRTL ? 'الطلبات' : 'Orders', tab: 'orders' },
+    { icon: ShoppingBag, label: isRTL ? 'المنتجات' : 'Products', tab: 'products' },
+    { icon: Package, label: isRTL ? 'المخزون' : 'Inventory', tab: 'inventory' },
+    { icon: DollarSign, label: isRTL ? 'الأرباح' : 'Revenue', tab: 'revenue' },
+    { icon: Star, label: isRTL ? 'التقييمات' : 'Reviews', tab: 'reviews' },
+    { icon: Settings, label: isRTL ? 'الإعدادات' : 'Settings', tab: 'settings' },
+  ];
+
   const navSections = [
     {
       label: isRTL ? 'نظرة عامة' : 'Overview',
@@ -1188,8 +1199,8 @@ export default function SellerDashboard() {
 
   return (
     <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200 ${isRTL ? 'text-right' : 'text-left'}`}>
-      <div className="page-container py-8">
-        <div className={`flex gap-8 ${isRTL ? 'flex-row-reverse' : ''}`}>
+      <div className="page-container py-4 sm:py-8">
+        <div className={`flex flex-col md:flex-row gap-4 md:gap-8 ${isRTL ? 'md:flex-row-reverse' : ''}`}>
           {/* Sidebar */}
           <aside className="hidden md:block w-56 flex-shrink-0">
             <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-4 sticky top-24">
@@ -1225,7 +1236,28 @@ export default function SellerDashboard() {
           </aside>
 
           {/* Main Content */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 w-full">
+            {/* Mobile navigation */}
+            <div className="md:hidden overflow-x-auto pb-4 mb-2 -mx-1">
+              <div className={`flex gap-2 whitespace-nowrap px-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                {mobileNavItems.map(item => (
+                  <button
+                    key={item.tab}
+                    type="button"
+                    onClick={() => setActiveTab(item.tab)}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium flex-shrink-0 transition-all ${
+                      activeTab === item.tab
+                        ? 'bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy'
+                        : 'bg-white dark:bg-dark-surface text-gray-600 dark:text-dark-text border border-gray-100 dark:border-dark-border'
+                    } ${isRTL ? 'flex-row-reverse' : ''}`}
+                  >
+                    <item.icon size={13} />
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Dashboard */}
             {activeTab === 'dashboard' && (
               <div>

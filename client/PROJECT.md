@@ -420,3 +420,16 @@ To ensure consistency between backend responses and frontend UI, we use mappers 
 - Inventory tab shows: low stock alerts, inventory logs table, adjust stock modal
 - Added inventoryAPI with getLogs, adjust, getAlerts methods
 - Inventory adjustment supports: restock, damage, return, correction, sale reasons
+- Fixed Revenue tab — avg order value calculated from revenue/orders, commission = revenue × 5%, top products bars show relative width by rank, top customers show revenue when orders = 0
+- Fixed category display in Admin Sellers tab — fetches categories list and maps IDs to names
+- Fixed categoriesMap — moved to separate useEffect, categories now show names instead of IDs in Sellers tab
+- Fixed category display in Overview tab pending sellers table
+- Fixed category ID display in Review modal: now shows category name using categoriesMap
+- Featured Slots: admin can now select up to 4 products to feature on homepage
+- Products saved to localStorage (brandhive_featured_slots + brandhive_featured_products)
+- HomePage now reads admin-selected featured products from localStorage
+- Visual slot manager with empty slot indicators
+- Fixed Admin send notification: added required type field with dropdown selector
+- Supports all 10 notification types from API spec
+- Fixed reorder endpoint URL
+- Fixed reorder endpoint: /orders/my-orders/:id/reorder

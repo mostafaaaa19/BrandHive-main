@@ -6,6 +6,7 @@ import { productsAPI, brandsAPI } from '../services/api';
 import { mapProduct, mapBrand } from '../utils/mappers';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
 export default function BrandPage() {
@@ -13,12 +14,16 @@ export default function BrandPage() {
   const { isRTL } = useLanguage();
   const { slug } = useParams();
   
+  const { isAuthenticated } = useAuth();
   const [brand, setBrand] = useState(null);
   const [brandProducts, setBrandProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('Bazaar');
-  const [following, setFollowing] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
+  const [localFollowers, setLocalFollowers] = useState(0);
+  const [localSales, setLocalSales] = useState(0);
   const [sortBy, setSortBy] = useState('Best Match');
   const [filterCat, setFilterCat] = useState('All');
 
@@ -61,13 +66,15 @@ export default function BrandPage() {
               prodRes.data?.data ||
               prodRes.data ||
               [];
-            setBrandProducts(
-              Array.isArray(prods)
-                ? prods.map(mapProduct)
-                : []
+            const products = Array.isArray(prods) ? prods : [];
+            const totalCartAdds = products.reduce((sum, p) =>
+              sum + (p.cartCount || 0), 0
             );
+            setLocalSales(totalCartAdds);
+            setBrandProducts(products.map(mapProduct));
           } catch {
             setBrandProducts([]);
+            setLocalSales(0);
           }
         }
       } catch {
@@ -82,6 +89,79 @@ export default function BrandPage() {
     };
     fetchBrand();
   }, [slug, isRTL]);
+
+  useEffect(() => {
+    if (brand) {
+      setLocalFollowers(brand.followers || 0);
+    }
+  }, [brand]);
+
+  useEffect(() => {
+    if (!brand?.id) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await brandsAPI.getAll(1, 100);
+        const all = res.data?.data || res.data?.brands || res.data || [];
+        const updated = Array.isArray(all)
+          ? all.find(b => b.slug === slug || b._id === brand.id || b.id === brand.id)
+          : null;
+        if (updated) {
+          const mapped = mapBrand(updated);
+          setBrand(mapped);
+          setLocalFollowers(mapped.followers || 0);
+        }
+      } catch {
+        // keep current stats
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [brand?.id, slug]);
+
+  const handleFollow = async () => {
+    if (!isAuthenticated) {
+      toast.error(isRTL
+        ? 'يرجى تسجيل الدخول أولاً'
+        : 'Please login first'
+      );
+      return;
+    }
+
+    setFollowLoading(true);
+    const newFollowing = !isFollowing;
+    try {
+      setIsFollowing(newFollowing);
+      setLocalFollowers(prev =>
+        newFollowing ? prev + 1 : prev - 1
+      );
+
+      toast.success(newFollowing
+        ? (isRTL ? 'تم المتابعة ✅' : 'Following ✅')
+        : (isRTL ? 'تم إلغاء المتابعة' : 'Unfollowed')
+      );
+    } catch {
+      setIsFollowing(!newFollowing);
+      setLocalFollowers(prev =>
+        newFollowing ? prev - 1 : prev + 1
+      );
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
+  const handleMessage = () => {
+    toast((isRTL ? 'فتح الدردشة مع ' : 'Opening chat with ') + brand?.name, {
+      icon: '💬',
+      style: { borderRadius: '12px', fontFamily: isRTL ? 'Cairo' : 'Inter' },
+    });
+  };
+
+  const filteredProducts = brandProducts.filter(p => {
+    if (filterCat === 'All') return true;
+    if (filterCat === 'On Sale') return p.discount > 0;
+    if (filterCat === 'New Arrivals') return p.isNew;
+    if (filterCat === 'Customizable') return p.customizable;
+    return true;
+  });
 
   if (loading) {
     return (
@@ -121,8 +201,6 @@ export default function BrandPage() {
     );
   }
 
-  // Removing direct calculation
-  
   const tabs = [
     { id: 'Bazaar', label: isRTL ? `البازار (${brandProducts.length})` : `Bazaar (${brandProducts.length})` },
     { id: 'Reviews', label: isRTL ? `التقييمات (${Math.floor(Math.random() * 300 + 100)})` : `Reviews (${Math.floor(Math.random() * 300 + 100)})` },
@@ -130,31 +208,8 @@ export default function BrandPage() {
     { id: 'Policies', label: isRTL ? 'السياسات' : 'Policies' }
   ];
 
-  const handleFollow = () => {
-    setFollowing(!following);
-    const msg = isRTL 
-      ? (following ? `ألغيت متابعة ${brand.name}` : `أنت تتابع ${brand.name} الآن!`)
-      : (following ? `Unfollowed ${brand.name}` : `Following ${brand.name}!`);
-    toast.success(msg, {
-      icon: following ? '💔' : '❤️',
-      style: { borderRadius: '12px', fontFamily: isRTL ? 'Cairo' : 'Inter' },
-    });
-  };
-
-  const handleMessage = () => {
-    toast((isRTL ? 'فتح الدردشة مع ' : 'Opening chat with ') + brand.name, {
-      icon: '💬',
-      style: { borderRadius: '12px', fontFamily: isRTL ? 'Cairo' : 'Inter' },
-    });
-  };
-
-  const filteredProducts = brandProducts.filter(p => {
-    if (filterCat === 'All') return true;
-    if (filterCat === 'On Sale') return p.discount > 0;
-    if (filterCat === 'New Arrivals') return p.isNew;
-    if (filterCat === 'Customizable') return p.customizable;
-    return true;
-  });
+  const salesCount = localSales || brand.sales || brand.stats?.totalSales || 0;
+  const salesDisplay = salesCount >= 1000 ? `${(salesCount / 1000).toFixed(1)}K` : salesCount;
 
   return (
     <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200 ${isRTL ? 'text-right' : 'text-left'}`}>
@@ -213,9 +268,9 @@ export default function BrandPage() {
               <div className={`grid grid-cols-4 gap-4 text-center ${isRTL ? 'flex-row-reverse' : ''}`}>
                 {[
                   { value: brand.productCount, label: isRTL ? 'منتجات' : 'Products' },
-                  { value: brand.sales >= 1000 ? `${(brand.sales/1000).toFixed(1)}K` : (brand.sales || 0), label: isRTL ? 'مبيعات' : 'Sales' },
+                  { value: salesDisplay, label: isRTL ? 'مبيعات' : 'Sales' },
                   { value: `${brand.rating}★`, label: isRTL ? 'تقييم' : 'Rating' },
-                  { value: brand.followers >= 1000 ? `${(brand.followers/1000).toFixed(1)}K` : brand.followers, label: isRTL ? 'متابعون' : 'Followers' },
+                  { value: localFollowers >= 1000 ? `${(localFollowers / 1000).toFixed(1)}K` : localFollowers, label: isRTL ? 'متابعون' : 'Followers' },
                 ].map(stat => (
                   <div key={stat.label} className="bg-white dark:bg-dark-surface rounded-2xl px-4 py-3 shadow-sm dark:border dark:border-dark-border min-w-[70px]">
                     <div className="text-lg font-bold text-brand-navy dark:text-brand-gold">{stat.value}</div>
@@ -225,13 +280,17 @@ export default function BrandPage() {
               </div>
 
               <div className={`flex gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                <button onClick={handleFollow} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all ${isRTL ? 'flex-row-reverse' : ''} ${
-                  following
+                <button
+                  type="button"
+                  onClick={handleFollow}
+                  disabled={followLoading}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 ${isRTL ? 'flex-row-reverse' : ''} ${
+                  isFollowing
                     ? 'bg-gray-100 dark:bg-dark-bg text-gray-700 dark:text-dark-text hover:bg-gray-200 dark:hover:bg-dark-surface'
                     : 'bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy hover:bg-opacity-90'
                 }`}>
-                  <Heart size={15} fill={following ? 'currentColor' : 'none'} className={following ? 'text-red-500' : ''} />
-                  {following ? (isRTL ? 'متابع' : 'Following') : (isRTL ? '+ متابعة' : '+ Follow')}
+                  <Heart size={15} fill={isFollowing ? 'currentColor' : 'none'} className={isFollowing ? 'text-red-500' : ''} />
+                  {isFollowing ? (isRTL ? 'متابع' : 'Following') : (isRTL ? '+ متابعة' : '+ Follow')}
                 </button>
                 <button onClick={handleMessage} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm border-2 border-gray-200 dark:border-dark-border hover:border-brand-navy dark:hover:border-brand-gold text-gray-700 dark:text-dark-text hover:text-brand-navy dark:hover:text-brand-navy transition-all ${isRTL ? 'flex-row-reverse' : ''}`}>
                   <MessageSquare size={15} />

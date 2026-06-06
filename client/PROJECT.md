@@ -433,3 +433,18 @@ To ensure consistency between backend responses and frontend UI, we use mappers 
 - Supports all 10 notification types from API spec
 - Fixed reorder endpoint URL
 - Fixed reorder endpoint: /orders/my-orders/:id/reorder
+- Fixed BrandPage follow button with optimistic UI, local followers counter updates on follow/unfollow, periodic brand stats refresh every 30s
+- Fixed BrandPage import path for AuthContext
+- BrandPage sales shows cartCount sum as sales estimate until backend implements totalSales tracking
+- Added Shop Settings tab with store info, preferences, and toggle switches
+- Added Messages tab with empty state UI
+- Added Payouts tab with balance cards and coming soon withdrawal
+- Removed settings/messages/payouts from "under development" list
+- Fixed token field: API returns accessToken but was being saved correctly as token
+- Added accessToken fallback in login/register token extraction
+- Fixed categories 403: added cache fallback for non-admin users
+- Components fall back to mockCategories when API returns 403
+- Fixed brand detection in AddProductPage: tries seller dashboard first, then localStorage brandId, then dropdown
+- Fixed seller products: now fetches by brand ID using GET /product?brand=ID
+- Fixed inventory products list: uses brand ID filter
+- Added brand ID caching in localStorage (brandhive_seller_brand_id)

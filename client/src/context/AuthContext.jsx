@@ -25,7 +25,11 @@ export const AuthProvider = ({ children }) => {
     }
     try {
       const parsed = JSON.parse(stored);
-      if (parsed && parsed.token) {
+      const token = parsed?.token || parsed?.accessToken;
+      if (parsed && token) {
+        if (!parsed.token) {
+          parsed.token = token;
+        }
         // Apply role override if exists
         const roleOverride = localStorage.getItem(
           'brandhive_role_override'
@@ -55,26 +59,30 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await authAPI.login({ email, password });
       const responseData = res.data?.data || res.data;
-      
-      const token = responseData?.token || responseData?.accessToken;
-      const refreshToken = responseData?.refreshToken;
-      const userData = responseData?.user || responseData;
+
+      const token = responseData?.accessToken ||
+        responseData?.token ||
+        responseData?.data?.accessToken ||
+        responseData?.data?.token;
+      const refreshToken = responseData?.refreshToken ||
+        responseData?.data?.refreshToken;
+      const userData = responseData?.user || responseData?.data?.user || responseData;
 
       if (!token) {
         throw new Error('No token received from server');
       }
 
-      const stored = { 
-        ...userData, 
+      const userToStore = {
+        ...userData,
         token,
-        refreshToken 
+        refreshToken,
       };
-      setUser(stored);
+      setUser(userToStore);
       localStorage.setItem(
-        'brandhive_user', 
-        JSON.stringify(stored)
+        'brandhive_user',
+        JSON.stringify(userToStore)
       );
-      return stored;
+      return userToStore;
     } catch (err) {
       const message =
         err.response?.data?.message || 
@@ -94,13 +102,26 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await authAPI.register({ name, email, password, confirmPassword, ...extraFields });
       const responseData = res.data?.data || res.data;
-      const token = responseData?.token || responseData?.accessToken;
-      const refreshToken = responseData?.refreshToken;
-      const userData = responseData?.user || responseData;
-      const stored = { ...userData, token, refreshToken };
-      setUser(stored);
-      localStorage.setItem('brandhive_user', JSON.stringify(stored));
-      return stored;
+      const token = responseData?.accessToken ||
+        responseData?.token ||
+        responseData?.data?.accessToken ||
+        responseData?.data?.token;
+      const refreshToken = responseData?.refreshToken ||
+        responseData?.data?.refreshToken;
+      const userData = responseData?.user || responseData?.data?.user || responseData;
+
+      if (!token) {
+        throw new Error('No token received from server');
+      }
+
+      const userToStore = {
+        ...userData,
+        token,
+        refreshToken,
+      };
+      setUser(userToStore);
+      localStorage.setItem('brandhive_user', JSON.stringify(userToStore));
+      return userToStore;
     } catch (err) {
       const message =
         err.response?.data?.message || 'Registration failed. Please try again.';

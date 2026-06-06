@@ -781,9 +781,13 @@ function SellerInventoryTab({ isRTL, t }) {
     const fetchData = async () => {
       setLogsLoading(true);
       try {
+        const savedBrandId = localStorage.getItem('brandhive_seller_brand_id');
+        const productsPromise = savedBrandId
+          ? productsAPI.getAll({ brand: savedBrandId, limit: 50 })
+          : sellerAPI.getProducts();
         const [logsRes, productsRes] = await Promise.allSettled([
           inventoryAPI.getLogs({ limit: 20 }),
-          sellerAPI.getProducts(),
+          productsPromise,
         ]);
         if (logsRes.status === 'fulfilled') {
           const data = logsRes.value.data?.data || logsRes.value.data || [];
@@ -1048,6 +1052,175 @@ function SellerInventoryTab({ isRTL, t }) {
   );
 }
 
+function SellerShopSettingsTab({ isRTL, t, dashboard, user }) {
+  const [form, setForm] = useState({
+    storeName: dashboard?.brand?.name || user?.brandName || '',
+    storeDescription: dashboard?.brand?.description || '',
+    email: user?.email || '',
+    phone: user?.phone || '',
+    whatsapp: '',
+    acceptsCOD: true,
+    autoConfirm: false,
+    lowStockAlert: 5,
+  });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('brandhive_shop_settings'));
+      if (saved) setForm(prev => ({ ...prev, ...saved }));
+    } catch {
+      // keep defaults
+    }
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      localStorage.setItem('brandhive_shop_settings', JSON.stringify(form));
+      await new Promise(r => setTimeout(r, 600));
+      toast.success(isRTL ? 'تم حفظ الإعدادات ✅' : 'Settings saved ✅');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div>
+      <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
+        {isRTL ? 'إعدادات المتجر' : 'Shop Settings'}
+      </h1>
+
+      <div className="space-y-6">
+        <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
+          <h3 className={`font-bold text-gray-900 dark:text-dark-text mb-4 ${isRTL ? 'text-right' : ''}`}>
+            {isRTL ? 'معلومات المتجر' : 'Store Information'}
+          </h3>
+          <div className={`space-y-4 ${isRTL ? 'text-right' : ''}`}>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-dark-muted mb-1">
+                {isRTL ? 'اسم المتجر' : 'Store Name'}
+              </label>
+              <input
+                value={form.storeName}
+                onChange={e => setForm(p => ({ ...p, storeName: e.target.value }))}
+                className={`w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-4 py-2.5 text-sm outline-none focus:border-brand-gold dark:text-white ${isRTL ? 'text-right' : ''}`}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-dark-muted mb-1">
+                {isRTL ? 'وصف المتجر' : 'Store Description'}
+              </label>
+              <textarea
+                value={form.storeDescription}
+                onChange={e => setForm(p => ({ ...p, storeDescription: e.target.value }))}
+                rows={3}
+                className={`w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-4 py-2.5 text-sm outline-none focus:border-brand-gold resize-none dark:text-white ${isRTL ? 'text-right' : ''}`}
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-dark-muted mb-1">
+                  {isRTL ? 'البريد الإلكتروني' : 'Email'}
+                </label>
+                <input
+                  value={form.email}
+                  onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
+                  className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-4 py-2.5 text-sm outline-none focus:border-brand-gold dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-dark-muted mb-1">
+                  {isRTL ? 'رقم الهاتف' : 'Phone'}
+                </label>
+                <input
+                  value={form.phone}
+                  onChange={e => setForm(p => ({ ...p, phone: e.target.value }))}
+                  className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-4 py-2.5 text-sm outline-none focus:border-brand-gold dark:text-white"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-dark-muted mb-1">
+                WhatsApp
+              </label>
+              <input
+                value={form.whatsapp}
+                onChange={e => setForm(p => ({ ...p, whatsapp: e.target.value }))}
+                placeholder="01xxxxxxxxx"
+                className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-4 py-2.5 text-sm outline-none focus:border-brand-gold dark:text-white"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
+          <h3 className={`font-bold text-gray-900 dark:text-dark-text mb-4 ${isRTL ? 'text-right' : ''}`}>
+            {isRTL ? 'التفضيلات' : 'Preferences'}
+          </h3>
+          <div className="space-y-4">
+            {[
+              {
+                key: 'acceptsCOD',
+                label: isRTL ? 'قبول الدفع عند الاستلام' : 'Accept Cash on Delivery',
+                desc: isRTL ? 'السماح للعملاء بالدفع عند الاستلام' : 'Allow customers to pay on delivery',
+              },
+              {
+                key: 'autoConfirm',
+                label: isRTL ? 'تأكيد الطلبات تلقائياً' : 'Auto-confirm Orders',
+                desc: isRTL ? 'تأكيد الطلبات الجديدة تلقائياً دون مراجعة' : 'Automatically confirm new orders without review',
+              },
+            ].map(item => (
+              <div key={item.key} className={`flex items-center justify-between gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={isRTL ? 'text-right' : ''}>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-dark-text">{item.label}</p>
+                  <p className="text-xs text-gray-500 dark:text-dark-muted">{item.desc}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setForm(p => ({ ...p, [item.key]: !p[item.key] }))}
+                  className={`w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
+                    form[item.key] ? 'bg-brand-gold' : 'bg-gray-200 dark:bg-dark-border'
+                  }`}
+                >
+                  <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform mx-0.5 ${
+                    form[item.key] ? 'translate-x-5' : 'translate-x-0'
+                  }`} />
+                </button>
+              </div>
+            ))}
+
+            <div className={isRTL ? 'text-right' : ''}>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-dark-muted mb-1">
+                {isRTL ? 'تنبيه المخزون المنخفض (عند وصول الكمية إلى)' : 'Low Stock Alert (when quantity reaches)'}
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={form.lowStockAlert}
+                onChange={e => setForm(p => ({ ...p, lowStockAlert: Number(e.target.value) }))}
+                className="w-24 rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-4 py-2 text-sm outline-none focus:border-brand-gold dark:text-white"
+              />
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="btn-primary disabled:opacity-50 w-full sm:w-auto"
+        >
+          {saving ? (
+            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
+          ) : (isRTL ? 'حفظ الإعدادات' : 'Save Settings')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 
 export default function SellerDashboard() {
   const { t } = useTranslation();
@@ -1059,7 +1232,9 @@ export default function SellerDashboard() {
   const [dashboard, setDashboard] = useState(null);
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
-  const [myBrandId, setMyBrandId] = useState(null);
+  const [myBrandId, setMyBrandId] = useState(
+    () => localStorage.getItem('brandhive_seller_brand_id') || null
+  );
   const [loading, setLoading] = useState(true);
   const [analytics, setAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
@@ -1085,25 +1260,19 @@ export default function SellerDashboard() {
         setOrders([]);
       }
 
-      let brandId = null;
-      try {
-        const brandsRes = await brandsAPI.getAll({ limit: 50 });
-        const allBrands = brandsRes.data?.data || brandsRes.data?.brands || brandsRes.data || [];
-        const myBrand = Array.isArray(allBrands)
-          ? allBrands.find(b =>
-              b.requestedBy === user?.id ||
-              b.requestedBy === user?._id ||
-              b.createdBy === user?.id ||
-              b.createdBy === user?._id
-            )
-          : null;
-
-        brandId = myBrand?._id || user?.brandId || user?.brand?._id ||
-          localStorage.getItem('brandhive_seller_brand') || null;
-        if (brandId) setMyBrandId(brandId);
-      } catch {
-        brandId = localStorage.getItem('brandhive_seller_brand') || null;
-        if (brandId) setMyBrandId(brandId);
+      let brandId = myBrandId;
+      if (!brandId) {
+        try {
+          const brandsRes = await brandsAPI.getAll({ limit: 50 });
+          const allBrands = brandsRes.data?.data || [];
+          const dashRes = await sellerAPI.getDashboard();
+          const dashBrand = dashRes.data?.data?.brand || dashRes.data?.brand;
+          if (dashBrand?._id) {
+            brandId = dashBrand._id;
+            setMyBrandId(brandId);
+            localStorage.setItem('brandhive_seller_brand_id', brandId);
+          }
+        } catch {}
       }
 
       try {
@@ -1525,12 +1694,78 @@ export default function SellerDashboard() {
               <SellerInventoryTab isRTL={isRTL} t={t} />
             )}
 
-            {['messages', 'payouts'].includes(activeTab) && (
-              <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card p-8 text-center">
-                <BarChart3 className="mx-auto text-gray-300 dark:text-dark-muted mb-4" size={48} />
-                <p className="text-gray-500 dark:text-dark-muted">
-                  {isRTL ? 'هذا القسم قيد التطوير' : 'This section is under development'}
-                </p>
+            {activeTab === 'settings' && (
+              <SellerShopSettingsTab
+                isRTL={isRTL}
+                t={t}
+                dashboard={dashboard}
+                user={user}
+              />
+            )}
+
+            {activeTab === 'messages' && (
+              <div>
+                <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
+                  {isRTL ? 'الرسائل' : 'Messages'}
+                </h1>
+                <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-8 text-center">
+                  <MessageSquare className="mx-auto text-gray-300 dark:text-dark-muted mb-4" size={48} />
+                  <h3 className="font-bold text-gray-900 dark:text-dark-text mb-2">
+                    {isRTL ? 'لا توجد رسائل بعد' : 'No messages yet'}
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-dark-muted">
+                    {isRTL ? 'ستظهر رسائل العملاء هنا' : 'Customer messages will appear here'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'payouts' && (
+              <div>
+                <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
+                  {isRTL ? 'المدفوعات' : 'Payouts'}
+                </h1>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  {[
+                    {
+                      icon: '💰',
+                      label: isRTL ? 'الرصيد المتاح' : 'Available Balance',
+                      value: `${(dashboard?.revenue?.total || 0).toLocaleString()} ${isRTL ? 'ج.م' : 'EGP'}`,
+                      color: 'bg-emerald-50 dark:bg-emerald-900/10',
+                    },
+                    {
+                      icon: '📤',
+                      label: isRTL ? 'قيد السحب' : 'Pending Withdrawal',
+                      value: `0 ${isRTL ? 'ج.م' : 'EGP'}`,
+                      color: 'bg-amber-50 dark:bg-amber-900/10',
+                    },
+                    {
+                      icon: '✅',
+                      label: isRTL ? 'إجمالي المسحوب' : 'Total Withdrawn',
+                      value: `0 ${isRTL ? 'ج.م' : 'EGP'}`,
+                      color: 'bg-blue-50 dark:bg-blue-900/10',
+                    },
+                  ].map((item, i) => (
+                    <div key={i} className={`${item.color} rounded-2xl p-5 ${isRTL ? 'text-right' : ''}`}>
+                      <div className="text-3xl mb-2">{item.icon}</div>
+                      <div className="text-xl font-bold text-gray-900 dark:text-dark-text">{item.value}</div>
+                      <div className="text-xs text-gray-500 dark:text-dark-muted mt-1">{item.label}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
+                  <h3 className={`font-bold text-gray-900 dark:text-dark-text mb-4 ${isRTL ? 'text-right' : ''}`}>
+                    {isRTL ? 'طلب سحب' : 'Request Withdrawal'}
+                  </h3>
+                  <div className={`flex items-start gap-3 bg-amber-50 dark:bg-amber-900/10 rounded-xl p-4 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+                    <span className="text-xl">⚠️</span>
+                    <p className="text-sm text-amber-700 dark:text-amber-400">
+                      {isRTL
+                        ? 'خاصية السحب قيد التطوير. سيتم إشعارك عند توفرها.'
+                        : 'Withdrawal feature is coming soon. You will be notified when available.'}
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 

@@ -56,38 +56,34 @@ export default function AddProductPage() {
 
       try {
         const brandsRes = await brandsAPI.getAll({ limit: 50 });
-        const allBrandsList = brandsRes.data?.data ||
-                              brandsRes.data?.brands ||
-                              brandsRes.data || [];
+        const allBrandsData = brandsRes.data?.data || brandsRes.data || [];
+        const activeBrands = Array.isArray(allBrandsData)
+          ? allBrandsData.filter(b => b.isActive !== false)
+          : [];
+        setAllBrands(activeBrands);
 
-        const matchedBrand = Array.isArray(allBrandsList)
-          ? allBrandsList.find(b =>
-              b.requestedBy === user?.id ||
-              b.requestedBy === user?._id ||
-              b._id === user?.brandId ||
-              b._id === user?.brand ||
-              b.owner === user?.id ||
-              b.owner === user?._id
-            )
-          : null;
+        try {
+          const dashRes = await sellerAPI.getDashboard();
+          const sellerBrand = dashRes.data?.data?.brand || dashRes.data?.brand;
+          if (sellerBrand?._id) {
+            setMyBrand(sellerBrand);
+            setFormData(prev => ({ ...prev, brand: sellerBrand._id }));
+            return;
+          }
+        } catch {}
 
-        if (matchedBrand?._id) {
-          setMyBrand(matchedBrand);
-          setFormData(prev => ({ ...prev, brand: matchedBrand._id }));
-        } else {
-          const savedBrandId = localStorage.getItem('brandhive_seller_brand');
-          const savedBrand = savedBrandId && Array.isArray(allBrandsList)
-            ? allBrandsList.find(b => (b._id || b.id) === savedBrandId)
-            : null;
-          if (savedBrand) {
-            setMyBrand(savedBrand);
-            setFormData(prev => ({ ...prev, brand: savedBrand._id || savedBrand.id }));
-          } else {
-            setAllBrands(Array.isArray(allBrandsList) ? allBrandsList.filter(b => b.isActive !== false) : []);
+        const storedUser = JSON.parse(localStorage.getItem('brandhive_user') || '{}');
+        const storedBrandId = storedUser?.brandId || storedUser?.brand?._id;
+        if (storedBrandId) {
+          const found = activeBrands.find(b => b._id === storedBrandId);
+          if (found) {
+            setMyBrand(found);
+            setFormData(prev => ({ ...prev, brand: found._id }));
+            return;
           }
         }
       } catch {
-        // brand not found
+        setAllBrands([]);
       } finally {
         setBrandLoading(false);
       }
@@ -326,41 +322,33 @@ export default function AddProductPage() {
                       {isRTL ? 'الماركة' : 'Brand'} *
                     </label>
                     {brandLoading ? (
-                      <div className="flex items-center gap-2 px-4 py-2">
+                      <div className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-dark-border rounded-xl">
                         <div className="w-3 h-3 border-2 border-brand-gold border-t-transparent rounded-full animate-spin" />
                         <span className="text-gray-400 text-sm">Loading...</span>
                       </div>
                     ) : myBrand ? (
-                      <div className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg/50 px-4 py-2">
+                      <div className="w-full rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/10 px-4 py-2 flex items-center gap-2">
+                        <span className="text-emerald-500 text-xs">✅</span>
                         <span className="text-gray-700 dark:text-dark-text text-sm font-medium">{myBrand.name}</span>
                       </div>
-                    ) : allBrands.length > 0 ? (
+                    ) : (
                       <select
                         name="brand"
                         value={formData.brand}
                         onChange={e => {
                           handleInputChange(e);
-                          if (e.target.value) {
-                            localStorage.setItem('brandhive_seller_brand', e.target.value);
-                          }
+                          const selected = allBrands.find(b => b._id === e.target.value);
+                          if (selected) setMyBrand(selected);
                         }}
-                        className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg px-4 py-2 focus:border-brand-gold outline-none dark:text-white"
+                        className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg px-4 py-2 focus:border-brand-gold outline-none dark:text-white text-sm"
                       >
-                        <option value="">Select your brand</option>
+                        <option value="">{isRTL ? 'اختر براندك' : 'Select your brand'}</option>
                         {allBrands.map(b => (
                           <option key={b._id} value={b._id}>{b.name}</option>
                         ))}
                       </select>
-                    ) : (
-                      <div className="w-full rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/10 px-4 py-2">
-                        <span className="text-red-400 text-sm">No approved brand found</span>
-                      </div>
                     )}
-                    {errors.brand && (
-                      <p className="text-red-500 text-xs mt-1">
-                        {errors.brand}
-                      </p>
-                    )}
+                    {errors.brand && <p className="text-red-500 text-xs mt-1">{errors.brand}</p>}
                   </div>
                 </div>
               </div>

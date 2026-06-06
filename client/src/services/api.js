@@ -148,8 +148,9 @@ api.interceptors.request.use(
       const stored = localStorage.getItem('brandhive_user');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (parsed?.token) {
-          config.headers.Authorization = `Bearer ${parsed.token}`;
+        const token = parsed?.token || parsed?.accessToken;
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
         }
       }
     } catch {
@@ -358,7 +359,27 @@ export const adminAPI = {
 };
 
 export const categoriesAPI = {
-  getAll: () => api.get('/category'),
+  getAll: async () => {
+    try {
+      const res = await api.get('/category');
+      if (res.data?.data?.length > 0) {
+        localStorage.setItem(
+          'brandhive_categories_cache',
+          JSON.stringify(res.data.data)
+        );
+      }
+      return res;
+    } catch (err) {
+      if (err.response?.status === 403 || err.response?.status === 401) {
+        const cached = localStorage.getItem('brandhive_categories_cache');
+        if (cached) {
+          return { data: { data: JSON.parse(cached) } };
+        }
+        return { data: { data: [] } };
+      }
+      throw err;
+    }
+  },
   getOne: (id) => api.get(`/category/${id}`),
 };
 

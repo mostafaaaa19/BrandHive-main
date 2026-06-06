@@ -1,19 +1,67 @@
+import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Clock, CheckCircle2, Mail, Home, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { brandsAPI } from '../../services/api';
+import toast from 'react-hot-toast';
 
 export default function SellerPendingPage() {
-  const { user } = useAuth();
+  const { user, upgradeToSeller } = useAuth();
   const { isRTL } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
+  const [brandStatus, setBrandStatus] = useState('pending');
+  const approvedRef = useRef(false);
 
   const brandName =
     location.state?.brandName ||
     user?.brandName ||
     (isRTL ? 'ماركتك' : 'your brand');
+
+  useEffect(() => {
+    if (approvedRef.current) return;
+
+    const checkStatus = async () => {
+      try {
+        const res = await brandsAPI.getAll({ limit: 50 });
+        const brands = res.data?.data || res.data || [];
+        if (!Array.isArray(brands)) return;
+
+        const brand = brands.find(b => {
+          const nameMatch = brandName && b.name?.toLowerCase() === brandName.toLowerCase();
+          const ownerMatch = user?._id && (
+            b.owner?._id === user._id ||
+            b.requestedBy === user._id ||
+            b.requestedBy?._id === user._id
+          );
+          return nameMatch || ownerMatch;
+        });
+
+        if (brand?.isVerified || brand?.status === 'approved') {
+          if (approvedRef.current) return;
+          approvedRef.current = true;
+          setBrandStatus('approved');
+          upgradeToSeller();
+          if (brand._id) {
+            localStorage.setItem('brandhive_seller_brand_id', brand._id);
+          }
+          toast.success(
+            isRTL ? 'تمت الموافقة على ماركتك! 🎉' : 'Your brand has been approved! 🎉',
+            { style: { borderRadius: '12px' }, duration: 4000 }
+          );
+          setTimeout(() => navigate('/seller/dashboard'), 3000);
+        }
+      } catch {
+        // silent fail on poll — user stays on pending screen
+      }
+    };
+
+    checkStatus();
+    const interval = setInterval(checkStatus, 15000);
+    return () => clearInterval(interval);
+  }, [brandName, user, upgradeToSeller, navigate, isRTL]);
 
   const steps = [
     {
@@ -55,7 +103,9 @@ export default function SellerPendingPage() {
           </div>
 
           <h1 className="text-2xl md:text-3xl font-display font-bold text-brand-navy dark:text-dark-text mb-2">
-            {isRTL ? 'طلبك قيد المراجعة' : 'Waiting for approval'}
+            {brandStatus === 'approved'
+              ? (isRTL ? 'تمت الموافقة!' : 'Approved!')
+              : (isRTL ? 'طلبك قيد المراجعة' : 'Waiting for approval')}
           </h1>
 
           <p className="text-gray-600 dark:text-dark-muted mb-8 leading-relaxed">

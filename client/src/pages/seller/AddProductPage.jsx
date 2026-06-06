@@ -47,9 +47,20 @@ export default function AddProductPage() {
     const fetchInitialData = async () => {
       try {
         const res = await categoriesAPI.getAll();
-        setCategories(res.data?.data || res.data || []);
+        const cats = res.data?.data || res.data || [];
+        if (cats.length > 0) {
+          setCategories(cats);
+        } else {
+          const { categories: mockCats } = await import('../../data/mockData');
+          setCategories(mockCats.map(c => ({ _id: c.id || c.slug, name: c.name })));
+        }
       } catch {
-        toast.error('Failed to load categories');
+        try {
+          const { categories: mockCats } = await import('../../data/mockData');
+          setCategories(mockCats.map(c => ({ _id: c.id || c.slug, name: c.name })));
+        } catch {
+          setCategories([]);
+        }
       } finally {
         setLoadingCats(false);
       }
@@ -62,6 +73,17 @@ export default function AddProductPage() {
           : [];
         setAllBrands(activeBrands);
 
+        const savedBrandId = localStorage.getItem('brandhive_seller_brand_id');
+        if (savedBrandId) {
+          const found = activeBrands.find(b => b._id === savedBrandId);
+          if (found) {
+            setMyBrand(found);
+            setFormData(prev => ({ ...prev, brand: found._id }));
+            setBrandLoading(false);
+            return;
+          }
+        }
+
         try {
           const dashRes = await sellerAPI.getDashboard();
           const sellerBrand = dashRes.data?.data?.brand || dashRes.data?.brand;
@@ -71,17 +93,6 @@ export default function AddProductPage() {
             return;
           }
         } catch {}
-
-        const storedUser = JSON.parse(localStorage.getItem('brandhive_user') || '{}');
-        const storedBrandId = storedUser?.brandId || storedUser?.brand?._id;
-        if (storedBrandId) {
-          const found = activeBrands.find(b => b._id === storedBrandId);
-          if (found) {
-            setMyBrand(found);
-            setFormData(prev => ({ ...prev, brand: found._id }));
-            return;
-          }
-        }
       } catch {
         setAllBrands([]);
       } finally {

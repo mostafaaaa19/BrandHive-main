@@ -1474,17 +1474,39 @@ export default function UserDashboard() {
                     <div className={`border-t border-gray-100 dark:border-dark-border pt-4 ${isRTL ? 'text-right' : 'text-left'}`}>
                       <h3 className="font-semibold text-gray-900 dark:text-dark-text mb-3">{isRTL ? 'المنتجات' : 'Order Items'}</h3>
                       <div className="space-y-3">
-                        {(orderDetail.items || orderDetail.products || []).map((item, idx) => (
+                        {(orderDetail.items || orderDetail.products || []).map((item, idx) => {
+                          const imageSrc = item.productImage ||
+                            item.product?.images?.[0]?.url ||
+                            item.product?.images?.[0] ||
+                            item.image || null;
+                          const unitPrice = item.unitPrice || item.price || 0;
+                          return (
                           <div key={idx} className={`flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                            <div className="w-10 h-10 bg-gray-50 dark:bg-dark-bg rounded-lg flex items-center justify-center text-xl">
-                              📦
+                            <div className="w-10 h-10 bg-gray-50 dark:bg-dark-bg rounded-lg flex items-center justify-center text-xl overflow-hidden flex-shrink-0">
+                              {imageSrc ? (
+                                <img
+                                  src={imageSrc}
+                                  alt={item.productName || item.product?.name || item.name || 'Product'}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                '📦'
+                              )}
                             </div>
                             <div className={`flex-1 ${isRTL ? 'text-right' : 'text-left'}`}>
-                              <p className="text-sm font-medium text-gray-900 dark:text-dark-text">{item.product?.name || item.name || 'Product'}</p>
-                              <p className="text-xs text-gray-500">{(item.quantity || 1)} × {(item.price || item.salePrice || 0).toLocaleString()} {t('common.egp')}</p>
+                              <p className="text-sm font-medium text-gray-900 dark:text-dark-text">
+                                {item.productName || item.product?.name || item.name || 'Product'}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {(item.quantity || 1)} × {unitPrice.toLocaleString()} {t('common.egp')}
+                                {item.itemTotal
+                                  ? ` = ${item.itemTotal.toLocaleString()} ${t('common.egp')}`
+                                  : ''}
+                              </p>
                             </div>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
 

@@ -16,10 +16,6 @@ const CATEGORY_ICONS = {
   Organic: '🌿', 'Art & Culture': '🎨', Food: '🍯', Beauty: '💄', default: '🛍️',
 };
 
-const isValidMongoId = (id) => 
-  id && typeof id === 'string' && 
-  /^[a-f\d]{24}$/i.test(id);
-
 export default function CartPage() {
   const { t } = useTranslation();
   const { isRTL } = useLanguage();
@@ -145,61 +141,13 @@ export default function CartPage() {
   const handlePlaceOrder = async () => {
     setOrderLoading(true);
     try {
-      // Only sync real products (MongoDB IDs)
-      const realItems = items.filter(item => 
-        isValidMongoId(item.id)
-      );
-      
-      if (realItems.length > 0) {
-        for (const item of realItems) {
-          try {
-            await cartAPI.add({ 
-              productId: item.id, 
-              quantity: item.quantity 
-            });
-          } catch {
-            // Continue
-          }
-        }
-      }
-
-      // If no real items, try placing order with whatever is in the backend cart instead
-      if (realItems.length === 0) {
-        try {
-          const orderData = {
-            shippingAddress: {
-              fullName: delivery.name,
-              phone: delivery.phone,
-              street: delivery.street,
-              city: delivery.governorate,
-              governorate: delivery.governorate,
-              country: 'Egypt',
-            },
-            paymentMethod: selectedPayment,
-          };
-          await ordersAPI.create(orderData);
-          await clearCart();
-          setOrderPlaced(true);
-          setTimeout(() => navigate('/account?tab=orders'), 3000);
-        } catch (err) {
-          toast.error(
-            err.response?.data?.message ||
-            (isRTL ? 'فشل إتمام الطلب' : 'Order failed'),
-            { style: { borderRadius: '12px' } }
-          );
-        } finally {
-          setOrderLoading(false);
-        }
-        return;
-      }
-
       const orderData = {
         shippingAddress: {
-          fullName: delivery.name,
-          phone: delivery.phone,
-          street: delivery.street,
-          city: delivery.governorate,
-          governorate: delivery.governorate,
+          fullName: delivery.name?.trim() || 'Customer',
+          phone: delivery.phone?.trim() || '',
+          street: delivery.street?.trim() || 'N/A',
+          city: delivery.governorate?.trim() || 'Cairo',
+          governorate: delivery.governorate?.trim() || 'Cairo',
           country: 'Egypt',
         },
         paymentMethod: selectedPayment,
@@ -209,7 +157,6 @@ export default function CartPage() {
       await clearCart();
       setOrderPlaced(true);
       setTimeout(() => navigate('/account?tab=orders'), 3000);
-
     } catch (err) {
       const msg = err.response?.data?.message;
       toast.error(

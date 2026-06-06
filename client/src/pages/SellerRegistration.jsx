@@ -29,7 +29,7 @@ export default function SellerRegistration() {
     };
     fetchCategories();
   }, []);
-  const { user, upgradeToSeller } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   const STEPS = [
@@ -84,9 +84,6 @@ export default function SellerRegistration() {
     }
     setLoading(true);
     try {
-      upgradeToSeller();
-      await new Promise(r => setTimeout(r, 150));
-
       const submitData = new FormData();
 
       submitData.append('name', form.brandName.trim());
@@ -113,32 +110,20 @@ export default function SellerRegistration() {
         );
       }
 
-      try {
-        await brandsAPI.request(submitData);
-        toast.success(
-          isRTL
-            ? 'تم إرسال طلب ماركتك! سيتم مراجعته قريباً 🎉'
-            : 'Brand request submitted! Under review soon 🎉',
-          { style: { borderRadius: '12px' }, duration: 4000 }
-        );
-      } catch (apiErr) {
-        console.warn('Brand API error:', apiErr.response?.data);
-        toast.success(
-          isRTL
-            ? 'تم تسجيل طلبك! سيتم التواصل معك قريباً.'
-            : "Request registered! We'll contact you soon.",
-          { style: { borderRadius: '12px' }, duration: 4000 }
-        );
-      }
-
+      await brandsAPI.request(submitData);
+      toast.success(
+        isRTL
+          ? 'تم إرسال طلبك بنجاح! سيتم مراجعته قريباً 🎉'
+          : 'Application submitted! It will be reviewed soon 🎉',
+        { style: { borderRadius: '12px' }, duration: 4000 }
+      );
       navigate('/seller/pending', {
         state: { brandName: form.brandName }
       });
     } catch (err) {
+      const msg = err.response?.data?.message;
       toast.error(
-        isRTL
-          ? 'حدث خطأ، يرجى المحاولة مجدداً'
-          : 'Something went wrong, please try again',
+        msg || (isRTL ? 'فشل إرسال الطلب. حاول مرة أخرى.' : 'Failed to submit. Please try again.'),
         { style: { borderRadius: '12px' } }
       );
     } finally {

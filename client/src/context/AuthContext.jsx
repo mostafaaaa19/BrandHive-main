@@ -110,21 +110,32 @@ export const AuthProvider = ({ children }) => {
         responseData?.data?.refreshToken;
       const userData = responseData?.user || responseData?.data?.user || responseData;
 
-      if (!token) {
-        throw new Error('No token received from server');
+      if (token) {
+        const userToStore = {
+          ...userData,
+          email: userData?.email || email,
+          name: userData?.name || name,
+          token,
+          refreshToken,
+        };
+        setUser(userToStore);
+        localStorage.setItem('brandhive_user', JSON.stringify(userToStore));
+        return userToStore;
       }
 
-      const userToStore = {
-        ...userData,
-        token,
-        refreshToken,
+      // Registration succeeded — verify email before login (no token yet)
+      const pendingUser = {
+        email: userData?.email || email,
+        name: userData?.name || name,
+        userId: responseData?.userId || userData?.userId || userData?._id,
       };
-      setUser(userToStore);
-      localStorage.setItem('brandhive_user', JSON.stringify(userToStore));
-      return userToStore;
+      localStorage.setItem('brandhive_user', JSON.stringify(pendingUser));
+      return pendingUser;
     } catch (err) {
-      const message =
-        err.response?.data?.message || 'Registration failed. Please try again.';
+      const raw = err.response?.data?.message;
+      const message = Array.isArray(raw)
+        ? raw.join(', ')
+        : raw || 'Registration failed. Please try again.';
       setError(message);
       throw new Error(message);
     } finally {

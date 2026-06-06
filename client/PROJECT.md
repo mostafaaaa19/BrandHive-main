@@ -448,3 +448,11 @@ To ensure consistency between backend responses and frontend UI, we use mappers 
 - Fixed seller products: now fetches by brand ID using GET /product?brand=ID
 - Fixed inventory products list: uses brand ID filter
 - Added brand ID caching in localStorage (brandhive_seller_brand_id)
+- Fixed SellerRegistration: removed premature upgradeToSeller call
+- Seller role is now only granted after admin approval (detected in SellerPendingPage polling)
+- Fixed catch block: no longer silently upgrades on API failure
+- Brand ID cached when approval detected in SellerPendingPage
+- AddProductPage: auto-selects brand from localStorage brandhive_seller_brand_id
+- AddProductPage: categories now fall back to mockData when API returns 403
+- Fixed order items display — uses productName, unitPrice, itemTotal from correct API fields
+- Fixed double quantity bug — removed cart sync loop from handlePlaceOrder, backend cart already has items when order is placed

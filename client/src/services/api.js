@@ -494,4 +494,31 @@ export const couponsAPI = {
   validate: (data) => api.post('/coupons/validate', data),
 };
 
+export const aiAPI = {
+  getRecommendations: (data) =>
+    api.post('/product/recommendations', data),
+  getSimilar: (productId) =>
+    api.get(`/product/similar/${productId}`),
+  trackEvent: (data) =>
+    api.post('/product/behavioral/track', data),
+  getBehavioralRecommendations: (data) =>
+    api.post('/product/behavioral/recommend', data),
+  getTrending: () => api.get('/product/ai-trending'),
+  getCrossSell: (data) =>
+    api.post('/product/cart/cross-sell', data),
+  getProductInsights: () =>
+    api.get('/api/insights/products'),
+};
+
+export const supportAPI = {
+  sendMessage: (data) => api.post('/support', data),
+  getAllMessages: () => api.get('/support'),
+  getMessage: (id) => api.get(`/support/${id}`),
+  replyToMessage: (id, data) =>
+    api.post(`/support/${id}/reply`, data),
+  updateStatus: (id, data) =>
+    api.patch(`/support/${id}/status`, data),
+  deleteMessage: (id) => api.delete(`/support/${id}`),
+};
+
 export default api;

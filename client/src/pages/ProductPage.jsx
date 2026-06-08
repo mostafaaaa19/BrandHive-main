@@ -5,7 +5,7 @@ import {
   Shield, CheckCircle2, MapPin, Minus, Plus, ChevronRight
 } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
-import { productsAPI, brandsAPI, reviewsAPI } from '../services/api';
+import { productsAPI, brandsAPI, reviewsAPI, aiAPI } from '../services/api';
 import { mapProduct } from '../utils/mappers';
 import { useCart, useWishlist } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -25,10 +25,12 @@ export default function ProductPage() {
   const navigate = useNavigate();
   const { addToCart } = useCart();
   const { toggleWishlist, isInWishlist } = useWishlist();
-  const { isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
 
   const [product, setProduct] = useState(null);
   const [relatedProducts, setRelatedProducts] = useState([]);
+  const [similarProducts, setSimilarProducts] = useState([]);
+  const [loadingSimilar, setLoadingSimilar] = useState(false);
   const [productReviews, setProductReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -55,20 +57,44 @@ export default function ProductPage() {
         const mapped = mapProduct(raw);
         setProduct(mapped);
 
-        // Fetch related products by same category
+        let categoryRelated = [];
         if (raw.category?._id || raw.category?.id) {
           try {
             const relRes = await productsAPI.getByCategory(raw.category._id || raw.category.id);
             const relRaw = relRes.data?.data || [];
-            setRelatedProducts(
-              relRaw
-                .filter(p => (p.id || p._id) !== (raw.id || raw._id))
-                .slice(0, 4)
-                .map(mapProduct)
-            );
+            categoryRelated = relRaw
+              .filter(p => (p.id || p._id) !== (raw.id || raw._id))
+              .slice(0, 4)
+              .map(mapProduct);
+            setRelatedProducts(categoryRelated);
           } catch {
             setRelatedProducts([]);
           }
+        }
+
+        if (user?.id || user?._id) {
+          aiAPI.trackEvent({
+            user_id: user.id || user._id,
+            product_id: raw.id || raw._id,
+            event: 'view',
+          }).catch(() => {});
+        }
+
+        try {
+          setLoadingSimilar(true);
+          const simRes = await aiAPI.getSimilar(raw.id || raw._id);
+          const simData = simRes.data?.data ||
+            simRes.data?.products ||
+            simRes.data || [];
+          setSimilarProducts(
+            Array.isArray(simData)
+              ? simData.slice(0, 4).map(mapProduct)
+              : []
+          );
+        } catch {
+          setSimilarProducts(categoryRelated.slice(0, 4));
+        } finally {
+          setLoadingSimilar(false);
         }
 
         // Fetch reviews
@@ -105,7 +131,7 @@ export default function ProductPage() {
       }
     };
     fetchProduct();
-  }, [slug]);
+  }, [slug, user?.id, user?._id]);
 
   if (loading) {
     return (
@@ -592,6 +618,19 @@ export default function ProductPage() {
             )}
           </div>
         </div>
+
+        {similarProducts.length > 0 && (
+          <div className="mt-12">
+            <h2 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
+              {isRTL ? 'منتجات مشابهة' : 'Similar Products'}
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {similarProducts.map(p => (
+                <ProductCard key={p.id} product={p} />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Related Products */}
         {relatedProducts.length > 0 && (

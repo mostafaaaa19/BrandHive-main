@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Store, Package, DollarSign, Search as SearchIcon,
-  Flag, Target, Settings, Bell, FileText, LogOut, CheckCircle, Eye, BarChart3, XCircle, Trash2, Tag, Plus
+  Flag, Target, Settings, Bell, FileText, LogOut, CheckCircle, Eye, BarChart3, XCircle, Trash2, Tag, Plus, MessageSquare
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useAuth } from '../../context/AuthContext';
-import { adminAPI, productsAPI, notificationsAPI, couponsAPI, categoriesAPI } from '../../services/api';
+import { adminAPI, productsAPI, notificationsAPI, couponsAPI, categoriesAPI, supportAPI } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../../context/LanguageContext';
 import toast from 'react-hot-toast';
@@ -1094,6 +1094,171 @@ function AdminFeaturedSlotsTab({ isRTL, productsAPI }) {
   );
 }
 
+function AdminSupportTab({ isRTL, toast }) {
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(null);
+  const [reply, setReply] = useState('');
+  const [replying, setReplying] = useState(false);
+
+  useEffect(() => {
+    const fetch = async () => {
+      try {
+        const res = await supportAPI.getAllMessages();
+        const data = res.data?.data || res.data || [];
+        setMessages(Array.isArray(data) ? data : []);
+      } catch {
+        setMessages([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetch();
+  }, []);
+
+  const handleReply = async () => {
+    if (!reply.trim() || !selected) return;
+    setReplying(true);
+    try {
+      await supportAPI.replyToMessage(
+        selected._id || selected.id,
+        { reply: reply.trim() }
+      );
+      toast.success(isRTL ? 'تم إرسال الرد ✅' : 'Reply sent ✅');
+      setReply('');
+      await supportAPI.updateStatus(
+        selected._id || selected.id,
+        { status: 'resolved' }
+      );
+      const res = await supportAPI.getAllMessages();
+      setMessages(res.data?.data || res.data || []);
+      setSelected(null);
+    } catch {
+      toast.error(isRTL ? 'فشل الإرسال' : 'Failed to send');
+    } finally {
+      setReplying(false);
+    }
+  };
+
+  return (
+    <div>
+      <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
+        {isRTL ? 'رسائل الدعم' : 'Support Messages'}
+      </h1>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border overflow-hidden">
+          {loading ? (
+            <div className="p-8 text-center">
+              <div className="w-6 h-6 border-2 border-brand-gold border-t-transparent rounded-full animate-spin mx-auto" />
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="p-8 text-center">
+              <MessageSquare size={36} className="mx-auto text-gray-300 mb-2" />
+              <p className="text-sm text-gray-400 dark:text-dark-muted">
+                {isRTL ? 'لا توجد رسائل' : 'No messages'}
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-50 dark:divide-dark-border">
+              {messages.map((msg, i) => (
+                <div
+                  key={msg._id || i}
+                  onClick={() => setSelected(msg)}
+                  className={`p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-bg transition-colors ${
+                    selected?._id === msg._id ? 'bg-brand-gold/5 border-l-2 border-brand-gold' : ''
+                  } ${isRTL ? 'text-right' : ''}`}
+                >
+                  <div className={`flex items-center justify-between mb-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <p className="font-medium text-sm text-gray-900 dark:text-dark-text">
+                      {msg.fullName || 'Customer'}
+                    </p>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                      msg.status === 'resolved'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : msg.status === 'in_progress'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {msg.status || 'pending'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 dark:text-dark-muted truncate">
+                    {msg.message}
+                  </p>
+                  <p className="text-xs text-gray-300 dark:text-dark-muted mt-1">
+                    {msg.createdAt ? new Date(msg.createdAt).toLocaleDateString() : ''}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="lg:col-span-2 bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
+          {selected ? (
+            <div>
+              <div className={`mb-4 ${isRTL ? 'text-right' : ''}`}>
+                <h3 className="font-bold text-gray-900 dark:text-dark-text">
+                  {selected.fullName}
+                </h3>
+                <p className="text-sm text-gray-400 dark:text-dark-muted">
+                  {selected.email}
+                </p>
+              </div>
+              <div className={`bg-gray-50 dark:bg-dark-bg rounded-xl p-4 mb-4 ${isRTL ? 'text-right' : ''}`}>
+                <p className="text-sm text-gray-700 dark:text-dark-text">
+                  {selected.message}
+                </p>
+              </div>
+              {selected.reply && (
+                <div className={`bg-brand-gold/5 rounded-xl p-4 mb-4 border border-brand-gold/20 ${isRTL ? 'text-right' : ''}`}>
+                  <p className="text-xs font-semibold text-brand-gold mb-1">
+                    {isRTL ? 'الرد السابق:' : 'Previous reply:'}
+                  </p>
+                  <p className="text-sm text-gray-700 dark:text-dark-text">
+                    {selected.reply}
+                  </p>
+                </div>
+              )}
+              <textarea
+                value={reply}
+                onChange={e => setReply(e.target.value)}
+                placeholder={isRTL ? 'اكتب ردك هنا...' : 'Write your reply here...'}
+                rows={3}
+                className={`input-field dark:bg-dark-bg dark:border-dark-border dark:text-dark-text resize-none w-full ${isRTL ? 'text-right' : ''}`}
+              />
+              <div className={`flex gap-3 mt-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <button
+                  onClick={handleReply}
+                  disabled={replying || !reply.trim()}
+                  className="btn-primary flex items-center gap-2 disabled:opacity-50"
+                >
+                  {replying && (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  )}
+                  {isRTL ? 'إرسال الرد' : 'Send Reply'}
+                </button>
+                <button onClick={() => setSelected(null)} className="btn-outline">
+                  {isRTL ? 'إغلاق' : 'Close'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="h-full flex items-center justify-center text-center">
+              <div>
+                <MessageSquare size={48} className="mx-auto text-gray-300 dark:text-dark-muted mb-3" />
+                <p className="text-gray-400 dark:text-dark-muted">
+                  {isRTL ? 'اختر رسالة للرد عليها' : 'Select a message to reply'}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminDashboard() {
   const { t } = useTranslation();
   const { isRTL } = useLanguage();
@@ -1453,6 +1618,7 @@ export default function AdminDashboard() {
       items: [
         { icon: Settings, label: isRTL ? 'الإعدادات' : 'Settings', tab: 'settings' },
         { icon: Bell, label: isRTL ? 'التنبيهات' : 'Notifications', tab: 'notifications' },
+        { icon: MessageSquare, label: isRTL ? 'رسائل الدعم' : 'Support', tab: 'support' },
         { icon: FileText, label: isRTL ? 'سجل العمليات' : 'Audit Log', tab: 'audit' },
       ],
     },
@@ -2116,6 +2282,10 @@ export default function AdminDashboard() {
                   <AdminNotificationSender isRTL={isRTL} adminAPI={adminAPI} />
                 </div>
               </div>
+            )}
+
+            {activeTab === 'support' && (
+              <AdminSupportTab isRTL={isRTL} toast={toast} />
             )}
 
             {activeTab === 'audit' && (

@@ -456,3 +456,20 @@ To ensure consistency between backend responses and frontend UI, we use mappers 
 - AddProductPage: categories now fall back to mockData when API returns 403
 - Fixed order items display — uses productName, unitPrice, itemTotal from correct API fields
 - Fixed double quantity bug — removed cart sync loop from handlePlaceOrder, backend cart already has items when order is placed
+- Fixed double quantity: removed optimistic update for logged-in users, fetch from API instead
+- Fixed zero price: added item.product?.price to price mapping chain
+- Fixed dashboard stats: now reads from correct API fields (revenue.total, orders.total, etc.)
+- Fixed STATUS_COLORS: added lowercase keys to match API response
+- Removed Inventory tab from seller navigation
+- Fixed brand ID storage: now stored per user ID (brandhive_seller_brand_USERID)
+- Prevents brand mixing when multiple sellers use the same device
+- Old global key cleared on logout
+- Connected all AI/Recommendation APIs: aiAPI with 7 endpoints in api.js, supportAPI with 6 endpoints in api.js
+- ProductPage: similar products + view tracking
+- HomePage: AI trending products section
+- CartPage: cross-sell recommendations
+- UserDashboard: personalized recommendations
+- SupportChat: fallback to support ticket API
+- AdminDashboard: Support Messages tab with reply
+- CartContext: cart event tracking
+- ListingPage: view event tracking

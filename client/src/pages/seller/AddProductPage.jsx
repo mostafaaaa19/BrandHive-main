@@ -73,7 +73,8 @@ export default function AddProductPage() {
           : [];
         setAllBrands(activeBrands);
 
-        const savedBrandId = localStorage.getItem('brandhive_seller_brand_id');
+        const userId = user?.id || user?._id || 'default';
+        const savedBrandId = localStorage.getItem(`brandhive_seller_brand_${userId}`);
         if (savedBrandId) {
           const found = activeBrands.find(b => b._id === savedBrandId);
           if (found) {
@@ -90,6 +91,7 @@ export default function AddProductPage() {
           if (sellerBrand?._id) {
             setMyBrand(sellerBrand);
             setFormData(prev => ({ ...prev, brand: sellerBrand._id }));
+            localStorage.setItem(`brandhive_seller_brand_${userId}`, sellerBrand._id);
             return;
           }
         } catch {}

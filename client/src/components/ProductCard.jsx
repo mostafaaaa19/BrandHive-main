@@ -32,7 +32,7 @@ const CATEGORY_ICONS = {
   default: '🛍️',
 };
 
-export default function ProductCard({ product, size = 'md' }) {
+export default function ProductCard({ product, size = 'md', badge }) {
   const { t } = useTranslation();
   const { isRTL } = useLanguage();
   const { addToCart } = useCart();
@@ -92,6 +92,9 @@ export default function ProductCard({ product, size = 'md' }) {
 
         {/* Badges */}
         <div className={`absolute top-2 ${isRTL ? 'right-2' : 'left-2'} flex flex-col gap-1`}>
+          {badge && (
+            <span className="badge-new">{badge}</span>
+          )}
           {product.discount > 0 && (
             <span className="badge-sale">-{product.discount}%</span>
           )}

@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Phone, Info, Paperclip, Smile } from 'lucide-react';
-import { chatAPI } from '../services/api';
+import { chatAPI, supportAPI } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 
 export default function SupportChat() {
   const { isRTL } = useLanguage();
+  const { user } = useAuth();
 
   const QUICK_ACTIONS = [
     isRTL ? 'تتبع طلبي' : 'Track my order',
@@ -82,18 +84,38 @@ export default function SupportChat() {
       ]);
 
     } catch {
-      const errMsg = {
-        id: messages.length + 2,
-        from: 'them',
-        text: isRTL
-          ? 'عذراً، لا يمكن الاتصال بالدعم الآن. يرجى المحاولة لاحقاً.'
-          : 'Sorry, support is unavailable right now. Please try again later.',
-        time: new Date().toLocaleTimeString(
-          isRTL ? 'ar-EG' : 'en-US',
-          { hour: '2-digit', minute: '2-digit' }
-        ),
-      };
-      setMessages(prev => [...prev, errMsg]);
+      try {
+        await supportAPI.sendMessage({
+          fullName: user?.name || 'Guest',
+          email: user?.email || 'guest@brandhive.com',
+          message: currentInput,
+        });
+        const fallbackMsg = {
+          id: messages.length + 2,
+          from: 'them',
+          text: isRTL
+            ? 'تم استلام رسالتك! سيرد عليك فريق الدعم قريباً.'
+            : 'Message received! Our support team will reply soon.',
+          time: new Date().toLocaleTimeString(
+            isRTL ? 'ar-EG' : 'en-US',
+            { hour: '2-digit', minute: '2-digit' }
+          ),
+        };
+        setMessages(prev => [...prev, fallbackMsg]);
+      } catch {
+        const errMsg = {
+          id: messages.length + 2,
+          from: 'them',
+          text: isRTL
+            ? 'عذراً، الدعم غير متاح الآن. يرجى المحاولة لاحقاً.'
+            : 'Sorry, support unavailable now. Please try later.',
+          time: new Date().toLocaleTimeString(
+            isRTL ? 'ar-EG' : 'en-US',
+            { hour: '2-digit', minute: '2-digit' }
+          ),
+        };
+        setMessages(prev => [...prev, errMsg]);
+      }
     } finally {
       setAiLoading(false);
     }

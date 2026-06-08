@@ -6,7 +6,8 @@ import {
   X, Clock, CheckCircle, XCircle, Truck, RefreshCw, AlertCircle, Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ordersAPI, addressesAPI, usersAPI, reviewsAPI, notificationsAPI } from '../../services/api';
+import { ordersAPI, addressesAPI, usersAPI, reviewsAPI, notificationsAPI, aiAPI } from '../../services/api';
+import { mapProduct } from '../../utils/mappers';
 import { useAuth } from '../../context/AuthContext';
 import { useWishlist, useCart } from '../../context/CartContext';
 import { useTranslation } from 'react-i18next';
@@ -175,6 +176,7 @@ export default function UserDashboard() {
   const [myReviews, setMyReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [recommendations, setRecommendations] = useState([]);
 
   const [savedCards, setSavedCards] = useState(() => {
     try {
@@ -241,6 +243,35 @@ export default function UserDashboard() {
       fetchAddresses();
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    const fetchRecommendations = async () => {
+      try {
+        const cats = wishlistItems
+          .map(i => i.category)
+          .filter(Boolean);
+        const uniqueCats = [...new Set(cats)];
+
+        if (uniqueCats.length > 0) {
+          const res = await aiAPI.getRecommendations({
+            categories: uniqueCats,
+          });
+          const data = res.data?.data ||
+            res.data?.products || [];
+          setRecommendations(
+            Array.isArray(data)
+              ? data.slice(0, 8).map(mapProduct)
+              : []
+          );
+        }
+      } catch {
+        setRecommendations([]);
+      }
+    };
+    if (activeTab === 'dashboard') {
+      fetchRecommendations();
+    }
+  }, [activeTab, wishlistItems]);
 
   const handleProfileSave = async () => {
     setProfileLoading(true);
@@ -600,6 +631,38 @@ export default function UserDashboard() {
                     </div>
                   ))}
                 </div>
+
+                {recommendations.length > 0 && (
+                  <div className="mt-6 mb-8">
+                    <h3 className={`font-display font-bold text-gray-900 dark:text-dark-text text-lg mb-4 flex items-center gap-2 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+                      <span>🤖</span>
+                      {isRTL ? 'موصى به لك بالذكاء الاصطناعي' : 'AI Recommended for You'}
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {recommendations.map(product => (
+                        <Link
+                          key={product.id}
+                          to={`/product/${product.slug}`}
+                          className="bg-white dark:bg-dark-surface rounded-2xl shadow-card p-3 hover:shadow-card-hover transition-all block"
+                        >
+                          {product.image && (
+                            <img
+                              src={product.image}
+                              alt={product.name}
+                              className="w-full h-28 object-cover rounded-xl mb-2"
+                            />
+                          )}
+                          <p className="text-xs font-medium text-gray-900 dark:text-dark-text truncate">
+                            {product.name}
+                          </p>
+                          <p className="text-xs text-brand-gold font-bold mt-1">
+                            {(product.price || 0).toLocaleString()} EGP
+                          </p>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Recent orders */}
                 <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">

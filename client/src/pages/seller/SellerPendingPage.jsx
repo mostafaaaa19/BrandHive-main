@@ -45,7 +45,8 @@ export default function SellerPendingPage() {
           setBrandStatus('approved');
           upgradeToSeller();
           if (brand._id) {
-            localStorage.setItem('brandhive_seller_brand_id', brand._id);
+            const userId = user?.id || user?._id || 'default';
+            localStorage.setItem(`brandhive_seller_brand_${userId}`, brand._id);
           }
           toast.success(
             isRTL ? 'تمت الموافقة على ماركتك! 🎉' : 'Your brand has been approved! 🎉',

@@ -4,7 +4,8 @@ import { SlidersHorizontal, Grid3X3, LayoutGrid, List, X, ChevronDown, ChevronUp
 import ProductCard from '../components/ProductCard';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
-import { productsAPI, categoriesAPI, searchAPI } from '../services/api';
+import { productsAPI, categoriesAPI, searchAPI, aiAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { mapProduct, mapCategory, deduplicateProducts } from '../utils/mappers';
 import { categories as mockCategories } from '../data/mockData';
 
@@ -47,6 +48,7 @@ const getCategoryTerms = (category) => {
 export default function ListingPage() {
   const { t } = useTranslation();
   const { isRTL } = useLanguage();
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const categoryParam = searchParams.get('category') || '';
   const searchParam = searchParams.get('search') || '';
@@ -171,6 +173,16 @@ export default function ListingPage() {
 
   const toggleGov = (gov) => {
     setSelectedGovs(prev => prev.includes(gov) ? prev.filter(g => g !== gov) : [...prev, gov]);
+  };
+
+  const handleProductClick = (product) => {
+    if (user?.id && product.id) {
+      aiAPI.trackEvent({
+        user_id: user.id || user._id,
+        product_id: product.id,
+        event: 'view',
+      }).catch(() => {});
+    }
   };
 
   const filteredProducts = useMemo(() => {
@@ -557,7 +569,9 @@ export default function ListingPage() {
             ) : (
               <div className={gridClass}>
                 {filteredProducts.map(product => (
-                  <ProductCard key={product.id} product={product} size={view === 'list' ? 'md' : 'md'} />
+                  <div key={product.id} onClick={() => handleProductClick(product)}>
+                    <ProductCard product={product} size={view === 'list' ? 'md' : 'md'} />
+                  </div>
                 ))}
               </div>
             )}

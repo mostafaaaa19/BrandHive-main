@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { cartAPI, wishlistAPI } from '../services/api';
+import { cartAPI, wishlistAPI, aiAPI } from '../services/api';
 import { useAuth } from './AuthContext';
 
 const CartContext = createContext(null);
@@ -58,11 +58,20 @@ export const CartProvider = ({ children }) => {
           productId: item.product?.id || item.productId,
           name: item.product?.name || item.productId?.name || item.name || '',
           price: Number(
-            item.effectivePrice || item.lockedPrice || item.currentPrice ||
-            item.productId?.finalPrice || item.productId?.price || item.price || 0
+            item.effectivePrice ||
+            item.lockedPrice ||
+            item.currentPrice ||
+            item.product?.price ||
+            item.productId?.finalPrice ||
+            item.productId?.price ||
+            item.price ||
+            0
           ),
           quantity: Number(item.quantity) || 1,
-          image: item.product?.image || item.productId?.images?.[0]?.url || item.image || null,
+          image: item.product?.image ||
+            item.product?.images?.[0] ||
+            item.productId?.images?.[0]?.url ||
+            item.image || null,
           slug: item.product?.slug || item.productId?.slug || item.slug || '',
           brandName: item.product?.brand?.name || item.productId?.brand?.name || item.brandName || '',
           brandSlug: item.product?.brand?.slug || item.productId?.brand?.slug || '',
@@ -87,30 +96,39 @@ export const CartProvider = ({ children }) => {
   // addToCart — call API if logged in
   const addToCart = async (product, quantity = 1, options = {}) => {
     const key = `${product.id}-${options.size||''}-${options.color||''}`;
-    
-    // Optimistic local update first
-    setItems(prev => {
-      const existing = prev.find(i => i.key === key);
-      if (existing) {
-        return prev.map(i => 
-          i.key === key 
-            ? { ...i, quantity: i.quantity + quantity } 
-            : i
-        );
-      }
-      return [...prev, { ...product, quantity, options, key }];
-    });
 
-    // Only sync with API if product has real MongoDB ID
     if (isAuthenticated && isCustomer && isValidMongoId(product.id)) {
       try {
-        await cartAPI.add({ 
-          productId: product.id, 
-          quantity 
-        });
+        await cartAPI.add({ productId: product.id, quantity });
+        const storedUser = JSON.parse(
+          localStorage.getItem('brandhive_user') || '{}'
+        );
+        const userId = storedUser?.id || storedUser?._id;
+        if (userId) {
+          aiAPI.trackEvent({
+            user_id: userId,
+            product_id: product.id,
+            event: 'cart',
+          }).catch(() => {});
+        }
+        await fetchCart();
       } catch {
-        // Silent fail — local state already updated
+        setItems(prev => {
+          const existing = prev.find(i => i.key === key);
+          if (existing) {
+            return prev.map(i => i.key === key ? { ...i, quantity: i.quantity + quantity } : i);
+          }
+          return [...prev, { ...product, quantity, options, key }];
+        });
       }
+    } else {
+      setItems(prev => {
+        const existing = prev.find(i => i.key === key);
+        if (existing) {
+          return prev.map(i => i.key === key ? { ...i, quantity: i.quantity + quantity } : i);
+        }
+        return [...prev, { ...product, quantity, options, key }];
+      });
     }
   };
 

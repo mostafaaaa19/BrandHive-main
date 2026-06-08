@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Store, Package, ShoppingBag, DollarSign, Target, Star, Megaphone,
-  Settings, MessageSquare, CreditCard, LogOut, Eye, Users,
+  Settings, MessageSquare, CreditCard, LogOut, Users,
   Plus, BarChart3, Bell, Edit, XCircle
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -16,6 +16,13 @@ import SettingsPanel from '../../components/SettingsPanel';
 
 
 const STATUS_COLORS = {
+  shipped: 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
+  delivered: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400',
+  pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400',
+  confirmed: 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
+  processing: 'bg-gray-100 text-gray-600 dark:bg-dark-surface dark:text-dark-muted',
+  canceled: 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400',
+  cancelled: 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400',
   Shipped: 'bg-blue-100 text-blue-700',
   Delivered: 'bg-emerald-100 text-emerald-700',
   Pending: 'bg-amber-100 text-amber-700',
@@ -69,20 +76,17 @@ function SellerOrdersTab({ orders, isRTL, sellerAPI, t }) {
   ];
 
   const STATUS_COLORS = {
-    pending: 'bg-amber-100 text-amber-700',
-    PENDING: 'bg-amber-100 text-amber-700',
-    confirmed: 'bg-blue-100 text-blue-700',
-    CONFIRMED: 'bg-blue-100 text-blue-700',
-    processing: 'bg-blue-100 text-blue-700',
-    PROCESSING: 'bg-blue-100 text-blue-700',
-    shipped: 'bg-purple-100 text-purple-700',
-    SHIPPED: 'bg-purple-100 text-purple-700',
-    delivered: 'bg-emerald-100 text-emerald-700',
-    DELIVERED: 'bg-emerald-100 text-emerald-700',
-    canceled: 'bg-red-100 text-red-700',
-    CANCELED: 'bg-red-100 text-red-700',
-    cancelled: 'bg-red-100 text-red-700',
-    CANCELLED: 'bg-red-100 text-red-700',
+    shipped: 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
+    delivered: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400',
+    pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400',
+    confirmed: 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
+    processing: 'bg-gray-100 text-gray-600 dark:bg-dark-surface dark:text-dark-muted',
+    canceled: 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400',
+    cancelled: 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400',
+    Shipped: 'bg-blue-100 text-blue-700',
+    Delivered: 'bg-emerald-100 text-emerald-700',
+    Pending: 'bg-amber-100 text-amber-700',
+    Processing: 'bg-gray-100 text-gray-600',
   };
 
   return (
@@ -765,6 +769,8 @@ function SellerProductsTab({ products, isRTL, navigate, t }) {
 }
 
 function SellerInventoryTab({ isRTL, t }) {
+  const { user } = useAuth();
+  const getBrandKey = () => `brandhive_seller_brand_${user?.id || user?._id || 'default'}`;
   const [logs, setLogs] = useState([]);
   const [logsLoading, setLogsLoading] = useState(true);
   const [adjustModal, setAdjustModal] = useState(false);
@@ -781,7 +787,7 @@ function SellerInventoryTab({ isRTL, t }) {
     const fetchData = async () => {
       setLogsLoading(true);
       try {
-        const savedBrandId = localStorage.getItem('brandhive_seller_brand_id');
+        const savedBrandId = localStorage.getItem(getBrandKey());
         const productsPromise = savedBrandId
           ? productsAPI.getAll({ brand: savedBrandId, limit: 50 })
           : sellerAPI.getProducts();
@@ -1229,11 +1235,13 @@ export default function SellerDashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const navigate = useNavigate();
 
+  const getBrandKey = () => `brandhive_seller_brand_${user?.id || user?._id || 'default'}`;
+
   const [dashboard, setDashboard] = useState(null);
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
   const [myBrandId, setMyBrandId] = useState(
-    () => localStorage.getItem('brandhive_seller_brand_id') || null
+    () => localStorage.getItem(`brandhive_seller_brand_${user?.id || user?._id || 'default'}`) || null
   );
   const [loading, setLoading] = useState(true);
   const [analytics, setAnalytics] = useState(null);
@@ -1270,7 +1278,7 @@ export default function SellerDashboard() {
           if (dashBrand?._id) {
             brandId = dashBrand._id;
             setMyBrandId(brandId);
-            localStorage.setItem('brandhive_seller_brand_id', brandId);
+            localStorage.setItem(getBrandKey(), brandId);
           }
         } catch {}
       }
@@ -1319,7 +1327,6 @@ export default function SellerDashboard() {
     { icon: Store, label: isRTL ? 'البازار' : 'Bazaar', tab: 'bazaar' },
     { icon: Package, label: isRTL ? 'الطلبات' : 'Orders', tab: 'orders' },
     { icon: ShoppingBag, label: isRTL ? 'المنتجات' : 'Products', tab: 'products' },
-    { icon: Package, label: isRTL ? 'المخزون' : 'Inventory', tab: 'inventory' },
     { icon: DollarSign, label: isRTL ? 'الأرباح' : 'Revenue', tab: 'revenue' },
     { icon: Star, label: isRTL ? 'التقييمات' : 'Reviews', tab: 'reviews' },
     { icon: Settings, label: isRTL ? 'الإعدادات' : 'Settings', tab: 'settings' },
@@ -1333,7 +1340,6 @@ export default function SellerDashboard() {
         { icon: Store, label: isRTL ? 'البازار الخاص بي' : 'My Bazaar', tab: 'bazaar' },
         { icon: Package, label: isRTL ? 'الطلبات' : 'Orders', tab: 'orders' },
         { icon: ShoppingBag, label: isRTL ? 'المنتجات' : 'Products', tab: 'products' },
-        { icon: Package, label: isRTL ? 'المخزون' : 'Inventory', tab: 'inventory' },
         { icon: DollarSign, label: isRTL ? 'الأرباح' : 'Revenue', tab: 'revenue' },
       ],
     },
@@ -1489,11 +1495,11 @@ export default function SellerDashboard() {
                 {/* Stat cards */}
                 <div className={`grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8 ${isRTL ? 'flex-row-reverse' : ''}`}>
                   {[
-                    { icon: DollarSign, label: isRTL ? 'الأرباح (ج.م)' : 'Revenue (EGP)', value: (dashboard?.revenue || dashboard?.totalRevenue || 0).toLocaleString(), change: '+0%', color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' },
-                    { icon: Package, label: isRTL ? 'طلبات الشهر' : 'Orders This Month', value: (dashboard?.ordersCount || orders.length || 0).toString(), change: '+0%', color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' },
-                    { icon: Eye, label: isRTL ? 'زيارات البازار' : 'Bazaar Views', value: (dashboard?.views || 0).toLocaleString(), change: '+0%', color: 'bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400' },
-                    { icon: Users, label: isRTL ? 'المتابعون' : 'Followers', value: (dashboard?.followers || 0).toLocaleString(), change: '+0', color: 'bg-amber-100 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400' },
-                    { icon: Star, label: isRTL ? 'متوسط التقييم' : 'Avg Rating', value: (dashboard?.rating || 0).toFixed(1), change: '+0', color: 'bg-rose-100 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400' },
+                    { icon: DollarSign, label: isRTL ? 'الأرباح (ج.م)' : 'Revenue (EGP)', value: (dashboard?.revenue?.total || dashboard?.totalRevenue || 0).toLocaleString(), change: '+0%', color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' },
+                    { icon: Package, label: isRTL ? 'إجمالي الطلبات' : 'Total Orders', value: (dashboard?.orders?.total || orders.length || 0).toString(), change: '+0%', color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' },
+                    { icon: ShoppingBag, label: isRTL ? 'المنتجات النشطة' : 'Active Products', value: (dashboard?.products?.active || products.length || 0).toString(), change: '+0', color: 'bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400' },
+                    { icon: Star, label: isRTL ? 'متوسط التقييم' : 'Avg Rating', value: (dashboard?.reviews?.averageRating || 0).toFixed(1), change: '+0', color: 'bg-rose-100 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400' },
+                    { icon: Users, label: isRTL ? 'طلبات معلقة' : 'Pending Orders', value: (dashboard?.orders?.pending || 0).toString(), change: '+0', color: 'bg-amber-100 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400' },
                   ].map(stat => (
                     <div key={stat.label} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-4 ${isRTL ? 'text-right' : ''}`}>
                       <div className={`w-9 h-9 rounded-xl ${stat.color} flex items-center justify-center mb-3 ${isRTL ? 'mr-0 ml-auto' : ''}`}>

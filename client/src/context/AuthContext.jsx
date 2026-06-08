@@ -158,6 +158,11 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('brandhive_cart');
       localStorage.removeItem('brandhive_wishlist');
       localStorage.removeItem('brandhive_role_override');
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('brandhive_seller_brand_')) {
+          localStorage.removeItem(key);
+        }
+      });
     }
   };
 

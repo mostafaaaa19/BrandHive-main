@@ -10,7 +10,7 @@ import BrandCard from '../components/BrandCard';
 import { testimonials } from '../data/mockData';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
-import { productsAPI, brandsAPI, categoriesAPI } from '../services/api';
+import { productsAPI, brandsAPI, categoriesAPI, aiAPI } from '../services/api';
 import { mapProduct, mapBrand, mapCategory } from '../utils/mappers';
 
 function CountUp({ target, suffix = '', duration = 2000 }) {
@@ -55,6 +55,7 @@ export default function HomePage() {
   ];
   const [activeTab, setActiveTab] = useState('Popular');
   const [featuredProducts, setFeaturedProducts] = useState([]);
+  const [trendingProducts, setTrendingProducts] = useState([]);
   const [topBrands, setTopBrands] = useState([]);
   const [categories, setCategories] = useState([]);
   const [globalBrands, setGlobalBrands] = useState([]);
@@ -140,6 +141,20 @@ export default function HomePage() {
         setCategories(mapped);
       } catch {
         setCategories([]);
+      }
+
+      try {
+        const trendRes = await aiAPI.getTrending();
+        const trendData = trendRes.data?.data ||
+          trendRes.data?.products ||
+          trendRes.data || [];
+        setTrendingProducts(
+          Array.isArray(trendData)
+            ? trendData.slice(0, 8).map(mapProduct)
+            : []
+        );
+      } catch {
+        setTrendingProducts([]);
       }
 
     };
@@ -408,6 +423,38 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {trendingProducts.length > 0 && (
+        <section className="py-16 bg-white dark:bg-dark-surface">
+          <div className="page-container">
+            <div className={`flex items-center justify-between mb-8 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={isRTL ? 'text-right' : ''}>
+                <div className={`flex items-center gap-2 mb-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <span className="text-2xl">🔥</span>
+                  <span className="text-xs font-semibold text-brand-gold uppercase tracking-wider">
+                    {isRTL ? 'مدعوم بالذكاء الاصطناعي' : 'AI Powered'}
+                  </span>
+                </div>
+                <h2 className="text-3xl font-display font-bold text-gray-900 dark:text-dark-text">
+                  {isRTL ? 'الأكثر رواجاً الآن' : 'Trending Now'}
+                </h2>
+              </div>
+              <Link to="/products" className="text-brand-gold hover:underline text-sm font-medium">
+                {isRTL ? 'عرض الكل ←' : 'View All →'}
+              </Link>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {trendingProducts.map(product => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  badge="🔥 Trending"
+                />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ===== BRAND BAZAARS ===== */}
       <section className="py-16 bg-brand-cream dark:bg-dark-bg">

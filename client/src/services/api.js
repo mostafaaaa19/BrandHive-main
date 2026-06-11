@@ -24,24 +24,49 @@ const getPublicProducts = (params = {}) => api.get('/search/products', {
     ...(params.search ? { search: params.search } : {}),
     ...(params.category ? { category: params.category } : {}),
     ...(params.brand ? { brand: params.brand } : {}),
+    ...(params.minPrice != null ? { minPrice: params.minPrice } : {}),
+    ...(params.maxPrice != null ? { maxPrice: params.maxPrice } : {}),
+    ...(params.minRating != null ? { minRating: params.minRating } : {}),
+    ...(params.inStock != null ? { inStock: params.inStock } : {}),
+    ...(params.onSale != null ? { onSale: params.onSale } : {}),
+    ...(params.shipsInternationally != null
+      ? { shipsInternationally: params.shipsInternationally }
+      : {}),
   },
 });
 
-const getAllPublicProducts = async (params = {}) => {
+const isAuthError = (err) => {
+  const status = err?.response?.status;
+  return status === 401 || status === 403;
+};
+
+const withAuthFallback = async (authedRequest, fallbackRequest) => {
+  if (hasAuthToken()) {
+    try {
+      return await authedRequest();
+    } catch (err) {
+      if (!isAuthError(err)) throw err;
+    }
+  }
+  return fallbackRequest();
+};
+
+const mergePaginatedProducts = async (fetchPage, params = {}) => {
   const limit = params.limit || 100;
   let page = params.page || 1;
   let totalPages = 1;
   const allProducts = [];
   const seenIds = new Set();
   let firstResponse = null;
+  let apiTotal = null;
 
   do {
-    const response = await getPublicProducts({ ...params, page, limit });
+    const response = await fetchPage(page, limit);
     if (!firstResponse) firstResponse = response;
 
     const products = getResponseArray(response);
     if (Array.isArray(products)) {
-      products.forEach(p => {
+      products.forEach((p) => {
         const id = p.id || p._id || p.slug;
         if (id && !seenIds.has(id)) {
           seenIds.add(id);
@@ -52,13 +77,12 @@ const getAllPublicProducts = async (params = {}) => {
       });
     }
 
-    totalPages =
-      response.data?.meta?.totalPages ||
-      response.data?.meta?.pages ||
-      1;
+    const meta = response.data?.meta || {};
+    apiTotal = meta.total ?? apiTotal;
+    totalPages = meta.totalPages || meta.pages || 1;
     page += 1;
 
-    if (page > 10) break;
+    if (page > 20) break;
   } while (page <= totalPages);
 
   return {
@@ -69,7 +93,7 @@ const getAllPublicProducts = async (params = {}) => {
       products: allProducts,
       meta: {
         ...(firstResponse?.data?.meta || {}),
-        total: allProducts.length,
+        total: apiTotal ?? allProducts.length,
         page: 1,
         limit,
         totalPages: 1,
@@ -77,6 +101,18 @@ const getAllPublicProducts = async (params = {}) => {
     },
   };
 };
+
+const getAllPublicProducts = (params = {}) =>
+  mergePaginatedProducts(
+    (page, limit) => getPublicProducts({ ...params, page, limit }),
+    params
+  );
+
+const getAllAuthedProducts = (params = {}) =>
+  mergePaginatedProducts(
+    (page, limit) => api.get('/product', { params: { ...params, page, limit } }),
+    params
+  );
 
 const getPublicCategories = async () => {
   const response = await getAllPublicProducts({ page: 1, limit: 100 });
@@ -108,6 +144,117 @@ const getPublicCategories = async () => {
   };
 };
 
+const getPublicBrands = async (params = {}) => {
+  const response = await getAllPublicProducts({ page: 1, limit: 100, ...params });
+  const products = getResponseArray(response);
+  const brandMap = new Map();
+
+  products.forEach((product) => {
+    const brand = product.brand;
+    if (!brand) return;
+
+    const id = brand._id || brand.id || brand.slug || brand.name;
+    if (!id) return;
+
+    const existing = brandMap.get(id);
+    brandMap.set(id, {
+      ...(typeof brand === 'object' ? brand : { name: brand }),
+      _id: brand._id || brand.id || id,
+      productsCount: (existing?.productsCount || 0) + 1,
+    });
+  });
+
+  return {
+    ...response,
+    data: {
+      ...response.data,
+      data: Array.from(brandMap.values()),
+      brands: Array.from(brandMap.values()),
+    },
+  };
+};
+
+const PUBLIC_BROWSE_PATHS = [
+  '/search/',
+  '/brand',
+  '/category',
+  '/product/trending',
+  '/product/new-arrivals',
+  '/product/ai-trending',
+];
+
+const isPublicBrowseRequest = (url = '') =>
+  PUBLIC_BROWSE_PATHS.some((path) => url.includes(path));
+
+const getStoredAuth = () => {
+  try {
+    const stored = localStorage.getItem('brandhive_user');
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+};
+
+const hasAuthToken = () => {
+  const parsed = getStoredAuth();
+  return !!(parsed?.token || parsed?.accessToken);
+};
+
+const PRODUCT_CACHE_KEY = 'brandhive_product_cache';
+
+const loadProductCache = () => {
+  try {
+    const raw = sessionStorage.getItem(PRODUCT_CACHE_KEY);
+    return raw ? new Map(JSON.parse(raw)) : new Map();
+  } catch {
+    return new Map();
+  }
+};
+
+let productCache = loadProductCache();
+
+const persistProductCache = () => {
+  try {
+    sessionStorage.setItem(
+      PRODUCT_CACHE_KEY,
+      JSON.stringify([...productCache.entries()])
+    );
+  } catch {
+    // ignore quota errors
+  }
+};
+
+export const cacheProducts = (products) => {
+  if (!Array.isArray(products) || products.length === 0) return;
+
+  products.forEach((product) => {
+    const id = product?.id || product?._id;
+    const slug = product?.slug;
+    if (id) productCache.set(String(id), product);
+    if (slug) productCache.set(String(slug), product);
+  });
+
+  persistProductCache();
+};
+
+const getCachedProduct = (identifier) =>
+  productCache.get(String(identifier)) || null;
+
+const normalizeProductResponse = (response) => {
+  const raw =
+    response.data?.data ||
+    response.data?.product ||
+    response.data;
+  return {
+    ...response,
+    data: {
+      ...response.data,
+      data: raw,
+      product: raw,
+    },
+  };
+};
+
 const findPublicProduct = async (identifier) => {
   const limit = 100;
   let page = 1;
@@ -122,14 +269,7 @@ const findPublicProduct = async (identifier) => {
     });
 
     if (found) {
-      return {
-        ...response,
-        data: {
-          ...response.data,
-          data: found,
-          product: found,
-        },
-      };
+      return normalizeProductResponse({ ...response, data: { ...response.data, data: found } });
     }
 
     totalPages = response.data?.meta?.totalPages || totalPages;
@@ -145,9 +285,8 @@ const findPublicProduct = async (identifier) => {
 api.interceptors.request.use(
   (config) => {
     try {
-      const stored = localStorage.getItem('brandhive_user');
-      if (stored) {
-        const parsed = JSON.parse(stored);
+      const parsed = getStoredAuth();
+      if (parsed) {
         const token = parsed?.token || parsed?.accessToken;
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
@@ -161,19 +300,33 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// ─── Response Interceptor: handle 401 ────────────────────────────────────────
+// Cache products from any list endpoint so PDP can open items the API showed on PLP/home
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const url = response.config?.url || '';
+    const listProducts = getResponseArray(response);
+    if (
+      listProducts.length > 0 &&
+      listProducts[0] &&
+      (listProducts[0].name || listProducts[0].slug)
+    ) {
+      cacheProducts(listProducts);
+    }
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config;
     
     // If 401 and haven't retried yet
     if (error.response?.status === 401 && !originalRequest._retry) {
+      if (isPublicBrowseRequest(originalRequest.url)) {
+        return Promise.reject(error);
+      }
+
       originalRequest._retry = true;
       
       try {
-        const stored = localStorage.getItem('brandhive_user');
-        const parsed = stored ? JSON.parse(stored) : null;
+        const parsed = getStoredAuth();
         
         if (parsed?.refreshToken) {
           // Try to refresh the token
@@ -205,6 +358,9 @@ api.interceptors.response.use(
           }
         }
       } catch {
+        if (isPublicBrowseRequest(originalRequest.url)) {
+          return Promise.reject(error);
+        }
         // Refresh failed — clear session
         localStorage.removeItem('brandhive_user');
         localStorage.removeItem('brandhive_cart');
@@ -245,15 +401,17 @@ export const authAPI = {
   // POST { email, otp } — verify the reset code
   verifyResetCode: (data) => api.post('/auth/verify-reset-code', data),
 
-  // PATCH { email, newPassword } — set a new password
+  // PATCH { email, newPassword } — after verify-reset-code
   resetPassword: (data) => api.patch('/auth/reset-password', data),
 
-  // Requires verify-reset-code first — use forgotPassword → verifyResetCode → resetPassword
+  // POST { oldPassword, newPassword } — logged-in user changes password
   changePassword: (data) =>
-    api.patch('/auth/reset-password', {
-      email: data.email,
-      newPassword: data.password || data.newPassword,
+    api.post('/auth/change-password', {
+      oldPassword: data.oldPassword || data.currentPassword,
+      newPassword: data.newPassword || data.password,
     }),
+
+  createAdmin: (data) => api.post('/auth/create-admin', data),
 
   // POST { email }
   logout: (data) => api.post('/auth/logout', data),
@@ -268,36 +426,115 @@ export const authAPI = {
   },
 };
 
-// ─── Brands — backend returns empty; keep using mockData ─────────────────────
+// ─── Brands — /brand is auth-protected on production; derive from search when needed
 export const brandsAPI = {
-  getAll: (pageOrParams = 1, limit = 50) => {
-    if (typeof pageOrParams === 'object' && pageOrParams !== null) {
-      return api.get('/brand', { params: pageOrParams });
+  getAll: async (pageOrParams = 1, limit = 50) => {
+    const params =
+      typeof pageOrParams === 'object' && pageOrParams !== null
+        ? pageOrParams
+        : { page: pageOrParams, limit };
+    if (!hasAuthToken()) {
+      return getPublicBrands(params);
     }
-    return api.get('/brand', { params: { page: pageOrParams, limit } });
+    try {
+      return await api.get('/brand', { params });
+    } catch (err) {
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        return getPublicBrands(params);
+      }
+      throw err;
+    }
   },
   getOne: (id) => api.get(`/brand/${id}`),
-  getByCategory: (categoryId) => 
+  getByCategory: (categoryId) =>
     api.get(`/brand/by-category/${categoryId}`),
+  update: (id, data) => api.put(`/brand/${id}`, data),
+  activate: (id) => api.patch(`/brand/${id}/activate`),
+  deactivate: (id) => api.patch(`/brand/${id}/deactivate`),
+  delete: (id) => api.delete(`/brand/${id}`),
   request: (data) => api.post('/brand/request', data, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
 };
 
-// ─── Products — backend returns empty; keep using mockData ───────────────────
+// ─── Products — GET /product* requires auth; /search/products is public fallback
 export const productsAPI = {
-  // The public product controller is protected on the live API, while search is public.
-  // Use search for browsing and fall back to it for details so PLP/PDP work without auth.
-  getAll: (params = {}) => getAllPublicProducts(params),
-  getOne: (slug) => findPublicProduct(slug),
+  getAll: (params = {}) => {
+    if (params.brand) {
+      return withAuthFallback(
+        () => api.get(`/product/by-brand/${params.brand}`),
+        () => getPublicProducts({
+          brand: params.brand,
+          page: params.page,
+          limit: params.limit || 100,
+        })
+      );
+    }
+    if (params.category) {
+      return withAuthFallback(
+        () => api.get(`/product/by-category/${params.category}`),
+        () => getPublicProducts({
+          category: params.category,
+          page: params.page,
+          limit: params.limit || 100,
+        })
+      );
+    }
+    return withAuthFallback(
+      () => getAllAuthedProducts(params),
+      () => getAllPublicProducts(params)
+    );
+  },
+
+  getOne: async (slug) => {
+    const decoded = decodeURIComponent(slug);
+
+    const cached = getCachedProduct(decoded);
+    if (cached) {
+      return normalizeProductResponse({ data: { data: cached } });
+    }
+
+    if (hasAuthToken()) {
+      try {
+        const res = await api.get(`/product/${decoded}`);
+        const raw = res.data?.data || res.data?.product || res.data;
+        if (raw && (raw.id || raw._id || raw.slug)) {
+          cacheProducts([raw]);
+          return normalizeProductResponse(res);
+        }
+      } catch (err) {
+        const status = err.response?.status;
+        if (status && status !== 401 && status !== 403 && status !== 404) {
+          throw err;
+        }
+      }
+    }
+
+    return findPublicProduct(decoded);
+  },
+
   getTrending: () => api.get('/product/trending'),
   getNewArrivals: () => api.get('/product/new-arrivals'),
-  getByBrand: (brandId) => 
-    getPublicProducts({ brand: brandId, limit: 100 }),
-  getByCategory: (categoryId) => 
-    getPublicProducts({ category: categoryId, limit: 100 }),
-  search: (params) => 
-    getPublicProducts(params),
+
+  getByBrand: (brandId) =>
+    withAuthFallback(
+      () => api.get(`/product/by-brand/${brandId}`),
+      () => getPublicProducts({ brand: brandId, limit: 100 })
+    ),
+
+  getByCategory: (categoryId) =>
+    withAuthFallback(
+      () => api.get(`/product/by-category/${categoryId}`),
+      () => getPublicProducts({ category: categoryId, limit: 100 })
+    ),
+
+  search: (params) => getPublicProducts(params),
+
+  create: (data) => api.post('/product', data),
+  update: (id, data) => api.put(`/product/${id}`, data),
+  delete: (id) => api.delete(`/product/${id}`),
+  activate: (id) => api.patch(`/product/${id}/activate`),
+  deactivate: (id) => api.patch(`/product/${id}/deactivate`),
 };
 
 // ─── Seller ──────────────────────────────────────────────────────────────────
@@ -305,6 +542,7 @@ export const sellerAPI = {
   getDashboard: () => api.get('/seller/dashboard'),
   getOrders: () => api.get('/seller/orders'),
   getProducts: () => api.get('/seller/products'),
+  getProduct: (id) => api.get(`/seller/products/${id}`),
   createProduct: (data) => {
     const isFormData = data instanceof FormData;
     return api.post('/seller/products', data, isFormData ? {
@@ -317,6 +555,7 @@ export const sellerAPI = {
   getAnalytics: () => api.get('/seller/analytics'),
   getReviews: () => api.get('/seller/reviews'),
   getBazaar: () => api.get('/seller/bazaar'),
+  searchBazaar: (query) => api.get(`/seller/bazaar/search?search=${encodeURIComponent(query)}`),
   updateBazaar: (data) => api.put('/seller/bazaar', data),
   notifyFollowers: (data) => 
     api.post('/seller/bazaar/notify', data),
@@ -324,7 +563,9 @@ export const sellerAPI = {
     api.get(`/seller/orders/${id}`),
   filterOrders: (status) => 
     api.get(`/seller/orders?status=${status}`),
-  getStockAlerts: () => api.get('/seller/stock-alerts'),
+  getStockAlerts: () => api.get('/seller/inventory/alerts'),
+  adjustStock: (productId, data) =>
+    api.post(`/seller/inventory/${productId}/adjust`, data),
 };
 
 // ─── Admin ───────────────────────────────────────────────────────────────────
@@ -333,10 +574,8 @@ export const adminAPI = {
   getUsers: (params = {}) => api.get('/admin/users', { params }),
   toggleUser: (id) => api.patch(`/admin/users/${id}/toggle`),
   getOrders: (params = {}) => api.get('/orders/admin/all', { params }),
-  updateOrderStatus: (orderId, data) =>
-    api.patch(`/orders/admin/${orderId}/status`, data),
-  getBrands: (params = {}) => api.get('/admin/brands', { params }),
-  verifyBrand: (id) => api.patch(`/admin/brands/${id}/verify`),
+  updateOrderStatus: (id, status, note = '') =>
+    api.patch(`/orders/admin/${id}/status`, { status, note }),
   getRevenue: (period = 'month') => 
     api.get(`/admin/analytics/revenue?period=${period}`),
   getOrdersAnalytics: (period = 'month') => 
@@ -360,6 +599,13 @@ export const adminAPI = {
 
 export const categoriesAPI = {
   getAll: async () => {
+    if (!hasAuthToken()) {
+      const cached = localStorage.getItem('brandhive_categories_cache');
+      if (cached) {
+        return { data: { data: JSON.parse(cached) } };
+      }
+      return getPublicCategories();
+    }
     try {
       const res = await api.get('/category');
       if (res.data?.data?.length > 0) {
@@ -375,12 +621,15 @@ export const categoriesAPI = {
         if (cached) {
           return { data: { data: JSON.parse(cached) } };
         }
-        return { data: { data: [] } };
+        return getPublicCategories();
       }
       throw err;
     }
   },
   getOne: (id) => api.get(`/category/${id}`),
+  create: (data) => api.post('/category', data),
+  update: (id, data) => api.put(`/category/${id}`, data),
+  delete: (id) => api.delete(`/category/${id}`),
 };
 
 // ─── Cart ────────────────────────────────────────────────────────────────────
@@ -402,7 +651,7 @@ export const ordersAPI = {
   getAll: () => api.get('/orders/my-orders'),
   cancelOrder: (orderId, data) => api.post(`/orders/my-orders/${orderId}/cancel`, data),
   reorder: (orderId) => api.post(`/orders/my-orders/${orderId}/reorder`),
-  retryPayment: (orderId) => api.post('/payment/retry', { orderId }),
+  retryPayment: (orderId) => api.post(`/payment/retry/${orderId}`),
 };
 
 // ─── Users ───────────────────────────────────────────────────────────────────
@@ -439,6 +688,9 @@ export const reviewsAPI = {
   getProductReviews: (productId) => api.get(`/reviews/product/${productId}`),
   addReview: (data) => api.post('/reviews', data),
   getMyReviews: () => api.get('/reviews/my-reviews'),
+  deleteReview: (id) => api.delete(`/reviews/${id}`),
+  adminDelete: (id) => api.delete(`/reviews/admin/${id}`),
+  adminToggle: (id) => api.patch(`/reviews/admin/${id}/toggle`),
 };
 
 // ─── Notifications ────────────────────────────────────────────────────────────
@@ -475,12 +727,12 @@ export const chatAPI = {
 export const inventoryAPI = {
   getLogs: (params = {}) => api.get('/inventory/logs', { params }),
   adjust: (data) => api.post('/inventory/adjust', data),
-  getAlerts: () => api.get('/seller/stock-alerts'),
+  getAlerts: () => api.get('/seller/inventory/alerts'),
 };
 
 // ─── Search ────────────────────────────────────────────────────────────────────
 export const searchAPI = {
-  search: (params) => api.get('/search/products', { params }),
+  search: (params) => getPublicProducts(params),
   getFacets: () => api.get('/search/facets'),
 };
 
@@ -504,6 +756,7 @@ export const aiAPI = {
   getBehavioralRecommendations: (data) =>
     api.post('/product/behavioral/recommend', data),
   getTrending: () => api.get('/product/ai-trending'),
+  getCatalogTrending: () => api.get('/product/trending'),
   getCrossSell: (data) =>
     api.post('/product/cart/cross-sell', data),
   getProductInsights: () =>

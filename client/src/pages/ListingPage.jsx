@@ -6,7 +6,12 @@ import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
 import { productsAPI, categoriesAPI, searchAPI, aiAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { mapProduct, mapCategory, deduplicateProducts } from '../utils/mappers';
+import {
+  mapProduct,
+  mapCategory,
+  deduplicateProducts,
+  enrichCategoriesWithProductCounts,
+} from '../utils/mappers';
 import { categories as mockCategories } from '../data/mockData';
 
 function FilterSection({ title, children, defaultOpen = true, isRTL }) {
@@ -82,15 +87,13 @@ export default function ListingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [totalPages, setTotalPages] = useState(1);
+  const [catalogTotal, setCatalogTotal] = useState(null);
 
   const fetchProducts = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await productsAPI.getAll({
-        page: 1,
-        limit: 100,
-      });
+      const res = await productsAPI.getAll({ limit: 100 });
 
       // Handle all possible response shapes
       const raw =
@@ -105,8 +108,8 @@ export default function ListingPage() {
         const mapped = raw.map(mapProduct);
         setProducts(deduplicateProducts(mapped));
         setError(null);
-        // Extract pagination meta if present
         const meta = res.data?.meta || {};
+        setCatalogTotal(meta.total ?? mapped.length);
         setTotalPages(meta.pages || meta.totalPages || 1);
       } else {
         // API returned empty — show empty state
@@ -298,6 +301,26 @@ export default function ListingPage() {
     });
   };
 
+  const categoriesWithCounts = useMemo(
+    () => enrichCategoriesWithProductCounts(categories, products),
+    [categories, products]
+  );
+
+  const hasClientFilters = Boolean(
+    searchParam ||
+    activeCategory ||
+    priceMin ||
+    priceMax ||
+    minRating > 0 ||
+    filters.freeShipping ||
+    filters.onSale ||
+    selectedGovs.length
+  );
+
+  const resultCount = hasClientFilters
+    ? filteredProducts.length
+    : (catalogTotal ?? filteredProducts.length);
+
   const govCounts = {};
   products.forEach(p => { 
     if (p.governorate && p.governorate.trim()) {
@@ -350,10 +373,10 @@ export default function ListingPage() {
         </div>
       </FilterSection>
 
-      {categories.length > 0 && (
+      {categoriesWithCounts.length > 0 && (
         <FilterSection title={isRTL ? 'الفئة' : 'Category'} isRTL={isRTL}>
           <div className="space-y-2 max-h-48 overflow-y-auto">
-            {categories.map(cat => (
+            {categoriesWithCounts.map(cat => (
               <Link
                 key={cat.id || cat.slug}
                 to={`/products?category=${cat.slug}`}
@@ -481,9 +504,9 @@ export default function ListingPage() {
                 </h1>
                 <p className="text-gray-500 dark:text-dark-muted text-sm mt-0.5">
                   {isRTL ? (
-                    <>عرض <span className="font-semibold text-brand-gold">{filteredProducts.length.toLocaleString()}</span> نتيجة{activeCategory && ` في ${activeCategory}`}</>
+                    <>عرض <span className="font-semibold text-brand-gold">{resultCount.toLocaleString()}</span> نتيجة{activeCategory && ` في ${activeCategory}`}</>
                   ) : (
-                    <>Showing {filteredProducts.length.toLocaleString()} results{activeCategory && ` in ${activeCategory}`}</>
+                    <>Showing {resultCount.toLocaleString()} results{activeCategory && ` in ${activeCategory}`}</>
                   )}
                 </p>
               </div>

@@ -5,7 +5,7 @@ import {
   Shield, CheckCircle2, MapPin, Minus, Plus, ChevronRight
 } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
-import { productsAPI, brandsAPI, reviewsAPI, aiAPI } from '../services/api';
+import { productsAPI, brandsAPI, reviewsAPI, aiAPI, ordersAPI } from '../services/api';
 import { mapProduct } from '../utils/mappers';
 import { useCart, useWishlist } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -16,6 +16,20 @@ import toast from 'react-hot-toast';
 const CATEGORY_ICONS = {
   Fashion: '👗', Jewelry: '💍', Handmade: '🏺', 'Home Decor': '🏠',
   Organic: '🌿', 'Art & Culture': '🎨', Food: '🍯', Beauty: '💄',
+};
+
+const MIN_REVIEW_LENGTH = 10;
+
+const orderContainsProduct = (order, productId) => {
+  const items = order?.items || order?.products || [];
+  return items.some((item) => {
+    const id =
+      item.productId ||
+      item.product?._id ||
+      item.product?.id ||
+      (typeof item.product === 'string' ? item.product : null);
+    return id && String(id) === String(productId);
+  });
 };
 
 export default function ProductPage() {
@@ -44,6 +58,9 @@ export default function ProductPage() {
   const [reviewForm, setReviewForm] = useState({ rating: 5, comment: '' });
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
+  const [eligibleOrders, setEligibleOrders] = useState([]);
+  const [selectedOrderId, setSelectedOrderId] = useState('');
+  const [ordersLoading, setOrdersLoading] = useState(false);
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -133,6 +150,37 @@ export default function ProductPage() {
     fetchProduct();
   }, [slug, user?.id, user?._id]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !product?.id) {
+      setEligibleOrders([]);
+      setSelectedOrderId('');
+      return;
+    }
+
+    const fetchEligibleOrders = async () => {
+      setOrdersLoading(true);
+      try {
+        const res = await ordersAPI.getAll();
+        const list = Array.isArray(res.data)
+          ? res.data
+          : res.data?.data || res.data?.orders || [];
+        const matching = list.filter((order) =>
+          orderContainsProduct(order, product.id)
+        );
+        setEligibleOrders(matching);
+        const firstId = matching[0]?._id || matching[0]?.id || '';
+        setSelectedOrderId(firstId ? String(firstId) : '');
+      } catch {
+        setEligibleOrders([]);
+        setSelectedOrderId('');
+      } finally {
+        setOrdersLoading(false);
+      }
+    };
+
+    fetchEligibleOrders();
+  }, [isAuthenticated, product?.id]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-brand-cream dark:bg-dark-bg">
@@ -221,26 +269,44 @@ export default function ProductPage() {
       toast.error(isRTL ? 'يرجى تسجيل الدخول لإضافة تقييم' : 'Please login to submit a review');
       return;
     }
-    if (!reviewForm.comment.trim()) {
-      toast.error(isRTL ? 'يرجى كتابة تعليق' : 'Please write a comment');
+    if (!selectedOrderId) {
+      toast.error(
+        isRTL
+          ? 'يمكنك تقييم المنتجات التي اشتريتها فقط'
+          : 'You can only review products from a completed order'
+      );
+      return;
+    }
+    const comment = reviewForm.comment.trim();
+    if (comment.length < MIN_REVIEW_LENGTH) {
+      toast.error(
+        isRTL
+          ? `التعليق يجب أن يكون ${MIN_REVIEW_LENGTH} أحرف على الأقل`
+          : `Comment must be at least ${MIN_REVIEW_LENGTH} characters`
+      );
       return;
     }
     setReviewLoading(true);
     try {
       await reviewsAPI.addReview({
         productId: product.id,
+        orderId: selectedOrderId,
         rating: reviewForm.rating,
-        comment: reviewForm.comment,
+        comment,
       });
       toast.success(isRTL ? 'تم إضافة تقييمك بنجاح ✅' : 'Review submitted successfully ✅');
       setReviewSubmitted(true);
       setReviewForm({ rating: 5, comment: '' });
-      // Refresh reviews list
       const revRes = await reviewsAPI.getProductReviews(product.id);
       const revRaw = revRes.data?.data || revRes.data?.reviews || [];
       setProductReviews(Array.isArray(revRaw) ? revRaw : []);
     } catch (err) {
-      toast.error(err.response?.data?.message || (isRTL ? 'فشل إرسال التقييم' : 'Failed to submit review'));
+      const apiMessage = err.response?.data?.message;
+      const message = Array.isArray(apiMessage)
+        ? apiMessage.join(', ')
+        : apiMessage ||
+          (isRTL ? 'فشل إرسال التقييم' : 'Failed to submit review');
+      toast.error(message);
     } finally {
       setReviewLoading(false);
     }
@@ -564,6 +630,40 @@ export default function ProductPage() {
                     <h4 className={`font-semibold text-gray-900 dark:text-dark-text mb-3 ${isRTL ? 'text-right' : ''}`}>
                       {isRTL ? 'اكتب تقييمك' : 'Write a Review'}
                     </h4>
+                    {ordersLoading ? (
+                      <p className="text-sm text-gray-500 dark:text-dark-muted mb-3">
+                        {isRTL ? 'جاري التحقق من طلباتك...' : 'Checking your orders...'}
+                      </p>
+                    ) : eligibleOrders.length === 0 ? (
+                      <p className="text-sm text-amber-700 dark:text-amber-400 mb-3">
+                        {isRTL
+                          ? 'يمكنك تقييم هذا المنتج بعد شرائه. لا يوجد طلب يحتوي على هذا المنتج.'
+                          : 'You can review this product after purchasing it. No order found for this product.'}
+                      </p>
+                    ) : eligibleOrders.length > 1 ? (
+                      <div className="mb-3">
+                        <label className={`block text-sm text-gray-600 dark:text-dark-muted mb-1 ${isRTL ? 'text-right' : ''}`}>
+                          {isRTL ? 'اختر الطلب' : 'Select order'}
+                        </label>
+                        <select
+                          value={selectedOrderId}
+                          onChange={(e) => setSelectedOrderId(e.target.value)}
+                          className={`input-field py-2 text-sm ${isRTL ? 'text-right' : ''}`}
+                        >
+                          {eligibleOrders.map((order) => {
+                            const id = order._id || order.id;
+                            const date = new Date(order.createdAt || Date.now()).toLocaleDateString(
+                              isRTL ? 'ar-EG' : 'en-US'
+                            );
+                            return (
+                              <option key={id} value={id}>
+                                #{String(id).slice(-6).toUpperCase()} — {date}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+                    ) : null}
                     {/* Star selector */}
                     <div className={`flex gap-1 mb-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
                       {[1,2,3,4,5].map(s => (
@@ -575,13 +675,22 @@ export default function ProductPage() {
                     <textarea
                       value={reviewForm.comment}
                       onChange={e => setReviewForm(p => ({ ...p, comment: e.target.value }))}
-                      placeholder={isRTL ? 'شارك تجربتك مع هذا المنتج...' : 'Share your experience with this product...'}
+                      placeholder={isRTL ? 'شارك تجربتك مع هذا المنتج (10 أحرف على الأقل)...' : 'Share your experience (at least 10 characters)...'}
                       rows={3}
-                      className={`input-field resize-none mb-3 ${isRTL ? 'text-right' : ''}`}
+                      minLength={MIN_REVIEW_LENGTH}
+                      className={`input-field resize-none mb-1 ${isRTL ? 'text-right' : ''}`}
                     />
+                    <p className={`text-xs mb-3 ${reviewForm.comment.trim().length >= MIN_REVIEW_LENGTH ? 'text-emerald-600' : 'text-gray-400 dark:text-dark-muted'} ${isRTL ? 'text-right' : ''}`}>
+                      {reviewForm.comment.trim().length}/{MIN_REVIEW_LENGTH} {isRTL ? 'أحرف' : 'characters'}
+                    </p>
                     <button
                       onClick={submitReview}
-                      disabled={reviewLoading || !reviewForm.comment.trim()}
+                      disabled={
+                        reviewLoading ||
+                        ordersLoading ||
+                        !selectedOrderId ||
+                        reviewForm.comment.trim().length < MIN_REVIEW_LENGTH
+                      }
                       className="btn-primary disabled:opacity-50 flex items-center gap-2"
                     >
                       {reviewLoading ? (

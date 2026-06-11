@@ -6,8 +6,13 @@ export const mapProduct = (p) => ({
   price: p.finalPrice || p.price || 0,
   originalPrice: p.isOnSale ? p.price : null,
   discount: p.discountPercentage || 0,
-  image: p.mainImage || p.images?.[0] || null,
-  images: p.images || [],
+  image:
+    (typeof p.mainImage === 'string' ? p.mainImage : p.mainImage?.url) ||
+    (typeof p.images?.[0] === 'string' ? p.images[0] : p.images?.[0]?.url) ||
+    null,
+  images: (p.images || []).map((img) =>
+    typeof img === 'string' ? img : img?.url
+  ).filter(Boolean),
   sizes: p.sizes || p.variants?.sizes || [],
   colors: p.colors || p.variants?.colors || [],
   category: p.category?.name || p.category || '',
@@ -86,9 +91,16 @@ const CATEGORY_META = {
   default:      { icon: '🛍️', color: 'from-gray-400 to-gray-500' },
 };
 
+const formatCategoryCount = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return `${n.toLocaleString()}+`;
+};
+
 export const mapCategory = (c) => {
   const slug = c.slug || c.name?.toLowerCase().replace(/\s+/g, '-') || '';
   const meta = CATEGORY_META[slug] || CATEGORY_META.default;
+  const rawCount = c.productsCount ?? c.productCount ?? c.count;
   return {
     id: c._id || c.id,
     name: c.name || '',
@@ -96,7 +108,44 @@ export const mapCategory = (c) => {
     slug,
     icon: meta.icon,
     color: meta.color,
-    count: c.productsCount != null ? `${c.productsCount.toLocaleString()}+` : '0+',
+    count: formatCategoryCount(rawCount),
     logo: c.logo?.url || null,
   };
+};
+
+export const enrichCategoriesWithProductCounts = (categories, products) => {
+  const counts = new Map();
+
+  products.forEach((product) => {
+    const slug = (product.categorySlug || product.category || '')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, '-')
+      .replace(/_/g, '-');
+    if (!slug) return;
+    counts.set(slug, (counts.get(slug) || 0) + 1);
+  });
+
+  return categories.map((category) => {
+    const slug = (category.slug || category.name || '')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, '-');
+    const direct = counts.get(slug);
+    if (direct) {
+      return { ...category, count: formatCategoryCount(direct) };
+    }
+
+    let aliasTotal = 0;
+    counts.forEach((value, key) => {
+      if (key.includes(slug) || slug.includes(key)) {
+        aliasTotal += value;
+      }
+    });
+
+    return {
+      ...category,
+      count: aliasTotal > 0 ? formatCategoryCount(aliasTotal) : category.count,
+    };
+  });
 };

@@ -432,7 +432,7 @@ function AdminOrdersTab({ adminAPI, isRTL }) {
                         try {
                           await adminAPI.updateOrderStatus(
                             order._id,
-                            { status: e.target.value }
+                            e.target.value
                           );
                           toast.success(isRTL
                             ? 'تم تحديث الحالة ✅'
@@ -1363,7 +1363,7 @@ export default function AdminDashboard() {
         console.log('[Admin] pending:', allBrands.filter(b => b.status === 'pending').length);
       } catch {
         try {
-          const brandResFallback = await adminAPI.getBrands();
+          const brandResFallback = await adminAPI.getBrandRequests();
           const rawFallback = brandResFallback.data?.data || brandResFallback.data?.brands || brandResFallback.data || [];
           setBrands(Array.isArray(rawFallback) ? rawFallback : []);
         } catch {
@@ -1876,7 +1876,7 @@ export default function AdminDashboard() {
                                 <div className={`flex gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
                                   <button
                                     onClick={() => {
-                                      adminAPI.verifyBrand(brand._id || brand.id);
+                                      adminAPI.approveBrandRequest(brand._id || brand.id);
                                       setBrands(prev => prev.map(b => (b._id === brand._id || b.id === brand.id) ? { ...b, isVerified: true, isApproved: true, isActive: true, status: 'approved' } : b));
                                       toast.success(isRTL ? 'تم قبول البائع!' : 'Seller approved!');
                                     }}

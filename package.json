@@ -10,5 +10,13 @@
     "install:all": "cd client && npm install && cd ../server && npm install",
     "start": "cd server && npm start"
   },
-  "keywords": ["marketplace", "egypt", "local-brands", "ecommerce"]
+  "keywords": [
+    "marketplace",
+    "egypt",
+    "local-brands",
+    "ecommerce"
+  ],
+  "dependencies": {
+    "mongoose": "^9.6.3"
+  }
 }

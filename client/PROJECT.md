@@ -473,3 +473,13 @@ To ensure consistency between backend responses and frontend UI, we use mappers 
 - AdminDashboard: Support Messages tab with reply
 - CartContext: cart event tracking
 - ListingPage: view event tracking
+- Fixed trending products: now uses productsAPI.getTrending() instead of aiAPI.getTrending()
+- Fixed image mapping to handle images array of objects
+- Fixed slug fallback to _id for product links
+- Fixed support API call: now sends fullName, email, message with proper validation
+- Fixed seller stock alerts endpoint: /seller/inventory/alerts
+- Fixed payment retry endpoint: orderId now in URL not body
+- Removed non-existent admin brands endpoints
+- Fixed Follow button: now persists to localStorage (no backend API)
+- Fixed admin order status: added note field
+- BazaarPage: search now uses server-side API with debouncing

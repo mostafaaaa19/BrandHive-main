@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Store, Star, Package, MapPin, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useLanguage } from '../context/LanguageContext';
-import { brandsAPI } from '../services/api';
+import { brandsAPI, sellerAPI } from '../services/api';
 import { mapBrand } from '../utils/mappers';
 
 export default function BazaarPage() {
@@ -12,34 +12,30 @@ export default function BazaarPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
-  useEffect(() => {
-    const fetch = async () => {
-      try {
-        const res = await brandsAPI.getAll(1, 100);
-        const raw =
-          res.data?.data ||
-          res.data?.brands ||
-          res.data ||
-          [];
-        setBrands(Array.isArray(raw) ? raw.map(mapBrand) : []);
-      } catch {
-        setBrands([]);
-      } finally {
-        setLoading(false);
+  const fetchBazaars = useCallback(async (searchQuery = '') => {
+    setLoading(true);
+    try {
+      let res;
+      if (searchQuery.trim()) {
+        res = await sellerAPI.searchBazaar(searchQuery);
+      } else {
+        res = await brandsAPI.getAll({ limit: 50 });
       }
-    };
-    fetch();
+      const raw = res.data?.data || res.data?.brands || res.data || [];
+      setBrands(Array.isArray(raw) ? raw.map(mapBrand) : []);
+    } catch {
+      setBrands([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return brands;
-    const q = search.toLowerCase();
-    return brands.filter(
-      (b) =>
-        (b.name || '').toLowerCase().includes(q) ||
-        (b.description || '').toLowerCase().includes(q)
-    );
-  }, [brands, search]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchBazaars(search);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [search, fetchBazaars]);
 
   return (
     <div className="min-h-screen bg-brand-cream dark:bg-dark-bg">
@@ -94,7 +90,7 @@ export default function BazaarPage() {
       {/* Stats bar */}
       <div className="bg-white dark:bg-dark-surface border-b border-gray-100 dark:border-dark-border py-3 px-4">
         <div className="max-w-7xl mx-auto text-sm text-gray-500 dark:text-dark-muted">
-          {isRTL ? `${filtered.length} متجر` : `${filtered.length} stores`}
+          {isRTL ? `${brands.length} متجر` : `${brands.length} stores`}
         </div>
       </div>
 
@@ -115,7 +111,7 @@ export default function BazaarPage() {
               </div>
             ))}
           </div>
-        ) : filtered.length === 0 ? (
+        ) : brands.length === 0 ? (
           <div className="text-center py-16">
             <Store size={48} className="mx-auto text-gray-300 mb-4" />
             <p className="text-gray-500 dark:text-dark-muted">
@@ -124,7 +120,7 @@ export default function BazaarPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filtered.map((brand, i) => (
+            {brands.map((brand, i) => (
               <motion.div
                 key={brand.id || i}
                 initial={{ opacity: 0, y: 20 }}

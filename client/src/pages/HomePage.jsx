@@ -10,7 +10,7 @@ import BrandCard from '../components/BrandCard';
 import { testimonials } from '../data/mockData';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
-import { productsAPI, brandsAPI, categoriesAPI, aiAPI } from '../services/api';
+import { productsAPI, brandsAPI, categoriesAPI } from '../services/api';
 import { mapProduct, mapBrand, mapCategory } from '../utils/mappers';
 
 function CountUp({ target, suffix = '', duration = 2000 }) {
@@ -144,7 +144,7 @@ export default function HomePage() {
       }
 
       try {
-        const trendRes = await aiAPI.getTrending();
+        const trendRes = await productsAPI.getTrending();
         const trendData = trendRes.data?.data ||
           trendRes.data?.products ||
           trendRes.data || [];

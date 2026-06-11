@@ -14,14 +14,13 @@ export default function BrandPage() {
   const { isRTL } = useLanguage();
   const { slug } = useParams();
   
-  const { isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const [brand, setBrand] = useState(null);
   const [brandProducts, setBrandProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('Bazaar');
   const [isFollowing, setIsFollowing] = useState(false);
-  const [followLoading, setFollowLoading] = useState(false);
   const [localFollowers, setLocalFollowers] = useState(0);
   const [localSales, setLocalSales] = useState(0);
   const [sortBy, setSortBy] = useState('Best Match');
@@ -93,6 +92,14 @@ export default function BrandPage() {
   useEffect(() => {
     if (brand) {
       setLocalFollowers(brand.followers || 0);
+      try {
+        const userId = JSON.parse(localStorage.getItem('brandhive_user') || '{}')?.id ||
+          JSON.parse(localStorage.getItem('brandhive_user') || '{}')?._id;
+        const following = JSON.parse(localStorage.getItem(`brandhive_following_${userId}`) || '[]');
+        setIsFollowing(following.includes(brand?.id || brand?._id));
+      } catch {
+        setIsFollowing(false);
+      }
     }
   }, [brand]);
 
@@ -117,35 +124,30 @@ export default function BrandPage() {
     return () => clearInterval(interval);
   }, [brand?.id, slug]);
 
-  const handleFollow = async () => {
+  const handleFollow = () => {
     if (!isAuthenticated) {
-      toast.error(isRTL
-        ? 'يرجى تسجيل الدخول أولاً'
-        : 'Please login first'
-      );
+      toast.error(isRTL ? 'يرجى تسجيل الدخول أولاً' : 'Please login first');
       return;
     }
-
-    setFollowLoading(true);
     const newFollowing = !isFollowing;
-    try {
-      setIsFollowing(newFollowing);
-      setLocalFollowers(prev =>
-        newFollowing ? prev + 1 : prev - 1
-      );
+    setIsFollowing(newFollowing);
+    setLocalFollowers(prev => newFollowing ? prev + 1 : prev - 1);
 
-      toast.success(newFollowing
-        ? (isRTL ? 'تم المتابعة ✅' : 'Following ✅')
-        : (isRTL ? 'تم إلغاء المتابعة' : 'Unfollowed')
-      );
-    } catch {
-      setIsFollowing(!newFollowing);
-      setLocalFollowers(prev =>
-        newFollowing ? prev - 1 : prev + 1
-      );
-    } finally {
-      setFollowLoading(false);
+    const key = `brandhive_following_${user?.id || user?._id}`;
+    const following = JSON.parse(localStorage.getItem(key) || '[]');
+    const brandId = brand?.id || brand?._id;
+    if (newFollowing) {
+      if (!following.includes(brandId)) following.push(brandId);
+    } else {
+      const idx = following.indexOf(brandId);
+      if (idx > -1) following.splice(idx, 1);
     }
+    localStorage.setItem(key, JSON.stringify(following));
+
+    toast.success(newFollowing
+      ? (isRTL ? 'تم المتابعة ✅' : 'Following ✅')
+      : (isRTL ? 'تم إلغاء المتابعة' : 'Unfollowed')
+    );
   };
 
   const handleMessage = () => {
@@ -283,7 +285,6 @@ export default function BrandPage() {
                 <button
                   type="button"
                   onClick={handleFollow}
-                  disabled={followLoading}
                   className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 ${isRTL ? 'flex-row-reverse' : ''} ${
                   isFollowing
                     ? 'bg-gray-100 dark:bg-dark-bg text-gray-700 dark:text-dark-text hover:bg-gray-200 dark:hover:bg-dark-surface'

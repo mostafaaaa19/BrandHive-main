@@ -5,8 +5,14 @@ const dotenv = require('dotenv');
 const morgan = require('morgan');
 const path = require('path');
 const https = require('https');
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
+dotenv.config({ path: __dirname + '/.env' });
 
-dotenv.config();
+// Windows: link-local/system DNS often fails Node SRV lookups for MongoDB Atlas
+if (process.env.MONGO_URI?.startsWith('mongodb+srv://')) {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+}
 
 const app = express();
 
@@ -40,6 +46,14 @@ app.use('/users', require('./routes/users'));
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', message: 'BrandHive API is running', timestamp: new Date().toISOString() });
+});
+
+app.get('/', (req, res) => {
+  res.json({
+    status: 'OK',
+    message: 'BrandHive API — use the React app at http://localhost:5173',
+    endpoints: ['/health', '/auth', '/brand', '/product', '/orders', '/users', '/chat/ai'],
+  });
 });
 
 app.post('/chat/ai', async (req, res) => {

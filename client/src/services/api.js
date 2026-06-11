@@ -715,12 +715,23 @@ export const addressesAPI = {
 };
 
 export const chatAPI = {
-  sendMessage: (messages, language) =>
-    fetch('/chat/ai', {
+  sendMessage: async (messages, language) => {
+    const response = await fetch('/chat/ai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages, language }),
-    }).then(r => r.json()),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const error = new Error(data?.reply || data?.message || 'Chat request failed');
+      error.response = { status: response.status, data };
+      throw error;
+    }
+
+    return data;
+  },
 };
 
 // ─── Inventory ───────────────────────────────────────────────────────────────

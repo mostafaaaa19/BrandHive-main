@@ -56,8 +56,44 @@ app.get('/', (req, res) => {
   });
 });
 
+const getOfflineChatReply = (messages, language) => {
+  const lastUser = [...(messages || [])].reverse().find((m) => m.role === 'user');
+  const text = (lastUser?.content || '').toLowerCase();
+
+  const isAr = language === 'ar';
+
+  if (text.includes('track') || text.includes('order') || text.includes('تتبع') || text.includes('طلب')) {
+    return isAr
+      ? 'لتتبع طلبك، افتح حسابك ← طلباتي. إذا احتجت مساعدة إضافية، أرسل رقم الطلب وسيتواصل معك فريق الدعم.'
+      : 'To track your order, go to your account → My Orders. If you need more help, send your order number and our team will follow up.';
+  }
+  if (text.includes('return') || text.includes('استرجاع')) {
+    return isAr
+      ? 'طلبات الاسترجاع متاحة خلال 14 يوماً. افتح الطلب من "طلباتي" واختر طلب استرجاع، أو اترك تفاصيل الطلب هنا.'
+      : 'Returns are available within 14 days. Open the order from My Orders and request a return, or leave your order details here.';
+  }
+  if (text.includes('cancel') || text.includes('إلغاء')) {
+    return isAr
+      ? 'يمكن إلغاء الطلب قبل الشحن من صفحة "طلباتي". أرسل رقم الطلب إن لم يظهر لك خيار الإلغاء.'
+      : 'You can cancel before shipping from My Orders. Send your order number if you do not see a cancel option.';
+  }
+  if (text.includes('payment') || text.includes('pay') || text.includes('دفع')) {
+    return isAr
+      ? 'نقبل Paymob والبطاقات وفوري وفودافون كاش والدفع عند الاستلام. إذا فشل الدفع، جرّب مرة أخرى من الطلب أو تواصل مع الدعم.'
+      : 'We accept Paymob, cards, Fawry, Vodafone Cash, and cash on delivery. If payment failed, retry from your order or contact support.';
+  }
+
+  return isAr
+    ? 'شكراً لتواصلك مع BrandHive. تم استلام رسالتك وسيرد فريق الدعم قريباً.'
+    : 'Thanks for contacting BrandHive. Your message was received and our support team will reply soon.';
+};
+
 app.post('/chat/ai', async (req, res) => {
   const { messages, language } = req.body;
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.json({ reply: getOfflineChatReply(messages, language), offline: true });
+  }
 
   try {
     const payload = JSON.stringify({
@@ -110,10 +146,9 @@ app.post('/chat/ai', async (req, res) => {
     res.json({ reply: text });
   } catch (err) {
     console.error('AI chat error:', err.response?.data || err.message);
-    res.status(500).json({
-      reply: language === 'ar'
-        ? 'الدعم غير متاح الآن. يرجى المحاولة لاحقاً.'
-        : 'Support is unavailable right now. Please try again later.',
+    res.json({
+      reply: getOfflineChatReply(messages, language),
+      offline: true,
     });
   }
 });

@@ -52,26 +52,35 @@ export const mapBrand = (b) => ({
   name: b.name || '',
   slug: b.slug || b._id || '',
   description: b.description || '',
+  longDescription: b.longDescription || b.description || '',
+  arDescription: b.arDescription || '',
   logo: b.logo?.url || b.logo || null,
-  coverImage: b.coverImage?.url || null,
-  category: b.categories?.[0]?.name || 
+  coverImage: b.coverImage?.url || b.coverImage || null,
+  category: b.categories?.[0]?.name ||
             b.category?.name ||
             b.category || 'General',
-  country: b.country || 'Egypt',
-  verified: b.isVerified ?? true,
+  country: b.governorate || b.location || b.country || 'Egypt',
+  verified: b.isVerified ?? b.verified ?? true,
   featured: b.isFeatured || false,
-  productCount: b.stats?.totalProducts || 
-                b.productsCount || 0,
-  rating: b.stats?.averageRating || 
-          b.averageRating || 0,
-  followers: b.stats?.followers || 
-             b.followersCount || 0,
-  memberSince: b.createdAt 
-    ? new Date(b.createdAt).getFullYear().toString() 
+  productCount: b.stats?.totalProducts ||
+                b.productsCount ||
+                b.productCount || 0,
+  rating: b.stats?.averageRating ||
+          b.averageRating ||
+          b.rating || 0,
+  sales: b.stats?.totalSales || b.salesCount || b.sales || 0,
+  followers: b.stats?.followers ||
+             b.followersCount ||
+             b.followers || 0,
+  memberSince: b.createdAt
+    ? new Date(b.createdAt).getFullYear().toString()
     : '2024',
   createdAt: b.createdAt || null,
-  location: b.governorate || b.location || 'Egypt',
+  location: b.governorate || b.location || b.country || 'Egypt',
   governorate: b.governorate || '',
+  shipping: b.shippingTime || b.shipping || '3–5 business days',
+  returns: b.returnPolicy || b.returns || '14-day returns',
+  tags: b.tags || [],
 });
 
 const CATEGORY_META = {

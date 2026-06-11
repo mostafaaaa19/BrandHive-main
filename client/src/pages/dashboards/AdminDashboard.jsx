@@ -1094,12 +1094,15 @@ function AdminFeaturedSlotsTab({ isRTL, productsAPI }) {
   );
 }
 
+const MIN_SUPPORT_REPLY_LENGTH = 10;
+
 function AdminSupportTab({ isRTL, toast }) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [reply, setReply] = useState('');
   const [replying, setReplying] = useState(false);
+  const replyLength = reply.trim().length;
 
   useEffect(() => {
     const fetch = async () => {
@@ -1117,24 +1120,34 @@ function AdminSupportTab({ isRTL, toast }) {
   }, []);
 
   const handleReply = async () => {
-    if (!reply.trim() || !selected) return;
+    const trimmed = reply.trim();
+    if (!trimmed || !selected) return;
+    if (trimmed.length < MIN_SUPPORT_REPLY_LENGTH) {
+      toast.error(
+        isRTL
+          ? `الرد يجب أن يكون ${MIN_SUPPORT_REPLY_LENGTH} أحرف على الأقل`
+          : `Reply must be at least ${MIN_SUPPORT_REPLY_LENGTH} characters`
+      );
+      return;
+    }
     setReplying(true);
     try {
-      await supportAPI.replyToMessage(
-        selected._id || selected.id,
-        { reply: reply.trim() }
-      );
+      const messageId = selected._id || selected.id;
+      await supportAPI.replyToMessage(messageId, { reply: trimmed });
+      await supportAPI.updateStatus(messageId, { status: 'resolved' });
       toast.success(isRTL ? 'تم إرسال الرد ✅' : 'Reply sent ✅');
       setReply('');
-      await supportAPI.updateStatus(
-        selected._id || selected.id,
-        { status: 'resolved' }
-      );
       const res = await supportAPI.getAllMessages();
-      setMessages(res.data?.data || res.data || []);
+      const data = res.data?.data || res.data || [];
+      setMessages(Array.isArray(data) ? data : []);
       setSelected(null);
-    } catch {
-      toast.error(isRTL ? 'فشل الإرسال' : 'Failed to send');
+    } catch (err) {
+      const apiMessage = err.response?.data?.message;
+      const message = Array.isArray(apiMessage)
+        ? apiMessage.join(', ')
+        : apiMessage ||
+          (isRTL ? 'فشل الإرسال' : 'Failed to send');
+      toast.error(message);
     } finally {
       setReplying(false);
     }
@@ -1223,14 +1236,22 @@ function AdminSupportTab({ isRTL, toast }) {
               <textarea
                 value={reply}
                 onChange={e => setReply(e.target.value)}
-                placeholder={isRTL ? 'اكتب ردك هنا...' : 'Write your reply here...'}
+                placeholder={
+                  isRTL
+                    ? `اكتب ردك هنا (${MIN_SUPPORT_REPLY_LENGTH} أحرف على الأقل)...`
+                    : `Write your reply here (min ${MIN_SUPPORT_REPLY_LENGTH} characters)...`
+                }
                 rows={3}
+                minLength={MIN_SUPPORT_REPLY_LENGTH}
                 className={`input-field dark:bg-dark-bg dark:border-dark-border dark:text-dark-text resize-none w-full ${isRTL ? 'text-right' : ''}`}
               />
+              <p className={`text-xs mt-1 ${replyLength >= MIN_SUPPORT_REPLY_LENGTH ? 'text-emerald-600' : 'text-gray-400 dark:text-dark-muted'} ${isRTL ? 'text-right' : ''}`}>
+                {replyLength}/{MIN_SUPPORT_REPLY_LENGTH} {isRTL ? 'أحرف' : 'characters'}
+              </p>
               <div className={`flex gap-3 mt-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
                 <button
                   onClick={handleReply}
-                  disabled={replying || !reply.trim()}
+                  disabled={replying || replyLength < MIN_SUPPORT_REPLY_LENGTH}
                   className="btn-primary flex items-center gap-2 disabled:opacity-50"
                 >
                   {replying && (

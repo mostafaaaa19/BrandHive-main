@@ -34,22 +34,23 @@ export default function SupportChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const sendMessage = async () => {
-    if (!input.trim() || aiLoading) return;
+  const sendMessage = async (textOverride) => {
+    const messageText = (textOverride ?? input).trim();
+    if (!messageText || aiLoading) return;
 
     const userMsg = {
       id: messages.length + 1,
       from: 'me',
-      text: input,
+      text: messageText,
       time: new Date().toLocaleTimeString(
         isRTL ? 'ar-EG' : 'en-US',
         { hour: '2-digit', minute: '2-digit' }
       ),
     };
 
-    const currentInput = input;
+    const currentInput = messageText;
     setMessages(prev => [...prev, userMsg]);
-    setInput('');
+    if (!textOverride) setInput('');
 
     setAiLoading(true);
 
@@ -85,10 +86,14 @@ export default function SupportChat() {
 
     } catch {
       try {
+        const supportMessage =
+          currentInput.trim().length >= 10
+            ? currentInput.trim()
+            : `${currentInput.trim()} — support request from BrandHive chat`;
         await supportAPI.sendMessage({
           fullName: user?.name || 'Guest',
           email: user?.email || 'guest@brandhive.com',
-          message: currentInput,
+          message: supportMessage,
         });
         const fallbackMsg = {
           id: messages.length + 2,
@@ -215,8 +220,9 @@ export default function SupportChat() {
             {QUICK_ACTIONS.map(action => (
               <button
                 key={action}
-                onClick={() => setInput(action)}
-                className="flex-shrink-0 px-3 py-1.5 bg-brand-cream dark:bg-dark-bg text-brand-navy dark:text-brand-gold text-xs font-medium rounded-xl hover:bg-brand-navy/10 dark:hover:bg-brand-gold/10 transition-colors border border-brand-navy/20 dark:border-brand-gold/20"
+                onClick={() => sendMessage(action)}
+                disabled={aiLoading}
+                className="flex-shrink-0 px-3 py-1.5 bg-brand-cream dark:bg-dark-bg text-brand-navy dark:text-brand-gold text-xs font-medium rounded-xl hover:bg-brand-navy/10 dark:hover:bg-brand-gold/10 transition-colors border border-brand-navy/20 dark:border-brand-gold/20 disabled:opacity-50"
               >
                 {action}
               </button>
@@ -241,7 +247,7 @@ export default function SupportChat() {
                 <Smile size={16} />
               </button>
               <button
-                onClick={sendMessage}
+                onClick={() => sendMessage()}
                 disabled={!input.trim() || aiLoading}
                 className={`p-2.5 rounded-xl transition-all flex-shrink-0 ${
                   input.trim() ? 'bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy hover:bg-opacity-90 shadow-sm' : 'bg-gray-200 dark:bg-dark-bg text-gray-400 dark:text-dark-muted cursor-not-allowed'

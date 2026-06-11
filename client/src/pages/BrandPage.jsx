@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { MapPin, Star, CheckCircle2, MessageSquare, Heart, Share2, ArrowLeft, Truck, RotateCcw } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
 import { productsAPI, brandsAPI } from '../services/api';
@@ -13,7 +13,8 @@ export default function BrandPage() {
   const { t } = useTranslation();
   const { isRTL } = useLanguage();
   const { slug } = useParams();
-  
+  const navigate = useNavigate();
+
   const { user, isAuthenticated } = useAuth();
   const [brand, setBrand] = useState(null);
   const [brandProducts, setBrandProducts] = useState([]);
@@ -31,56 +32,75 @@ export default function BrandPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await brandsAPI.getAll(1, 100);
-        const allBrands =
-          res.data?.data ||
-          res.data?.brands ||
-          res.data ||
-          [];
+        let found = null;
 
-        const found = Array.isArray(allBrands)
-          ? allBrands.find(b =>
-              b.slug === slug ||
-              b._id === slug ||
-              b.id === slug
-            )
-          : null;
+        try {
+          const oneRes = await brandsAPI.getOne(slug);
+          found = oneRes.data?.data || oneRes.data?.brand || oneRes.data;
+        } catch {
+          const res = await brandsAPI.getAll(1, 100);
+          const allBrands =
+            res.data?.data ||
+            res.data?.brands ||
+            res.data ||
+            [];
+          found = Array.isArray(allBrands)
+            ? allBrands.find((b) =>
+                b.slug === slug ||
+                b._id === slug ||
+                b.id === slug
+              )
+            : null;
+        }
 
-        if (!found) {
-          setError(isRTL
-            ? 'الماركة غير موجودة'
-            : 'Brand not found'
-          );
+        if (!found || (!found.name && !found._id && !found.id)) {
+          setError(isRTL ? 'الماركة غير موجودة' : 'Brand not found');
           setBrand(null);
           return;
         }
 
-        setBrand(mapBrand(found));
-
         const brandId = found._id || found.id;
+        let products = [];
+
         if (brandId) {
           try {
             const prodRes = await productsAPI.getByBrand(brandId);
             const prods =
               prodRes.data?.data ||
+              prodRes.data?.products ||
               prodRes.data ||
               [];
-            const products = Array.isArray(prods) ? prods : [];
-            const totalCartAdds = products.reduce((sum, p) =>
-              sum + (p.cartCount || 0), 0
-            );
-            setLocalSales(totalCartAdds);
-            setBrandProducts(products.map(mapProduct));
+            products = Array.isArray(prods) ? prods : [];
           } catch {
-            setBrandProducts([]);
-            setLocalSales(0);
+            products = [];
           }
         }
-      } catch {
-        setError(isRTL
-          ? 'فشل تحميل الماركة'
-          : 'Failed to load brand'
+
+        const mappedProducts = products.map(mapProduct);
+        setBrandProducts(mappedProducts);
+
+        const totalSales = products.reduce(
+          (sum, p) => sum + (p.stats?.totalSales || p.sold || p.cartCount || 0),
+          0
         );
+        setLocalSales(totalSales);
+
+        const mappedBrand = mapBrand(found);
+        if (mappedProducts.length > 0) {
+          mappedBrand.productCount = mappedProducts.length;
+          const rated = mappedProducts.filter((p) => (p.rating || 0) > 0);
+          if (rated.length > 0) {
+            mappedBrand.rating =
+              Math.round(
+                (rated.reduce((s, p) => s + p.rating, 0) / rated.length) * 10
+              ) / 10;
+          }
+        }
+        if (totalSales > 0) mappedBrand.sales = totalSales;
+
+        setBrand(mappedBrand);
+      } catch {
+        setError(isRTL ? 'فشل تحميل الماركة' : 'Failed to load brand');
         setBrand(null);
       } finally {
         setLoading(false);
@@ -151,19 +171,44 @@ export default function BrandPage() {
   };
 
   const handleMessage = () => {
-    toast((isRTL ? 'فتح الدردشة مع ' : 'Opening chat with ') + brand?.name, {
-      icon: '💬',
-      style: { borderRadius: '12px', fontFamily: isRTL ? 'Cairo' : 'Inter' },
-    });
+    navigate('/support');
   };
 
-  const filteredProducts = brandProducts.filter(p => {
-    if (filterCat === 'All') return true;
-    if (filterCat === 'On Sale') return p.discount > 0;
-    if (filterCat === 'New Arrivals') return p.isNew;
-    if (filterCat === 'Customizable') return p.customizable;
-    return true;
-  });
+  const totalReviews = useMemo(
+    () => brandProducts.reduce((sum, p) => sum + (p.reviews || 0), 0),
+    [brandProducts]
+  );
+
+  const filteredProducts = useMemo(() => {
+    let result = brandProducts.filter((p) => {
+      if (filterCat === 'All') return true;
+      if (filterCat === 'On Sale') return p.isOnSale || (p.discount || 0) > 0;
+      if (filterCat === 'New Arrivals') return p.isNew;
+      if (filterCat === 'Customizable') return p.customizable;
+      return true;
+    });
+
+    switch (sortBy) {
+      case 'Price: Low to High':
+        result = [...result].sort((a, b) => (a.price || 0) - (b.price || 0));
+        break;
+      case 'Price: High to Low':
+        result = [...result].sort((a, b) => (b.price || 0) - (a.price || 0));
+        break;
+      case 'Top Rated':
+        result = [...result].sort((a, b) => (b.rating || 0) - (a.rating || 0));
+        break;
+      case 'Newest':
+        result = [...result].sort(
+          (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+        );
+        break;
+      default:
+        break;
+    }
+
+    return result;
+  }, [brandProducts, filterCat, sortBy]);
 
   if (loading) {
     return (
@@ -203,15 +248,21 @@ export default function BrandPage() {
     );
   }
 
+  const productCount = brandProducts.length || brand.productCount || 0;
+  const displayRating = brand.rating || 0;
+  const displayFollowers = localFollowers || brand.followers || 0;
+
   const tabs = [
-    { id: 'Bazaar', label: isRTL ? `البازار (${brandProducts.length})` : `Bazaar (${brandProducts.length})` },
-    { id: 'Reviews', label: isRTL ? `التقييمات (${Math.floor(Math.random() * 300 + 100)})` : `Reviews (${Math.floor(Math.random() * 300 + 100)})` },
+    { id: 'Bazaar', label: isRTL ? `البازار (${productCount})` : `Bazaar (${productCount})` },
+    { id: 'Reviews', label: isRTL ? `التقييمات (${totalReviews})` : `Reviews (${totalReviews})` },
     { id: 'About', label: isRTL ? 'عن الماركة' : 'About' },
-    { id: 'Policies', label: isRTL ? 'السياسات' : 'Policies' }
+    { id: 'Policies', label: isRTL ? 'السياسات' : 'Policies' },
   ];
 
-  const salesCount = localSales || brand.sales || brand.stats?.totalSales || 0;
+  const salesCount = localSales || brand.sales || 0;
   const salesDisplay = salesCount >= 1000 ? `${(salesCount / 1000).toFixed(1)}K` : salesCount;
+
+  const formatStat = (value) => (value > 0 ? value : '—');
 
   return (
     <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200 ${isRTL ? 'text-right' : 'text-left'}`}>
@@ -262,17 +313,26 @@ export default function BrandPage() {
                 ))}
               </div>
 
-              <p className="text-gray-600 dark:text-dark-muted max-w-xl leading-relaxed">{isRTL && brand.arDescription ? brand.arDescription : brand.longDescription}</p>
+              <p className="text-gray-600 dark:text-dark-muted max-w-xl leading-relaxed">
+                {(isRTL && brand.arDescription ? brand.arDescription : brand.longDescription) ||
+                  brand.description ||
+                  (isRTL ? 'علامة تجارية مصرية على BrandHive.' : 'An Egyptian brand on BrandHive.')}
+              </p>
             </div>
 
             {/* Stats + Actions */}
             <div className={`flex flex-col items-end gap-4 ${isRTL ? 'items-start' : 'items-end'}`}>
               <div className={`grid grid-cols-4 gap-4 text-center ${isRTL ? 'flex-row-reverse' : ''}`}>
                 {[
-                  { value: brand.productCount, label: isRTL ? 'منتجات' : 'Products' },
-                  { value: salesDisplay, label: isRTL ? 'مبيعات' : 'Sales' },
-                  { value: `${brand.rating}★`, label: isRTL ? 'تقييم' : 'Rating' },
-                  { value: localFollowers >= 1000 ? `${(localFollowers / 1000).toFixed(1)}K` : localFollowers, label: isRTL ? 'متابعون' : 'Followers' },
+                  { value: formatStat(productCount), label: isRTL ? 'منتجات' : 'Products' },
+                  { value: salesCount > 0 ? salesDisplay : '—', label: isRTL ? 'مبيعات' : 'Sales' },
+                  { value: displayRating > 0 ? `${displayRating}★` : '—', label: isRTL ? 'تقييم' : 'Rating' },
+                  {
+                    value: displayFollowers > 0
+                      ? (displayFollowers >= 1000 ? `${(displayFollowers / 1000).toFixed(1)}K` : displayFollowers)
+                      : '—',
+                    label: isRTL ? 'متابعون' : 'Followers',
+                  },
                 ].map(stat => (
                   <div key={stat.label} className="bg-white dark:bg-dark-surface rounded-2xl px-4 py-3 shadow-sm dark:border dark:border-dark-border min-w-[70px]">
                     <div className="text-lg font-bold text-brand-navy dark:text-brand-gold">{stat.value}</div>
@@ -391,57 +451,36 @@ export default function BrandPage() {
         {/* Reviews Tab */}
         {activeTab === 'Reviews' && (
           <div className={`max-w-2xl ${isRTL ? 'mr-0' : ''}`}>
-            <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 mb-6">
-              <div className={`flex items-center gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                <div className="text-center">
-                  <div className="text-5xl font-display font-bold text-brand-navy dark:text-brand-gold">{brand.rating}</div>
-                  <div className="flex justify-center my-1">
-                    {[...Array(5)].map((_, i) => (
-                      <Star key={i} size={16} className={i < Math.floor(brand.rating) ? 'text-amber-400 fill-amber-400' : 'text-gray-300 dark:text-gray-600'} />
-                    ))}
-                  </div>
-                  <div className="text-sm text-gray-500 dark:text-dark-muted">{isRTL ? 'التقييم العام' : 'Overall Rating'}</div>
-                </div>
-                <div className="flex-1 space-y-2">
-                  {[5, 4, 3, 2, 1].map(star => (
-                    <div key={star} className={`flex items-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                      <span className="text-xs text-gray-500 dark:text-dark-muted w-4">{star}</span>
-                      <Star size={11} className="text-amber-400 fill-amber-400" />
-                      <div className="flex-1 h-2 bg-gray-100 dark:bg-dark-bg rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-amber-400 rounded-full"
-                          style={{ width: star === 5 ? '70%' : star === 4 ? '20%' : star === 3 ? '7%' : '2%' }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5 mb-4 ${isRTL ? 'text-right' : ''}`}>
-                <div className={`flex items-center gap-3 mb-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  <div className="w-9 h-9 rounded-full bg-brand-navy dark:bg-brand-gold flex items-center justify-center">
-                    <span className="text-white dark:text-brand-navy text-sm font-bold">{['N', 'A', 'S'][i]}</span>
-                  </div>
-                  <div className={isRTL ? 'text-right' : ''}>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-dark-text">{isRTL ? ['نادية م.', 'أحمد ك.', 'سارة هـ.'][i] : ['Nadia M.', 'Ahmed K.', 'Sara H.'][i]}</p>
-                    <div className={`flex ${isRTL ? 'flex-row-reverse' : ''}`}>
-                      {[...Array(5)].map((_, j) => (
-                        <Star key={j} size={10} className="text-amber-400 fill-amber-400" />
-                      ))}
-                    </div>
-                  </div>
-                  <span className={`${isRTL ? 'mr-auto ml-0' : 'ml-auto mr-0'} text-xs text-gray-400 dark:text-dark-muted`}>
-                    {isRTL ? 'مارس 2025' : 'Mar 2025'}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-700 dark:text-dark-muted">
-                  {isRTL ? ['جودة رائعة! الحرفة مذهلة.', 'هدية مثالية، تغليف جميل وشحن سريع!', 'أحب كل قطعة اشتريتها من هذه الماركة. سأطلب مرة أخرى!'][i] : ['Amazing quality! The craftsmanship is incredible.', 'Perfect gift, beautifully packaged and shipped fast!', 'Love every piece I bought from this brand. Will order again!'][i]}
+            {totalReviews === 0 ? (
+              <div className="text-center py-16 bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:border dark:border-dark-border">
+                <div className="text-5xl mb-4">⭐</div>
+                <p className="text-gray-500 dark:text-dark-muted">
+                  {isRTL ? 'لا توجد تقييمات بعد' : 'No reviews yet'}
                 </p>
               </div>
-            ))}
+            ) : (
+              <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
+                <div className={`flex items-center gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className="text-center">
+                    <div className="text-5xl font-display font-bold text-brand-navy dark:text-brand-gold">
+                      {displayRating > 0 ? displayRating : '—'}
+                    </div>
+                    <div className="flex justify-center my-1">
+                      {[...Array(5)].map((_, i) => (
+                        <Star
+                          key={i}
+                          size={16}
+                          className={i < Math.floor(displayRating) ? 'text-amber-400 fill-amber-400' : 'text-gray-300 dark:text-gray-600'}
+                        />
+                      ))}
+                    </div>
+                    <div className="text-sm text-gray-500 dark:text-dark-muted">
+                      {totalReviews} {isRTL ? 'تقييم' : 'reviews'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

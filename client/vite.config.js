@@ -10,7 +10,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/chat/ai': {
-        target: 'http://localhost:5000',
+        // Must match server PORT in server/.env (default 5000, currently often 3000)
+        target: process.env.VITE_CHAT_PROXY || 'http://localhost:3000',
         changeOrigin: true,
         secure: false,
       },

@@ -1,26 +1,36 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 
-export default defineConfig({
-  plugins: [react()],
-  build: {
-    chunkSizeWarningLimit: 1000,
-  },
-  server: {
-    port: 5173,
-    proxy: {
-      '/chat/ai': {
-        // Must match server PORT in server/.env (default 5000, currently often 3000)
-        target: process.env.VITE_CHAT_PROXY || 'http://localhost:3000',
-        changeOrigin: true,
-        secure: false,
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  const apiTarget =
+    env.VITE_API_PROXY || 'https://brandhive-apis-production.up.railway.app'
+  const chatTarget = env.VITE_CHAT_PROXY || 'http://localhost:3000'
+
+  return {
+    plugins: [react()],
+    build: {
+      chunkSizeWarningLimit: 1000,
+    },
+    server: {
+      port: 5173,
+      strictPort: false,
+      proxy: {
+        '/chat/ai': {
+          target: chatTarget,
+          changeOrigin: true,
+          secure: false,
+          timeout: 60000,
+        },
+        '/brandhive-api': {
+          target: apiTarget,
+          changeOrigin: true,
+          secure: apiTarget.startsWith('https'),
+          timeout: 60000,
+          proxyTimeout: 60000,
+          rewrite: (path) => path.replace(/^\/brandhive-api/, ''),
+        },
       },
-      '/brandhive-api': {
-        target: 'https://brandhive-apis-production.up.railway.app',
-        changeOrigin: true,
-        secure: true,
-        rewrite: (path) => path.replace(/^\/brandhive-api/, ''),
-      }
-    }
+    },
   }
 })

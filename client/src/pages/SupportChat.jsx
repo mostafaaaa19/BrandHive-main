@@ -34,6 +34,19 @@ export default function SupportChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const submitSupportTicket = (messageText) => {
+    const supportMessage =
+      messageText.length >= 10
+        ? messageText
+        : `${messageText} — support request from BrandHive chat`;
+
+    return supportAPI.sendMessage({
+      fullName: user?.name || 'Guest',
+      email: user?.email || 'guest@brandhive.com',
+      message: supportMessage,
+    });
+  };
+
   const sendMessage = async (textOverride) => {
     const messageText = (textOverride ?? input).trim();
     if (!messageText || aiLoading) return;
@@ -56,70 +69,54 @@ export default function SupportChat() {
 
     const newHistory = [
       ...chatHistory,
-      { role: 'user', content: currentInput }
+      { role: 'user', content: currentInput },
     ];
     setChatHistory(newHistory);
 
+    const timeStr = () =>
+      new Date().toLocaleTimeString(
+        isRTL ? 'ar-EG' : 'en-US',
+        { hour: '2-digit', minute: '2-digit' }
+      );
+
     try {
-      const res = await chatAPI.sendMessage(newHistory, isRTL ? 'ar' : 'en');
-      const aiText = res?.reply ||
-        (isRTL
-          ? 'عذراً، حدث خطأ. يرجى المحاولة مجدداً.'
-          : 'Sorry, something went wrong. Please try again.'
-        );
+      // Always save to admin support inbox (POST /support), plus optional AI reply
+      const [ticketResult, aiResult] = await Promise.allSettled([
+        submitSupportTicket(currentInput),
+        chatAPI.sendMessage(newHistory, isRTL ? 'ar' : 'en'),
+      ]);
+
+      let replyText;
+
+      if (aiResult.status === 'fulfilled') {
+        replyText =
+          aiResult.value?.reply ||
+          (isRTL
+            ? 'عذراً، حدث خطأ. يرجى المحاولة مجدداً.'
+            : 'Sorry, something went wrong. Please try again.');
+      } else if (ticketResult.status === 'fulfilled') {
+        replyText = isRTL
+          ? 'تم استلام رسالتك! سيرد عليك فريق الدعم قريباً.'
+          : 'Message received! Our support team will reply soon.';
+      } else {
+        replyText = isRTL
+          ? 'عذراً، الدعم غير متاح الآن. يرجى المحاولة لاحقاً.'
+          : 'Sorry, support unavailable now. Please try later.';
+      }
 
       const aiMsg = {
         id: messages.length + 2,
         from: 'them',
-        text: aiText,
-        time: new Date().toLocaleTimeString(
-          isRTL ? 'ar-EG' : 'en-US',
-          { hour: '2-digit', minute: '2-digit' }
-        ),
+        text: replyText,
+        time: timeStr(),
       };
 
-      setMessages(prev => [...prev, aiMsg]);
-      setChatHistory(prev => [
-        ...prev,
-        { role: 'assistant', content: aiText }
-      ]);
-
-    } catch {
-      try {
-        const supportMessage =
-          currentInput.trim().length >= 10
-            ? currentInput.trim()
-            : `${currentInput.trim()} — support request from BrandHive chat`;
-        await supportAPI.sendMessage({
-          fullName: user?.name || 'Guest',
-          email: user?.email || 'guest@brandhive.com',
-          message: supportMessage,
-        });
-        const fallbackMsg = {
-          id: messages.length + 2,
-          from: 'them',
-          text: isRTL
-            ? 'تم استلام رسالتك! سيرد عليك فريق الدعم قريباً.'
-            : 'Message received! Our support team will reply soon.',
-          time: new Date().toLocaleTimeString(
-            isRTL ? 'ar-EG' : 'en-US',
-            { hour: '2-digit', minute: '2-digit' }
-          ),
-        };
-        setMessages(prev => [...prev, fallbackMsg]);
-      } catch {
-        const errMsg = {
-          id: messages.length + 2,
-          from: 'them',
-          text: isRTL
-            ? 'عذراً، الدعم غير متاح الآن. يرجى المحاولة لاحقاً.'
-            : 'Sorry, support unavailable now. Please try later.',
-          time: new Date().toLocaleTimeString(
-            isRTL ? 'ar-EG' : 'en-US',
-            { hour: '2-digit', minute: '2-digit' }
-          ),
-        };
-        setMessages(prev => [...prev, errMsg]);
+      setMessages((prev) => [...prev, aiMsg]);
+      if (aiResult.status === 'fulfilled') {
+        setChatHistory((prev) => [
+          ...prev,
+          { role: 'assistant', content: replyText },
+        ]);
       }
     } finally {
       setAiLoading(false);

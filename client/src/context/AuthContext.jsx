@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { authAPI } from '../services/api';
+import { authAPI, humanizeApiError } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -75,6 +75,7 @@ export const AuthProvider = ({ children }) => {
       const userToStore = {
         ...userData,
         token,
+        accessToken: token,
         refreshToken,
       };
       setUser(userToStore);
@@ -84,10 +85,10 @@ export const AuthProvider = ({ children }) => {
       );
       return userToStore;
     } catch (err) {
-      const message =
-        err.response?.data?.message || 
-        err.message ||
-        'Login failed. Please try again.';
+      const message = humanizeApiError(
+        err,
+        'Login failed. Please try again.'
+      );
       setError(message);
       throw new Error(message);
     } finally {
@@ -116,6 +117,7 @@ export const AuthProvider = ({ children }) => {
           email: userData?.email || email,
           name: userData?.name || name,
           token,
+          accessToken: token,
           refreshToken,
         };
         setUser(userToStore);
@@ -135,7 +137,7 @@ export const AuthProvider = ({ children }) => {
       const raw = err.response?.data?.message;
       const message = Array.isArray(raw)
         ? raw.join(', ')
-        : raw || 'Registration failed. Please try again.';
+        : humanizeApiError(err, 'Registration failed. Please try again.');
       setError(message);
       throw new Error(message);
     } finally {
@@ -158,11 +160,6 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('brandhive_cart');
       localStorage.removeItem('brandhive_wishlist');
       localStorage.removeItem('brandhive_role_override');
-      Object.keys(localStorage).forEach(key => {
-        if (key.startsWith('brandhive_seller_brand_')) {
-          localStorage.removeItem(key);
-        }
-      });
     }
   };
 

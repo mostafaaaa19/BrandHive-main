@@ -6,7 +6,16 @@ import {
   X, Clock, CheckCircle, XCircle, Truck, RefreshCw, AlertCircle, Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ordersAPI, addressesAPI, usersAPI, reviewsAPI, notificationsAPI, aiAPI } from '../../services/api';
+import {
+  ordersAPI,
+  addressesAPI,
+  usersAPI,
+  reviewsAPI,
+  notificationsAPI,
+  aiAPI,
+  fetchMySupportTickets,
+  cleanSupportMessageText,
+} from '../../services/api';
 import { mapProduct } from '../../utils/mappers';
 import { useAuth } from '../../context/AuthContext';
 import { useWishlist, useCart } from '../../context/CartContext';
@@ -158,6 +167,9 @@ export default function UserDashboard() {
   const [reorderLoading, setReorderLoading] = useState(null);
   const [retryLoading, setRetryLoading] = useState(null);
 
+  const [supportTickets, setSupportTickets] = useState([]);
+  const [supportTicketsLoading, setSupportTicketsLoading] = useState(false);
+
   // Addresses state
   const [addresses, setAddresses] = useState([]);
   const [addressLoading, setAddressLoading] = useState(false);
@@ -243,6 +255,28 @@ export default function UserDashboard() {
       fetchAddresses();
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'chat' || !user?.email) return;
+
+    let cancelled = false;
+    const loadSupportTickets = async () => {
+      setSupportTicketsLoading(true);
+      try {
+        const tickets = await fetchMySupportTickets(user);
+        if (!cancelled) setSupportTickets(tickets);
+      } catch {
+        if (!cancelled) setSupportTickets([]);
+      } finally {
+        if (!cancelled) setSupportTicketsLoading(false);
+      }
+    };
+
+    loadSupportTickets();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, user?.email]);
 
   useEffect(() => {
     const fetchRecommendations = async () => {
@@ -1125,9 +1159,70 @@ export default function UserDashboard() {
                 <h1 className="text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6">
                   {isRTL ? 'الدعم الفني' : 'Chat Support'}
                 </h1>
-                <Link to="/chat" className="btn-primary inline-flex">
+                <Link to="/chat" className="btn-primary inline-flex mb-6">
                   {isRTL ? 'فتح محادثة الدعم' : 'Open Support Chat'}
                 </Link>
+
+                {supportTicketsLoading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="w-6 h-6 border-2 border-brand-gold border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : supportTickets.length === 0 ? (
+                  <div className="bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border p-8 text-center">
+                    <MessageSquare size={36} className="mx-auto text-gray-300 mb-2" />
+                    <p className="text-sm text-gray-500 dark:text-dark-muted">
+                      {isRTL
+                        ? 'لا توجد تذاكر دعم بعد. أرسل رسالة من محادثة الدعم.'
+                        : 'No support tickets yet. Send a message from support chat.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <h2 className="text-sm font-semibold text-gray-500 dark:text-dark-muted uppercase tracking-wide">
+                      {isRTL ? 'تذاكر الدعم' : 'Your tickets'}
+                    </h2>
+                    {supportTickets.map((ticket) => (
+                      <div
+                        key={ticket._id || ticket.id}
+                        className="bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border p-4"
+                      >
+                        <div className={`flex items-center justify-between gap-2 mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <p className="text-xs text-gray-400 dark:text-dark-muted">
+                            {ticket.createdAt
+                              ? new Date(ticket.createdAt).toLocaleString()
+                              : ''}
+                          </p>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                            ticket.status === 'resolved'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : ticket.status === 'in_progress'
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {ticket.status || 'pending'}
+                          </span>
+                        </div>
+                        <p className={`text-sm text-gray-800 dark:text-dark-text mb-2 ${isRTL ? 'text-right' : ''}`}>
+                          {cleanSupportMessageText(ticket.message)}
+                        </p>
+                        {ticket.reply ? (
+                          <div className={`bg-brand-gold/5 border border-brand-gold/20 rounded-xl p-3 ${isRTL ? 'text-right' : ''}`}>
+                            <p className="text-xs font-semibold text-brand-gold mb-1">
+                              {isRTL ? 'رد الدعم:' : 'Support reply:'}
+                            </p>
+                            <p className="text-sm text-gray-700 dark:text-dark-text">
+                              {ticket.reply}
+                            </p>
+                          </div>
+                        ) : (
+                          <p className={`text-xs text-gray-400 dark:text-dark-muted ${isRTL ? 'text-right' : ''}`}>
+                            {isRTL ? 'في انتظار رد فريق الدعم' : 'Waiting for support team reply'}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

@@ -22,6 +22,13 @@ export default defineConfig(({ mode }) => {
           secure: false,
           timeout: 60000,
         },
+        '/support-local': {
+          target: chatTarget,
+          changeOrigin: true,
+          secure: false,
+          timeout: 60000,
+          rewrite: (path) => path.replace(/^\/support-local/, '/support/chat'),
+        },
         '/brandhive-api': {
           target: apiTarget,
           changeOrigin: true,
@@ -29,6 +36,15 @@ export default defineConfig(({ mode }) => {
           timeout: 60000,
           proxyTimeout: 60000,
           rewrite: (path) => path.replace(/^\/brandhive-api/, ''),
+          configure: (proxy) => {
+            proxy.on('error', (err, _req, res) => {
+              console.warn('[vite proxy]', err.message);
+              if (res && !res.headersSent) {
+                res.writeHead(503, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ message: 'API temporarily unavailable' }));
+              }
+            });
+          },
         },
       },
     },

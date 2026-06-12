@@ -5,7 +5,13 @@ import { Upload, X, ArrowLeft, ChevronRight, Tag, DollarSign, Package, Image as 
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { categoriesAPI, sellerAPI, brandsAPI } from '../../services/api';
+import {
+  categoriesAPI,
+  sellerAPI,
+  rememberSellerBrand,
+  resolveSellerBrand,
+  humanizeApiError,
+} from '../../services/api';
 
 export default function AddProductPage() {
   const navigate = useNavigate();
@@ -16,8 +22,42 @@ export default function AddProductPage() {
   const [categories, setCategories] = useState([]);
   const [loadingCats, setLoadingCats] = useState(true);
   const [myBrand, setMyBrand] = useState(null);
-  const [allBrands, setAllBrands] = useState([]);
   const [brandLoading, setBrandLoading] = useState(true);
+  const [brandError, setBrandError] = useState(null);
+  const [brandRetrying, setBrandRetrying] = useState(false);
+
+  const loadSellerBrand = async () => {
+    setBrandLoading(true);
+    setBrandError(null);
+    try {
+      const sellerBrand = await resolveSellerBrand(user);
+      if (sellerBrand) {
+        setMyBrand(sellerBrand);
+        setFormData((prev) => ({
+          ...prev,
+          brand: sellerBrand._id || sellerBrand.id,
+        }));
+      } else {
+        setBrandError(
+          isRTL
+            ? 'لم نتمكن من ربط ماركتك بهذا الحساب تلقائياً. إذا وافق الأدمن بالفعل، اضغط «إعادة الربط» أو سجّل خروج ثم ادخل بحساب البائع نفسه.'
+            : 'We could not link your brand to this account. If admin already approved you, click “Retry link” or log out and sign in with the same seller account.'
+        );
+      }
+    } catch (err) {
+      const networkMsg = humanizeApiError(err);
+      setBrandError(
+        networkMsg.includes('تعذر الاتصال')
+          ? networkMsg
+          : isRTL
+            ? 'تعذر تحميل بيانات الماركة. حاول تحديث الصفحة.'
+            : 'Could not load your brand. Try refreshing the page.'
+      );
+    } finally {
+      setBrandLoading(false);
+      setBrandRetrying(false);
+    }
+  };
   
   // Form State
   const [formData, setFormData] = useState({
@@ -65,41 +105,7 @@ export default function AddProductPage() {
         setLoadingCats(false);
       }
 
-      try {
-        const brandsRes = await brandsAPI.getAll({ limit: 50 });
-        const allBrandsData = brandsRes.data?.data || brandsRes.data || [];
-        const activeBrands = Array.isArray(allBrandsData)
-          ? allBrandsData.filter(b => b.isActive !== false)
-          : [];
-        setAllBrands(activeBrands);
-
-        const userId = user?.id || user?._id || 'default';
-        const savedBrandId = localStorage.getItem(`brandhive_seller_brand_${userId}`);
-        if (savedBrandId) {
-          const found = activeBrands.find(b => b._id === savedBrandId);
-          if (found) {
-            setMyBrand(found);
-            setFormData(prev => ({ ...prev, brand: found._id }));
-            setBrandLoading(false);
-            return;
-          }
-        }
-
-        try {
-          const dashRes = await sellerAPI.getDashboard();
-          const sellerBrand = dashRes.data?.data?.brand || dashRes.data?.brand;
-          if (sellerBrand?._id) {
-            setMyBrand(sellerBrand);
-            setFormData(prev => ({ ...prev, brand: sellerBrand._id }));
-            localStorage.setItem(`brandhive_seller_brand_${userId}`, sellerBrand._id);
-            return;
-          }
-        } catch {}
-      } catch {
-        setAllBrands([]);
-      } finally {
-        setBrandLoading(false);
-      }
+      await loadSellerBrand();
     };
     fetchInitialData();
   }, [user]);
@@ -230,6 +236,9 @@ export default function AddProductPage() {
 
       await sellerAPI.createProduct(payload);
 
+      const userId = user?.id || user?._id;
+      rememberSellerBrand(userId, myBrand || { _id: formData.brand });
+
       toast.success(
         type === 'draft'
           ? (isRTL ? 'تم الحفظ 📝' : 'Saved as draft! 📝')
@@ -345,21 +354,35 @@ export default function AddProductPage() {
                         <span className="text-gray-700 dark:text-dark-text text-sm font-medium">{myBrand.name}</span>
                       </div>
                     ) : (
-                      <select
-                        name="brand"
-                        value={formData.brand}
-                        onChange={e => {
-                          handleInputChange(e);
-                          const selected = allBrands.find(b => b._id === e.target.value);
-                          if (selected) setMyBrand(selected);
-                        }}
-                        className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg px-4 py-2 focus:border-brand-gold outline-none dark:text-white text-sm"
-                      >
-                        <option value="">{isRTL ? 'اختر براندك' : 'Select your brand'}</option>
-                        {allBrands.map(b => (
-                          <option key={b._id} value={b._id}>{b.name}</option>
-                        ))}
-                      </select>
+                      <div className="w-full rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 px-4 py-3">
+                        <p className="text-sm text-amber-800 dark:text-amber-200">
+                          {brandError ||
+                            (isRTL
+                              ? 'لم يتم العثور على ماركة مرتبطة بحسابك.'
+                              : 'No brand linked to your account yet.')}
+                        </p>
+                        <div className={`flex flex-wrap gap-3 mt-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBrandRetrying(true);
+                              loadSellerBrand();
+                            }}
+                            disabled={brandRetrying}
+                            className="text-xs font-semibold text-brand-navy dark:text-brand-gold hover:underline disabled:opacity-50"
+                          >
+                            {brandRetrying
+                              ? (isRTL ? 'جاري الربط...' : 'Linking...')
+                              : (isRTL ? 'إعادة الربط' : 'Retry link')}
+                          </button>
+                          <Link
+                            to="/sell"
+                            className="text-xs font-semibold text-brand-navy dark:text-brand-gold hover:underline"
+                          >
+                            {isRTL ? 'تسجيل بائع جديد' : 'Seller registration'}
+                          </Link>
+                        </div>
+                      </div>
                     )}
                     {errors.brand && <p className="text-red-500 text-xs mt-1">{errors.brand}</p>}
                   </div>
@@ -565,9 +588,7 @@ export default function AddProductPage() {
                   <div className="p-4">
                     <div className="flex justify-between items-start mb-2">
                       <p className="text-xs text-brand-gold font-medium">
-                        {myBrand?.name ||
-                          allBrands.find(b => b._id === formData.brand)?.name ||
-                          'Your Brand'}
+                        {myBrand?.name || 'Your Brand'}
                       </p>
                     </div>
                     <h3 className="font-semibold text-brand-navy dark:text-white mb-2 line-clamp-2 min-h-[48px]">

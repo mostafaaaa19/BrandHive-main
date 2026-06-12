@@ -11,6 +11,16 @@ const api = axios.create({
   withCredentials: false,
 });
 
+// Local dev server mirrors support tickets so users can read admin replies
+// (Railway GET /support is admin-only for regular accounts).
+const localSupport = import.meta.env.DEV
+  ? axios.create({
+      baseURL: '/support-local',
+      headers: { 'Content-Type': 'application/json' },
+      withCredentials: false,
+    })
+  : null;
+
 const getResponseArray = (response) =>
   response.data?.data ||
   response.data?.products ||
@@ -40,10 +50,59 @@ const isAuthError = (err) => {
   return status === 401 || status === 403;
 };
 
+const MAX_NETWORK_RETRIES = 2;
+
+const isTransientNetworkError = (err) => {
+  const status = err?.response?.status;
+  if (status === 502 || status === 503 || status === 504) return true;
+  if (err?.response) return false;
+
+  const message = String(err?.message || '');
+  const code = String(err?.code || '');
+  return (
+    code === 'ERR_NETWORK' ||
+    code === 'ECONNABORTED' ||
+    message.includes('Network Error') ||
+    message.includes('ECONNRESET') ||
+    message.includes('ETIMEDOUT') ||
+    message.includes('ENOTFOUND')
+  );
+};
+
+export const humanizeApiError = (err, fallback = 'Request failed. Please try again.') => {
+  const raw = err?.response?.data?.message || err?.message || '';
+  const status = err?.response?.status;
+  if (
+    isTransientNetworkError(err) ||
+    /temporarily unavailable/i.test(String(raw))
+  ) {
+    return 'تعذر الاتصال بالخادم. تحقق من الإنترنت وحاول مرة أخرى بعد قليل.';
+  }
+  if (status === 429) {
+    return 'طلبات كثيرة جداً. انتظر قليلاً ثم حاول مجدداً.';
+  }
+  return raw || fallback;
+};
+
+const isRetriableAuthRequest = (url = '') =>
+  /\/auth\/(login|register|refresh)/.test(url);
+
 const withAuthFallback = async (authedRequest, fallbackRequest) => {
   if (hasAuthToken()) {
     try {
       return await authedRequest();
+    } catch (err) {
+      if (!isAuthError(err)) throw err;
+    }
+  }
+  return fallbackRequest();
+};
+
+const withAuthFallbackUnlessEmpty = async (authedRequest, fallbackRequest) => {
+  if (hasAuthToken()) {
+    try {
+      const res = await authedRequest();
+      if (getResponseArray(res).length > 0) return res;
     } catch (err) {
       if (!isAuthError(err)) throw err;
     }
@@ -186,6 +245,82 @@ const PUBLIC_BROWSE_PATHS = [
 const isPublicBrowseRequest = (url = '') =>
   PUBLIC_BROWSE_PATHS.some((path) => url.includes(path));
 
+const AUTH_SILENT_PATHS = [
+  '/auth/logout',
+  '/auth/login',
+  '/auth/register',
+  '/auth/confirm-email',
+  '/auth/forget-password',
+  '/auth/verify-reset-code',
+  '/auth/reset-password',
+];
+
+const isAuthSilentRequest = (url = '') =>
+  AUTH_SILENT_PATHS.some((path) => url.includes(path));
+
+const shouldRedirectToLoginOnAuthFailure = (url = '') => {
+  if (isPublicBrowseRequest(url) || isAuthSilentRequest(url)) return false;
+  if (
+    url.includes('/seller/') ||
+    url.includes('/cart') ||
+    url.includes('/wishlist') ||
+    url.includes('/orders') ||
+    url.includes('/reviews') ||
+    url.includes('/addresses') ||
+    url.includes('/notifications') ||
+    url.includes('/category')
+  ) {
+    return false;
+  }
+  return true;
+};
+
+let refreshTokenPromise = null;
+
+const refreshAccessToken = async () => {
+  if (refreshTokenPromise) return refreshTokenPromise;
+
+  refreshTokenPromise = (async () => {
+    const parsed = getStoredAuth();
+    if (!parsed?.refreshToken) return null;
+
+    const refreshURL = import.meta.env.DEV
+      ? '/brandhive-api/auth/refresh'
+      : 'https://brandhive-apis-production.up.railway.app/auth/refresh';
+
+    const refreshRes = await axios.post(refreshURL, {
+      userId: parsed.id || parsed._id,
+      refreshToken: parsed.refreshToken,
+    });
+
+    const newToken =
+      refreshRes.data?.accessToken ||
+      refreshRes.data?.token ||
+      refreshRes.data?.data?.accessToken ||
+      refreshRes.data?.data?.token;
+
+    if (!newToken) return null;
+
+    const newRefreshToken =
+      refreshRes.data?.refreshToken ||
+      refreshRes.data?.data?.refreshToken ||
+      parsed.refreshToken;
+
+    const updated = {
+      ...parsed,
+      token: newToken,
+      accessToken: newToken,
+      refreshToken: newRefreshToken,
+    };
+    localStorage.setItem('brandhive_user', JSON.stringify(updated));
+    return newToken;
+  })().finally(() => {
+    refreshTokenPromise = null;
+  });
+
+  return refreshTokenPromise;
+};
+
 const getStoredAuth = () => {
   try {
     const stored = localStorage.getItem('brandhive_user');
@@ -316,58 +451,49 @@ api.interceptors.response.use(
   },
   async (error) => {
     const originalRequest = error.config;
-    
+    if (!originalRequest) return Promise.reject(error);
+
+    const requestUrl = originalRequest.url || '';
+    const method = (originalRequest.method || 'get').toLowerCase();
+    const networkRetries = originalRequest._networkRetryCount || 0;
+    const canRetryNetwork =
+      networkRetries < MAX_NETWORK_RETRIES && isTransientNetworkError(error);
+    if (
+      canRetryNetwork &&
+      (method === 'get' || isRetriableAuthRequest(requestUrl))
+    ) {
+      originalRequest._networkRetryCount = networkRetries + 1;
+      await new Promise((resolve) => setTimeout(resolve, 1000 * networkRetries + 1000));
+      return api(originalRequest);
+    }
+
     // If 401 and haven't retried yet
     if (error.response?.status === 401 && !originalRequest._retry) {
-      if (isPublicBrowseRequest(originalRequest.url)) {
+      if (isPublicBrowseRequest(requestUrl) || isAuthSilentRequest(requestUrl)) {
         return Promise.reject(error);
       }
 
       originalRequest._retry = true;
-      
+
       try {
-        const parsed = getStoredAuth();
-        
-        if (parsed?.refreshToken) {
-          // Try to refresh the token
-          const refreshURL = import.meta.env.DEV
-            ? '/brandhive-api/auth/refresh'
-            : 'https://brandhive-apis-production.up.railway.app/auth/refresh';
-          const refreshRes = await axios.post(refreshURL, {
-            userId: parsed.id || parsed._id,
-            refreshToken: parsed.refreshToken,
-          });
-          
-          const newToken = 
-            refreshRes.data?.accessToken ||
-            refreshRes.data?.token ||
-            refreshRes.data?.data?.accessToken ||
-            refreshRes.data?.data?.token;
-            
-          if (newToken) {
-            // Update stored user with new token
-            const updated = { ...parsed, token: newToken };
-            localStorage.setItem(
-              'brandhive_user', 
-              JSON.stringify(updated)
-            );
-            
-            // Retry original request with new token
-            originalRequest.headers.Authorization = `Bearer ${newToken}`;
-            return api(originalRequest);
-          }
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          return api(originalRequest);
         }
       } catch {
-        if (isPublicBrowseRequest(originalRequest.url)) {
-          return Promise.reject(error);
-        }
-        // Refresh failed — clear session
+        // refresh failed
+      }
+
+      if (shouldRedirectToLoginOnAuthFailure(requestUrl)) {
         localStorage.removeItem('brandhive_user');
         localStorage.removeItem('brandhive_cart');
         localStorage.removeItem('brandhive_wishlist');
         localStorage.removeItem('brandhive_role_override');
         window.location.href = '/login';
       }
+
+      return Promise.reject(error);
     }
     
     return Promise.reject(error);
@@ -461,7 +587,7 @@ export const brandsAPI = {
 export const productsAPI = {
   getAll: (params = {}) => {
     if (params.brand) {
-      return withAuthFallback(
+      return withAuthFallbackUnlessEmpty(
         () => api.get(`/product/by-brand/${params.brand}`),
         () => getPublicProducts({
           brand: params.brand,
@@ -517,7 +643,7 @@ export const productsAPI = {
   getNewArrivals: () => api.get('/product/new-arrivals'),
 
   getByBrand: (brandId) =>
-    withAuthFallback(
+    withAuthFallbackUnlessEmpty(
       () => api.get(`/product/by-brand/${brandId}`),
       () => getPublicProducts({ brand: brandId, limit: 100 })
     ),
@@ -568,6 +694,502 @@ export const sellerAPI = {
     api.post(`/seller/inventory/${productId}/adjust`, data),
 };
 
+const sellerBrandStorageKey = (userId) =>
+  `brandhive_seller_brand_${userId || 'default'}`;
+
+const sellerBrandSlugStorageKey = (userId) =>
+  `brandhive_seller_brand_slug_${userId || 'default'}`;
+
+export const rememberSellerBrand = (userId, brand) => {
+  if (!userId || !brand) return;
+  const brandId = brand._id || brand.id;
+  if (brandId) {
+    localStorage.setItem(sellerBrandStorageKey(userId), brandId);
+  }
+  if (brand.slug) {
+    localStorage.setItem(sellerBrandSlugStorageKey(userId), brand.slug);
+  }
+};
+
+const brandOwnedByUser = (brand, userId) => {
+  if (!brand || !userId) return false;
+  const ownerId =
+    brand.owner?._id ||
+    brand.owner?.id ||
+    brand.owner ||
+    brand.userId ||
+    brand.user?._id ||
+    brand.user?.id ||
+    brand.createdBy?._id ||
+    brand.createdBy?.id ||
+    brand.createdBy ||
+    brand.requestedBy?._id ||
+    brand.requestedBy?.id ||
+    brand.requestedBy;
+  return String(ownerId) === String(userId);
+};
+
+const sellerBrandNameStorageKey = (userId) =>
+  `brandhive_seller_brand_name_${userId || 'default'}`;
+
+export const rememberSellerBrandName = (userId, brandName) => {
+  if (!userId || !brandName?.trim()) return;
+  localStorage.setItem(sellerBrandNameStorageKey(userId), brandName.trim());
+};
+
+const normalizeSellerBrand = (brand, fallbackName = 'My Brand') => {
+  const id = brand?._id || brand?.id;
+  if (!id) return null;
+  return {
+    ...brand,
+    _id: id,
+    id,
+    name: brand?.name || brand?.slug || fallbackName,
+    slug: brand?.slug,
+  };
+};
+
+const pickSellerBrand = (userId, brand, fallbackName) => {
+  const normalized = normalizeSellerBrand(brand, fallbackName);
+  if (!normalized) return null;
+  rememberSellerBrand(userId, normalized);
+  return normalized;
+};
+
+const brandFromProduct = (product) => {
+  if (!product) return null;
+  if (product.brand && typeof product.brand === 'object') {
+    return product.brand;
+  }
+  if (typeof product.brand === 'string') {
+    return {
+      _id: product.brandId || product.brand,
+      id: product.brandId || product.brand,
+      name: product.brandName || product.brand,
+    };
+  }
+  if (product.brandId) {
+    return {
+      _id: product.brandId,
+      id: product.brandId,
+      name: product.brandName || 'My Brand',
+    };
+  }
+  return null;
+};
+
+const getAuthedBrandsList = async () => {
+  if (!hasAuthToken()) return [];
+  try {
+    const res = await api.get('/brand', { params: { limit: 50 } });
+    return getResponseArray(res);
+  } catch (err) {
+    if (isAuthError(err)) return [];
+    throw err;
+  }
+};
+
+const getApprovedBrandRequestForUser = async (user) => {
+  if (!hasAuthToken() || !user) return null;
+  const userId = user.id || user._id;
+  const email = user.email?.toLowerCase();
+
+  try {
+    const res = await api.get('/brand/requests', { params: { limit: 50 } });
+    const requests = getResponseArray(res);
+    return (
+      requests.find((request) => {
+        const status = request.status || request.requestStatus;
+        if (status && status !== 'approved') return false;
+
+        const ownerId =
+          request.owner?._id ||
+          request.owner?.id ||
+          request.owner ||
+          request.requestedBy?._id ||
+          request.requestedBy?.id ||
+          request.requestedBy ||
+          request.userId;
+        if (userId && ownerId && String(ownerId) === String(userId)) {
+          return true;
+        }
+
+        const requestEmail = (
+          request.email ||
+          request.owner?.email ||
+          request.requestedBy?.email ||
+          ''
+        ).toLowerCase();
+        return email && requestEmail && requestEmail === email;
+      }) || null
+    );
+  } catch {
+    return null;
+  }
+};
+
+const getCachedSellerBrand = (userId, savedName, savedSlug) => {
+  const cachedId = localStorage.getItem(sellerBrandStorageKey(userId));
+  if (!cachedId) return null;
+  return normalizeSellerBrand(
+    {
+      _id: cachedId,
+      id: cachedId,
+      name: savedName || 'My Brand',
+      slug: savedSlug || undefined,
+    },
+    savedName
+  );
+};
+
+export const resolveSellerBrand = async (user) => {
+  const userId = user?.id || user?._id;
+  if (!userId) return null;
+
+  const savedName =
+    localStorage.getItem(sellerBrandNameStorageKey(userId)) ||
+    user?.brandName;
+  const savedSlug = localStorage.getItem(sellerBrandSlugStorageKey(userId));
+  const cachedBrand = getCachedSellerBrand(userId, savedName, savedSlug);
+  let apiUnreachable = false;
+
+  try {
+    const sellerProductsRes = await sellerAPI.getProducts();
+    const sellerProducts = getResponseArray(sellerProductsRes);
+    if (sellerProducts.length > 0) {
+      const resolved = pickSellerBrand(
+        userId,
+        brandFromProduct(sellerProducts[0]),
+        savedName
+      );
+      if (resolved) return resolved;
+    }
+  } catch (err) {
+    if (isTransientNetworkError(err)) apiUnreachable = true;
+  }
+
+  try {
+    const dashRes = await sellerAPI.getDashboard();
+    const dashBrand = dashRes.data?.data?.brand || dashRes.data?.brand;
+    const resolved = pickSellerBrand(userId, dashBrand, savedName);
+    if (resolved) return resolved;
+  } catch (err) {
+    if (isTransientNetworkError(err)) apiUnreachable = true;
+  }
+
+  const approvedRequest = await getApprovedBrandRequestForUser(user);
+  if (approvedRequest) {
+    const resolved = pickSellerBrand(userId, approvedRequest, savedName);
+    if (resolved) return resolved;
+  }
+
+  let resolvedBrandId = null;
+  try {
+    resolvedBrandId = await resolveSellerBrandId(user);
+  } catch (err) {
+    if (isTransientNetworkError(err)) apiUnreachable = true;
+  }
+
+  try {
+    const authedBrands = await getAuthedBrandsList();
+    const owned = authedBrands.find((brand) => brandOwnedByUser(brand, userId));
+    const resolvedOwned = pickSellerBrand(userId, owned, savedName);
+    if (resolvedOwned) return resolvedOwned;
+
+    const brandId = resolvedBrandId;
+    if (brandId) {
+      const byId = authedBrands.find(
+        (brand) => String(brand._id || brand.id) === String(brandId)
+      );
+      const resolvedById = pickSellerBrand(userId, byId, savedName);
+      if (resolvedById) return resolvedById;
+    }
+
+    if (savedSlug) {
+      const bySlug = authedBrands.find((brand) => brand.slug === savedSlug);
+      const resolvedBySlug = pickSellerBrand(userId, bySlug, savedName);
+      if (resolvedBySlug) return resolvedBySlug;
+    }
+
+    if (savedName) {
+      const byName = authedBrands.find(
+        (brand) =>
+          brand.name?.toLowerCase() === String(savedName).toLowerCase()
+      );
+      const resolvedByName = pickSellerBrand(userId, byName, savedName);
+      if (resolvedByName) return resolvedByName;
+    }
+  } catch (err) {
+    if (isTransientNetworkError(err)) apiUnreachable = true;
+  }
+
+  try {
+    const brandsRes = await brandsAPI.getAll({ limit: 50 });
+    const brands = getResponseArray(brandsRes);
+    const brandId = resolvedBrandId;
+
+    if (brandId) {
+      const byId = brands.find(
+        (brand) => String(brand._id || brand.id) === String(brandId)
+      );
+      const resolved = pickSellerBrand(userId, byId, savedName);
+      if (resolved) return resolved;
+    }
+
+    if (savedName) {
+      const byName = brands.find(
+        (brand) =>
+          brand.name?.toLowerCase() === String(savedName).toLowerCase()
+      );
+      const resolved = pickSellerBrand(userId, byName, savedName);
+      if (resolved) return resolved;
+    }
+  } catch (err) {
+    if (isTransientNetworkError(err)) apiUnreachable = true;
+  }
+
+  try {
+    const catalogRes = await getAllPublicProducts({ limit: 100 });
+    const products = getResponseArray(catalogRes);
+    const brandCandidates = new Map();
+
+    products.forEach((product) => {
+      const brand = brandFromProduct(product);
+      const id = brand?._id || brand?.id;
+      if (id) brandCandidates.set(String(id), brand);
+    });
+
+    const brandId = resolvedBrandId;
+    if (brandId && brandCandidates.has(String(brandId))) {
+      return pickSellerBrand(
+        userId,
+        brandCandidates.get(String(brandId)),
+        savedName
+      );
+    }
+
+    for (const brand of brandCandidates.values()) {
+      if (savedSlug && brand.slug === savedSlug) {
+        const resolved = pickSellerBrand(userId, brand, savedName);
+        if (resolved) return resolved;
+      }
+      if (
+        savedName &&
+        brand.name?.toLowerCase() === String(savedName).toLowerCase()
+      ) {
+        const resolved = pickSellerBrand(userId, brand, savedName);
+        if (resolved) return resolved;
+      }
+    }
+
+  } catch (err) {
+    if (isTransientNetworkError(err)) apiUnreachable = true;
+  }
+
+  if (resolvedBrandId) {
+    return pickSellerBrand(
+      userId,
+      {
+        _id: resolvedBrandId,
+        id: resolvedBrandId,
+        name: savedName || 'My Brand',
+        slug: savedSlug || undefined,
+      },
+      savedName
+    );
+  }
+
+  if (cachedBrand && apiUnreachable) return cachedBrand;
+
+  return null;
+};
+
+export const resolveSellerBrandId = async (user) => {
+  const userId = user?.id || user?._id;
+  if (!userId) return null;
+
+  let dashBrand = null;
+  try {
+    const dashRes = await sellerAPI.getDashboard();
+    dashBrand = dashRes.data?.data?.brand || dashRes.data?.brand;
+    const dashBrandId = dashBrand?._id || dashBrand?.id;
+    if (dashBrandId) {
+      rememberSellerBrand(userId, dashBrand);
+      return dashBrandId;
+    }
+  } catch {
+    // fall through to brand list / cache
+  }
+
+  try {
+    const brandsRes = await brandsAPI.getAll({ limit: 50 });
+    const brands = getResponseArray(brandsRes);
+
+    const savedSlug = localStorage.getItem(sellerBrandSlugStorageKey(userId));
+    if (savedSlug) {
+      const bySlug = brands.find((brand) => brand.slug === savedSlug);
+      const bySlugId = bySlug?._id || bySlug?.id;
+      if (bySlugId) {
+        rememberSellerBrand(userId, bySlug);
+        return bySlugId;
+      }
+    }
+
+    if (dashBrand?.name) {
+      const byName = brands.find(
+        (brand) =>
+          brand.name?.toLowerCase() === String(dashBrand.name).toLowerCase()
+      );
+      const byNameId = byName?._id || byName?.id;
+      if (byNameId) {
+        rememberSellerBrand(userId, byName);
+        return byNameId;
+      }
+    }
+
+    const owned = brands.find((brand) => brandOwnedByUser(brand, userId));
+    const ownedId = owned?._id || owned?.id;
+    if (ownedId) {
+      rememberSellerBrand(userId, owned);
+      return ownedId;
+    }
+  } catch {
+    // fall through to cache
+  }
+
+  const cachedId = localStorage.getItem(sellerBrandStorageKey(userId));
+  if (cachedId) {
+    try {
+      const verify = await getPublicProducts({ brand: cachedId, limit: 1 });
+      if (getResponseArray(verify).length > 0) return cachedId;
+      localStorage.removeItem(sellerBrandStorageKey(userId));
+    } catch {
+      return cachedId;
+    }
+  }
+
+  return null;
+};
+
+export const fetchSellerProducts = async (user) => {
+  const userId = user?.id || user?._id;
+  const byId = new Map();
+  const candidateBrandIds = new Set();
+
+  const addProducts = (list) => {
+    if (!Array.isArray(list)) return;
+    list.forEach((product) => {
+      const id = product?._id || product?.id;
+      if (id) byId.set(String(id), product);
+    });
+  };
+
+  const rememberBrandId = (id) => {
+    if (id) candidateBrandIds.add(String(id));
+  };
+
+  try {
+    const sellerRes = await sellerAPI.getProducts();
+    addProducts(getResponseArray(sellerRes));
+  } catch {
+    // seller endpoint may be empty or unavailable
+  }
+
+  const brandId = await resolveSellerBrandId(user);
+  rememberBrandId(brandId);
+
+  try {
+    const brandsRes = await brandsAPI.getAll({ limit: 50 });
+    const brands = getResponseArray(brandsRes);
+    brands.forEach((brand) => {
+      if (brandOwnedByUser(brand, userId)) {
+        rememberBrandId(brand._id || brand.id);
+      }
+    });
+
+    const savedSlug = localStorage.getItem(sellerBrandSlugStorageKey(userId));
+    if (savedSlug) {
+      const bySlug = brands.find((brand) => brand.slug === savedSlug);
+      rememberBrandId(bySlug?._id || bySlug?.id);
+    }
+  } catch {
+    // ignore brand list errors
+  }
+
+  for (const id of candidateBrandIds) {
+    try {
+      const brandRes = await productsAPI.getByBrand(id);
+      addProducts(getResponseArray(brandRes));
+    } catch {
+      // try next brand id
+    }
+  }
+
+  if (byId.size === 0 && candidateBrandIds.size > 0) {
+    try {
+      const searchRes = await getAllPublicProducts({ limit: 100 });
+      addProducts(
+        getResponseArray(searchRes).filter((product) =>
+          candidateBrandIds.has(
+            String(product.brand?._id || product.brand?.id)
+          )
+        )
+      );
+    } catch {
+      // ignore search fallback errors
+    }
+  }
+
+  if (byId.size === 0) {
+    try {
+      let dashBrandName = null;
+      try {
+        const dashRes = await sellerAPI.getDashboard();
+        const dashBrand = dashRes.data?.data?.brand || dashRes.data?.brand;
+        dashBrandName = dashBrand?.name || null;
+        rememberBrandId(dashBrand?._id || dashBrand?.id);
+      } catch {
+        // ignore dashboard errors
+      }
+
+      const savedSlug = localStorage.getItem(sellerBrandSlugStorageKey(userId));
+      const catalogRes = await getAllPublicProducts({ limit: 100 });
+      addProducts(
+        getResponseArray(catalogRes).filter((product) => {
+          const productBrandId = String(
+            product.brand?._id || product.brand?.id || ''
+          );
+          const productBrandName = product.brand?.name?.toLowerCase() || '';
+          const productBrandSlug = product.brand?.slug?.toLowerCase() || '';
+
+          if (candidateBrandIds.has(productBrandId)) return true;
+          if (
+            savedSlug &&
+            productBrandSlug === String(savedSlug).toLowerCase()
+          ) {
+            return true;
+          }
+          if (
+            dashBrandName &&
+            productBrandName === String(dashBrandName).toLowerCase()
+          ) {
+            return true;
+          }
+          return false;
+        })
+      );
+    } catch {
+      // ignore catalog fallback errors
+    }
+  }
+
+  return [...byId.values()].sort(
+    (a, b) =>
+      new Date(b.createdAt || 0).getTime() -
+      new Date(a.createdAt || 0).getTime()
+  );
+};
+
 // ─── Admin ───────────────────────────────────────────────────────────────────
 export const adminAPI = {
   getDashboard: () => api.get('/admin/dashboard'),
@@ -597,15 +1219,23 @@ export const adminAPI = {
   sendNotification: (data) => api.post('/notifications/send', data),
 };
 
+const getCategoriesFallback = async () => {
+  const cached = localStorage.getItem('brandhive_categories_cache');
+  if (cached) {
+    return { data: { data: JSON.parse(cached) } };
+  }
+  return getPublicCategories();
+};
+
 export const categoriesAPI = {
   getAll: async () => {
-    if (!hasAuthToken()) {
-      const cached = localStorage.getItem('brandhive_categories_cache');
-      if (cached) {
-        return { data: { data: JSON.parse(cached) } };
-      }
-      return getPublicCategories();
+    const parsed = getStoredAuth();
+    const isAdmin = parsed?.role === 'admin';
+
+    if (!hasAuthToken() || !isAdmin) {
+      return getCategoriesFallback();
     }
+
     try {
       const res = await api.get('/category');
       if (res.data?.data?.length > 0) {
@@ -617,11 +1247,7 @@ export const categoriesAPI = {
       return res;
     } catch (err) {
       if (err.response?.status === 403 || err.response?.status === 401) {
-        const cached = localStorage.getItem('brandhive_categories_cache');
-        if (cached) {
-          return { data: { data: JSON.parse(cached) } };
-        }
-        return getPublicCategories();
+        return getCategoriesFallback();
       }
       throw err;
     }
@@ -783,6 +1409,178 @@ export const supportAPI = {
   updateStatus: (id, data) =>
     api.patch(`/support/${id}/status`, data),
   deleteMessage: (id) => api.delete(`/support/${id}`),
+};
+
+const supportTicketsStorageKey = (userId) =>
+  `brandhive_support_tickets_${userId}`;
+
+export const extractSupportTicketId = (response) =>
+  response?.data?.data?.id ||
+  response?.data?.data?._id ||
+  response?.data?.id ||
+  response?.data?._id;
+
+export const rememberSupportTicketId = (userId, ticketId) => {
+  if (!userId || !ticketId) return;
+  const key = supportTicketsStorageKey(userId);
+  const ids = JSON.parse(localStorage.getItem(key) || '[]');
+  if (!ids.includes(ticketId)) {
+    localStorage.setItem(key, JSON.stringify([...ids, ticketId]));
+  }
+};
+
+export const saveLocalSupportTicket = async ({
+  userId,
+  email,
+  fullName,
+  message,
+  railwayTicketId,
+}) => {
+  if (!localSupport || !email || !message) return null;
+
+  try {
+    const res = await localSupport.post('/', {
+      userId,
+      email,
+      fullName,
+      message,
+      railwayTicketId,
+    });
+    return res.data?.data || res.data;
+  } catch {
+    return null;
+  }
+};
+
+export const syncLocalSupportReply = async (
+  railwayTicketId,
+  reply,
+  status = 'resolved',
+  ticketMeta = {}
+) => {
+  if (!localSupport || !railwayTicketId || !reply?.trim()) return null;
+
+  try {
+    const res = await localSupport.post(`/${railwayTicketId}/reply`, {
+      reply: reply.trim(),
+      status,
+      ...ticketMeta,
+    });
+    return res.data?.data || res.data;
+  } catch {
+    return null;
+  }
+};
+
+export const fetchMySupportTickets = async (user) => {
+  if (!user?.email) return [];
+
+  const userId = user.id || user._id;
+  const byId = new Map();
+
+  if (localSupport) {
+    try {
+      const res = await localSupport.get('/', {
+        params: {
+          ...(userId ? { userId } : {}),
+          email: user.email,
+        },
+      });
+      getResponseArray(res).forEach((ticket) => {
+        byId.set(ticket.railwayTicketId || ticket._id || ticket.id, ticket);
+      });
+    } catch {
+      // Local server may be offline
+    }
+  }
+
+  if (byId.size > 0) {
+    return [...byId.values()].sort(
+      (a, b) =>
+        new Date(a.createdAt || 0).getTime() -
+        new Date(b.createdAt || 0).getTime()
+    );
+  }
+
+  const storedIds = JSON.parse(
+    localStorage.getItem(supportTicketsStorageKey(userId)) || '[]'
+  );
+
+  await Promise.all(
+    storedIds.map(async (id) => {
+      try {
+        const res = await supportAPI.getMessage(id);
+        const ticket = res.data?.data || res.data;
+        if (ticket && (ticket.message || ticket._id || ticket.id)) {
+          byId.set(ticket._id || ticket.id || id, ticket);
+        }
+      } catch {
+        // Regular users cannot read Railway tickets without admin role
+      }
+    })
+  );
+
+  try {
+    const res = await supportAPI.getAllMessages();
+    getResponseArray(res)
+      .filter(
+        (ticket) =>
+          ticket.email?.toLowerCase() === user.email.toLowerCase()
+      )
+      .forEach((ticket) => {
+        byId.set(ticket._id || ticket.id, ticket);
+      });
+  } catch {
+    // GET /support is admin-only for most accounts
+  }
+
+  return [...byId.values()].sort(
+    (a, b) =>
+      new Date(a.createdAt || 0).getTime() -
+      new Date(b.createdAt || 0).getTime()
+  );
+};
+
+export const formatSupportTime = (dateStr, locale = 'en-US') => {
+  if (!dateStr) return '';
+  return new Date(dateStr).toLocaleTimeString(locale, {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+export const cleanSupportMessageText = (text) =>
+  String(text || '')
+    .replace(/\s*— support request from BrandHive chat$/i, '')
+    .trimEnd();
+
+export const supportTicketsToChatMessages = (tickets, locale = 'en-US') => {
+  const messages = [];
+  let id = 1;
+
+  for (const ticket of tickets) {
+    messages.push({
+      id: id++,
+      from: 'me',
+      text: cleanSupportMessageText(ticket.message),
+      time: formatSupportTime(ticket.createdAt, locale),
+    });
+
+    if (ticket.reply?.trim()) {
+      messages.push({
+        id: id++,
+        from: 'them',
+        text: ticket.reply,
+        time: formatSupportTime(
+          ticket.updatedAt || ticket.repliedAt || ticket.createdAt,
+          locale
+        ),
+        isAdminReply: true,
+      });
+    }
+  }
+
+  return messages;
 };
 
 export default api;

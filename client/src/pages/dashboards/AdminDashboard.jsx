@@ -6,7 +6,15 @@ import {
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useAuth } from '../../context/AuthContext';
-import { adminAPI, productsAPI, notificationsAPI, couponsAPI, categoriesAPI, supportAPI } from '../../services/api';
+import {
+  adminAPI,
+  productsAPI,
+  notificationsAPI,
+  couponsAPI,
+  categoriesAPI,
+  supportAPI,
+  syncLocalSupportReply,
+} from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../../context/LanguageContext';
 import toast from 'react-hot-toast';
@@ -1135,6 +1143,11 @@ function AdminSupportTab({ isRTL, toast }) {
       const messageId = selected._id || selected.id;
       await supportAPI.replyToMessage(messageId, { reply: trimmed });
       await supportAPI.updateStatus(messageId, { status: 'resolved' });
+      await syncLocalSupportReply(messageId, trimmed, 'resolved', {
+        email: selected.email,
+        fullName: selected.fullName,
+        message: selected.message,
+      });
       toast.success(isRTL ? 'تم إرسال الرد ✅' : 'Reply sent ✅');
       setReply('');
       const res = await supportAPI.getAllMessages();

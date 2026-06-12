@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard, Store, Package, ShoppingBag, DollarSign, Target, Star, Megaphone,
   Settings, MessageSquare, CreditCard, LogOut, Users,
@@ -7,7 +7,14 @@ import {
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../../context/AuthContext';
-import { sellerAPI, brandsAPI, productsAPI, inventoryAPI } from '../../services/api';
+import {
+  sellerAPI,
+  brandsAPI,
+  productsAPI,
+  inventoryAPI,
+  fetchSellerProducts,
+  resolveSellerBrandId,
+} from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../../context/LanguageContext';
 import toast from 'react-hot-toast';
@@ -787,21 +794,16 @@ function SellerInventoryTab({ isRTL, t }) {
     const fetchData = async () => {
       setLogsLoading(true);
       try {
-        const savedBrandId = localStorage.getItem(getBrandKey());
-        const productsPromise = savedBrandId
-          ? productsAPI.getAll({ brand: savedBrandId, limit: 50 })
-          : sellerAPI.getProducts();
-        const [logsRes, productsRes] = await Promise.allSettled([
+        const [logsRes, productsList] = await Promise.allSettled([
           inventoryAPI.getLogs({ limit: 20 }),
-          productsPromise,
+          fetchSellerProducts(user),
         ]);
         if (logsRes.status === 'fulfilled') {
           const data = logsRes.value.data?.data || logsRes.value.data || [];
           setLogs(Array.isArray(data) ? data : []);
         }
-        if (productsRes.status === 'fulfilled') {
-          const data = productsRes.value.data?.data || productsRes.value.data?.products || [];
-          setProducts(Array.isArray(data) ? data : []);
+        if (productsList.status === 'fulfilled') {
+          setProducts(Array.isArray(productsList.value) ? productsList.value : []);
         }
       } catch {
         setLogs([]);
@@ -810,7 +812,7 @@ function SellerInventoryTab({ isRTL, t }) {
       }
     };
     fetchData();
-  }, []);
+  }, [user]);
 
   const handleAdjust = async () => {
     if (!adjustForm.productId || !adjustForm.quantity) {
@@ -1232,7 +1234,10 @@ export default function SellerDashboard() {
   const { t } = useTranslation();
   const { isRTL } = useLanguage();
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(
+    () => searchParams.get('tab') || 'dashboard'
+  );
   const navigate = useNavigate();
 
   const getBrandKey = () => `brandhive_seller_brand_${user?.id || user?._id || 'default'}`;
@@ -1247,6 +1252,24 @@ export default function SellerDashboard() {
   const [analytics, setAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [stockAlerts, setStockAlerts] = useState([]);
+
+  const loadSellerProducts = useCallback(async () => {
+    try {
+      const brandId = await resolveSellerBrandId(user);
+      if (brandId) {
+        setMyBrandId(brandId);
+      }
+      const prodData = await fetchSellerProducts(user);
+      setProducts(Array.isArray(prodData) ? prodData : []);
+    } catch {
+      setProducts([]);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab) setActiveTab(tab);
+  }, [searchParams]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -1268,33 +1291,7 @@ export default function SellerDashboard() {
         setOrders([]);
       }
 
-      let brandId = myBrandId;
-      if (!brandId) {
-        try {
-          const brandsRes = await brandsAPI.getAll({ limit: 50 });
-          const allBrands = brandsRes.data?.data || [];
-          const dashRes = await sellerAPI.getDashboard();
-          const dashBrand = dashRes.data?.data?.brand || dashRes.data?.brand;
-          if (dashBrand?._id) {
-            brandId = dashBrand._id;
-            setMyBrandId(brandId);
-            localStorage.setItem(getBrandKey(), brandId);
-          }
-        } catch {}
-      }
-
-      try {
-        let prodRes;
-        if (brandId) {
-          prodRes = await productsAPI.getAll({ brand: brandId, limit: 50 });
-        } else {
-          prodRes = await sellerAPI.getProducts();
-        }
-        const prodData = prodRes.data?.data || prodRes.data?.products || prodRes.data || [];
-        setProducts(Array.isArray(prodData) ? prodData : []);
-      } catch {
-        setProducts([]);
-      }
+      await loadSellerProducts();
 
       // Fetch analytics
       try {
@@ -1313,7 +1310,13 @@ export default function SellerDashboard() {
       setLoading(false);
     };
     fetchData();
-  }, [user]);
+  }, [user, loadSellerProducts]);
+
+  useEffect(() => {
+    if (activeTab === 'products') {
+      loadSellerProducts();
+    }
+  }, [activeTab, loadSellerProducts]);
 
   const brandName = user?.name || 'Seller';
 

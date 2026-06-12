@@ -1,6 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Phone, Info, Paperclip, Smile } from 'lucide-react';
-import { chatAPI, supportAPI } from '../services/api';
+import {
+  chatAPI,
+  supportAPI,
+  fetchMySupportTickets,
+  rememberSupportTicketId,
+  extractSupportTicketId,
+  supportTicketsToChatMessages,
+  saveLocalSupportTicket,
+} from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 
@@ -15,35 +23,78 @@ export default function SupportChat() {
     isRTL ? 'مشكلة في الدفع' : 'Payment issue'
   ];
 
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      from: 'them',
-      text: isRTL
-        ? 'مرحباً بك في مركز دعم BrandHive! 🐝 كيف يمكننا مساعدتك اليوم؟'
-        : 'Welcome to BrandHive Support! 🐝 How can we help you today?',
-      time: new Date().toLocaleTimeString(isRTL ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' })
-    }
-  ]);
+  const welcomeMessage = {
+    id: 0,
+    from: 'them',
+    text: isRTL
+      ? 'مرحباً بك في مركز دعم BrandHive! 🐝 كيف يمكننا مساعدتك اليوم؟'
+      : 'Welcome to BrandHive Support! 🐝 How can we help you today?',
+    time: new Date().toLocaleTimeString(isRTL ? 'ar-EG' : 'en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+  };
+
+  const [messages, setMessages] = useState([welcomeMessage]);
   const [input, setInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [chatHistory, setChatHistory] = useState([]);
   const messagesEndRef = useRef(null);
+
+  const loadTicketHistory = async () => {
+    if (!user?.email) return;
+
+    setHistoryLoading(true);
+    try {
+      const tickets = await fetchMySupportTickets(user);
+      if (tickets.length === 0) return;
+
+      const locale = isRTL ? 'ar-EG' : 'en-US';
+      const history = supportTicketsToChatMessages(tickets, locale);
+      setMessages([welcomeMessage, ...history]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTicketHistory();
+  }, [user?.email, isRTL]);
+
+  useEffect(() => {
+    const onFocus = () => loadTicketHistory();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [user?.email, isRTL]);
+
+  useEffect(() => {
+    if (!user?.email) return undefined;
+
+    const interval = setInterval(() => {
+      loadTicketHistory();
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [user?.email, isRTL]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const MIN_SUPPORT_API_LENGTH = 20;
+
   const submitSupportTicket = (messageText) => {
-    const supportMessage =
-      messageText.length >= 10
+    // Railway requires min 20 chars — pad with zero-width spaces; UI shows original text only
+    const apiMessage =
+      messageText.length >= MIN_SUPPORT_API_LENGTH
         ? messageText
-        : `${messageText} — support request from BrandHive chat`;
+        : messageText + '\u200b'.repeat(MIN_SUPPORT_API_LENGTH - messageText.length);
 
     return supportAPI.sendMessage({
       fullName: user?.name || 'Guest',
       email: user?.email || 'guest@brandhive.com',
-      message: supportMessage,
+      message: apiMessage,
     });
   };
 
@@ -85,6 +136,21 @@ export default function SupportChat() {
         submitSupportTicket(currentInput),
         chatAPI.sendMessage(newHistory, isRTL ? 'ar' : 'en'),
       ]);
+
+      if (ticketResult.status === 'fulfilled') {
+        const ticketId = extractSupportTicketId(ticketResult.value);
+        const userId = user?.id || user?._id;
+        rememberSupportTicketId(userId, ticketId);
+
+        await saveLocalSupportTicket({
+          userId,
+          email: user?.email,
+          fullName: user?.name || 'Guest',
+          message: currentInput,
+          railwayTicketId: ticketId,
+        });
+        loadTicketHistory();
+      }
 
       let replyText;
 
@@ -165,6 +231,14 @@ export default function SupportChat() {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-5 py-2 space-y-3">
+            {historyLoading && (
+              <div className="text-center py-4">
+                <div className="w-5 h-5 border-2 border-brand-gold border-t-transparent rounded-full animate-spin mx-auto" />
+                <p className="text-xs text-gray-400 dark:text-dark-muted mt-2">
+                  {isRTL ? 'جاري تحميل محادثاتك...' : 'Loading your conversations...'}
+                </p>
+              </div>
+            )}
             {messages.map(msg => (
               <div
                 key={msg.id}
@@ -186,6 +260,8 @@ export default function SupportChat() {
                     <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
                       msg.from === 'me'
                         ? 'bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy rounded-br-sm'
+                        : msg.isAdminReply
+                        ? 'bg-brand-gold/10 border border-brand-gold/30 text-gray-900 dark:text-dark-text rounded-bl-sm'
                         : 'bg-gray-100 dark:bg-dark-bg text-gray-900 dark:text-dark-text rounded-bl-sm'
                     } ${isRTL || msg.isArabic ? 'text-right' : ''}`}>
                       {msg.text}

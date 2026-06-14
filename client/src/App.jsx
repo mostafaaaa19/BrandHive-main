@@ -89,6 +89,7 @@ function AppRoutes() {
       <Route path="/cart" element={<Layout noFooter><CartPage /></Layout>} />
       <Route path="/global" element={<Layout><ListingPage /></Layout>} />
       <Route path="/chat" element={<Layout noFooter><SupportChat /></Layout>} />
+      <Route path="/support" element={<Navigate to="/chat" replace />} />
 
       {/* Auth */}
       <Route path="/login" element={<LoginPage />} />

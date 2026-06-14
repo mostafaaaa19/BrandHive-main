@@ -3396,23 +3396,101 @@ export const addressesAPI = {
     api.get(`/addresses/${id}/shipping-fee?subtotal=${subtotal}`),
 };
 
+export const getInstantSupportReply = (messageText, language = 'en') => {
+  const text = String(messageText || '').toLowerCase();
+  const isAr = language === 'ar';
+
+  if (
+    text.includes('track') ||
+    text.includes('order') ||
+    text.includes('تتبع') ||
+    text.includes('طلب')
+  ) {
+    return isAr
+      ? 'لتتبع طلبك، افتح حسابك ← طلباتي. إذا احتجت مساعدة إضافية، أرسل رقم الطلب وسيتواصل معك فريق الدعم.'
+      : 'To track your order, go to your account → My Orders. If you need more help, send your order number and our team will follow up.';
+  }
+  if (text.includes('return') || text.includes('استرجاع')) {
+    return isAr
+      ? 'طلبات الاسترجاع متاحة خلال 14 يوماً. افتح الطلب من "طلباتي" واختر طلب استرجاع، أو اترك تفاصيل الطلب هنا.'
+      : 'Returns are available within 14 days. Open the order from My Orders and request a return, or leave your order details here.';
+  }
+  if (text.includes('cancel') || text.includes('إلغاء')) {
+    return isAr
+      ? 'يمكن إلغاء الطلب قبل الشحن من صفحة "طلباتي". أرسل رقم الطلب إن لم يظهر لك خيار الإلغاء.'
+      : 'You can cancel before shipping from My Orders. Send your order number if you do not see a cancel option.';
+  }
+  if (text.includes('payment') || text.includes('pay') || text.includes('دفع')) {
+    return isAr
+      ? 'نقبل Paymob والبطاقات وفوري وفودافون كاش والدفع عند الاستلام. إذا فشل الدفع، جرّب مرة أخرى من الطلب أو تواصل مع الدعم.'
+      : 'We accept Paymob, cards, Fawry, Vodafone Cash, and cash on delivery. If payment failed, retry from your order or contact support.';
+  }
+
+  return isAr
+    ? 'شكراً لتواصلك مع BrandHive. تم استلام رسالتك وسيرد فريق الدعم قريباً.'
+    : 'Thanks for contacting BrandHive. Your message was received and our support team will reply soon.';
+};
+
+export const isAutoHandledSupportIntent = (messageText) => {
+  const text = String(messageText || '').trim().toLowerCase();
+  const autoPhrases = [
+    'track my order',
+    'return request',
+    'cancel order',
+    'payment issue',
+    'تتبع طلبي',
+    'طلب استرجاع',
+    'إلغاء الطلب',
+    'مشكلة في الدفع',
+  ];
+  if (autoPhrases.includes(text)) return true;
+
+  return (
+    /\b(track|return|cancel|payment)\b/.test(text) ||
+    /(تتبع|استرجاع|إلغاء|دفع)/.test(text)
+  );
+};
+
+export const autoResolveSupportTicket = async ({
+  ticketId,
+  reply,
+  ticketMeta = {},
+}) => {
+  if (!ticketId || !reply?.trim()) return null;
+  return syncLocalSupportReply(ticketId, reply, 'resolved', ticketMeta);
+};
+
 export const chatAPI = {
   sendMessage: async (messages, language) => {
-    const response = await fetch('/chat/ai', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, language }),
-    });
+    const lastUserMessage =
+      [...(messages || [])].reverse().find((m) => m.role === 'user')?.content || '';
 
-    const data = await response.json().catch(() => ({}));
+    try {
+      const response = await fetch('/chat/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages, language }),
+      });
 
-    if (!response.ok) {
-      const error = new Error(data?.reply || data?.message || 'Chat request failed');
-      error.response = { status: response.status, data };
-      throw error;
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        return {
+          reply: getInstantSupportReply(lastUserMessage, language),
+          offline: true,
+        };
+      }
+
+      return {
+        reply: data?.reply || getInstantSupportReply(lastUserMessage, language),
+        offline: Boolean(data?.offline),
+      };
+    } catch {
+      return {
+        reply: getInstantSupportReply(lastUserMessage, language),
+        offline: true,
+      };
     }
-
-    return data;
   },
 };
 
@@ -3624,6 +3702,9 @@ export const saveLocalSupportTicket = async ({
   fullName,
   message,
   railwayTicketId,
+  brandId,
+  brandName,
+  messageType,
 }) => {
   if (!localSupport || !email || !message) return null;
 
@@ -3634,11 +3715,97 @@ export const saveLocalSupportTicket = async ({
       fullName,
       message,
       railwayTicketId,
+      brandId,
+      brandName,
+      messageType,
     });
     return res.data?.data || res.data;
   } catch {
     return null;
   }
+};
+
+const brandInboxStorageKey = (brandId) => `brandhive_brand_inbox_${brandId}`;
+
+export const saveBrandInquiryMessage = async ({
+  brandId,
+  brandName,
+  userId,
+  email,
+  fullName,
+  message,
+  railwayTicketId,
+}) => {
+  if (!brandId || !message?.trim()) return null;
+
+  const entry = {
+    _id: railwayTicketId || `local-${Date.now()}`,
+    brandId: String(brandId),
+    brandName: brandName || '',
+    userId: userId || undefined,
+    email: email || '',
+    fullName: fullName || 'Customer',
+    message: message.trim(),
+    createdAt: new Date().toISOString(),
+    status: 'pending',
+    messageType: 'brand_inquiry',
+  };
+
+  try {
+    const key = brandInboxStorageKey(brandId);
+    const list = JSON.parse(localStorage.getItem(key) || '[]');
+    list.unshift(entry);
+    localStorage.setItem(key, JSON.stringify(list.slice(0, 100)));
+  } catch {
+    // ignore local cache errors
+  }
+
+  return saveLocalSupportTicket({
+    userId,
+    email,
+    fullName,
+    message: message.trim(),
+    railwayTicketId,
+    brandId,
+    brandName,
+    messageType: 'brand_inquiry',
+  });
+};
+
+export const fetchSellerBrandMessages = async (brandId) => {
+  if (!brandId) return [];
+
+  const merged = new Map();
+
+  try {
+    const key = brandInboxStorageKey(brandId);
+    JSON.parse(localStorage.getItem(key) || '[]').forEach((entry) => {
+      const id = entry._id || entry.id || entry.railwayTicketId;
+      if (id) merged.set(String(id), entry);
+    });
+  } catch {
+    // ignore local cache errors
+  }
+
+  if (localSupport) {
+    try {
+      const res = await localSupport.get('/', {
+        params: { brandId: String(brandId) },
+      });
+      getResponseArray(res).forEach((entry) => {
+        const id = entry._id || entry.id || entry.railwayTicketId;
+        if (id) merged.set(String(id), entry);
+      });
+    } catch {
+      // mirror server may be offline
+    }
+  }
+
+  return [...merged.values()].sort(
+    (a, b) =>
+      new Date(b.createdAt || 0).getTime() -
+      new Date(a.createdAt || 0).getTime()
+  );
 };
 
 export const syncLocalSupportReply = async (
@@ -3740,6 +3907,7 @@ export const formatSupportTime = (dateStr, locale = 'en-US') => {
 
 export const cleanSupportMessageText = (text) =>
   String(text || '')
+    .replace(/^\[[^\]]+\]\s*/, '')
     .replace(/\s*— support request from BrandHive chat$/i, '')
     .trimEnd();
 

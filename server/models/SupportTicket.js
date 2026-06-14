@@ -8,6 +8,13 @@ const supportTicketSchema = new mongoose.Schema(
     fullName: { type: String, trim: true },
     message: { type: String, required: true },
     reply: { type: String, default: '' },
+    brandId: { type: String, index: true },
+    brandName: { type: String, trim: true },
+    messageType: {
+      type: String,
+      enum: ['support', 'brand_inquiry'],
+      default: 'support',
+    },
     status: {
       type: String,
       enum: ['pending', 'in_progress', 'resolved'],

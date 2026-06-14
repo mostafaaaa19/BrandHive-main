@@ -174,7 +174,34 @@ export default function BrandPage() {
   };
 
   const handleMessage = () => {
-    navigate('/support');
+    if (!isAuthenticated) {
+      toast.error(isRTL ? 'يرجى تسجيل الدخول أولاً' : 'Please login first');
+      navigate('/login', { state: { from: `/brand/${slug}` } });
+      return;
+    }
+
+    const brandId = brand?.id || brand?._id;
+    const sellerBrandId = localStorage.getItem(
+      `brandhive_seller_brand_${user?.id || user?._id || 'default'}`
+    );
+
+    if (sellerBrandId && brandId && String(sellerBrandId) === String(brandId)) {
+      toast(
+        isRTL
+          ? 'هذه ماركتك — رسائل العملاء تظهر في لوحة البائع'
+          : 'This is your brand — customer messages appear in Seller Dashboard',
+        { icon: 'ℹ️' }
+      );
+      navigate('/seller/dashboard?tab=messages');
+      return;
+    }
+
+    navigate('/chat', {
+      state: {
+        brandId,
+        brandName: brand?.name,
+      },
+    });
   };
 
   const totalReviews = useMemo(
@@ -356,7 +383,7 @@ export default function BrandPage() {
                   <Heart size={15} fill={isFollowing ? 'currentColor' : 'none'} className={isFollowing ? 'text-red-500' : ''} />
                   {isFollowing ? (isRTL ? 'متابع' : 'Following') : (isRTL ? '+ متابعة' : '+ Follow')}
                 </button>
-                <button onClick={handleMessage} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm border-2 border-gray-200 dark:border-dark-border hover:border-brand-navy dark:hover:border-brand-gold text-gray-700 dark:text-dark-text hover:text-brand-navy dark:hover:text-brand-navy transition-all ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <button type="button" onClick={handleMessage} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm border-2 border-gray-200 dark:border-dark-border hover:border-brand-navy dark:hover:border-brand-gold text-gray-700 dark:text-dark-text hover:text-brand-navy dark:hover:text-brand-navy transition-all ${isRTL ? 'flex-row-reverse' : ''}`}>
                   <MessageSquare size={15} />
                   {isRTL ? 'رسالة' : 'Message'}
                 </button>

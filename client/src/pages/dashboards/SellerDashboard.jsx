@@ -17,6 +17,7 @@ import {
   adjustSellerStock,
   fetchSellerOrders,
   fetchSellerReviews,
+  fetchSellerBrandMessages,
   readCachedSellerProducts,
   getCachedSellerProductCount,
   fetchSellerPayoutSummary,
@@ -801,6 +802,73 @@ function SellerRevenueTab({ dashboard, analytics, analyticsLoading, orderStats, 
             <p className="text-sm italic">
               {isRTL ? 'ستظهر الرسوم البيانية بمجرد توفر بيانات مبيعات' : 'Charts will appear once sales data is available'}
             </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SellerMessagesTab({ isRTL, brandId }) {
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const data = await fetchSellerBrandMessages(brandId);
+        setMessages(Array.isArray(data) ? data : []);
+      } catch {
+        setMessages([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [brandId]);
+
+  return (
+    <div>
+      <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
+        {isRTL ? 'الرسائل' : 'Messages'}
+      </h1>
+      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
+        {loading ? (
+          <div className="text-center py-8">
+            <div className="w-6 h-6 border-2 border-brand-gold border-t-transparent rounded-full animate-spin mx-auto" />
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="text-center py-8">
+            <MessageSquare className="mx-auto text-gray-300 dark:text-dark-muted mb-4" size={48} />
+            <h3 className="font-bold text-gray-900 dark:text-dark-text mb-2">
+              {isRTL ? 'لا توجد رسائل بعد' : 'No messages yet'}
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-dark-muted">
+              {isRTL ? 'ستظهر رسائل العملاء من صفحة ماركتك هنا' : 'Customer messages from your brand page will appear here'}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {messages.map((msg, i) => (
+              <div
+                key={msg._id || msg.id || i}
+                className={`border-b border-gray-100 dark:border-dark-border pb-4 last:border-0 ${isRTL ? 'text-right' : ''}`}
+              >
+                <div className={`flex items-center justify-between mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <span className="font-medium text-sm dark:text-dark-text">
+                    {msg.fullName || msg.user?.name || 'Customer'}
+                  </span>
+                  <span className="text-xs text-gray-400 dark:text-dark-muted">
+                    {msg.createdAt ? new Date(msg.createdAt).toLocaleDateString() : ''}
+                  </span>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-dark-muted">{msg.message}</p>
+                {msg.email && (
+                  <p className="text-xs text-gray-400 dark:text-dark-muted mt-1">{msg.email}</p>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -2405,20 +2473,7 @@ export default function SellerDashboard() {
             )}
 
             {activeTab === 'messages' && (
-              <div>
-                <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
-                  {isRTL ? 'الرسائل' : 'Messages'}
-                </h1>
-                <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-8 text-center">
-                  <MessageSquare className="mx-auto text-gray-300 dark:text-dark-muted mb-4" size={48} />
-                  <h3 className="font-bold text-gray-900 dark:text-dark-text mb-2">
-                    {isRTL ? 'لا توجد رسائل بعد' : 'No messages yet'}
-                  </h3>
-                  <p className="text-sm text-gray-500 dark:text-dark-muted">
-                    {isRTL ? 'ستظهر رسائل العملاء هنا' : 'Customer messages will appear here'}
-                  </p>
-                </div>
-              </div>
+              <SellerMessagesTab isRTL={isRTL} brandId={myBrandId} />
             )}
 
             {activeTab === 'payouts' && (

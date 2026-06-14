@@ -19,7 +19,7 @@ export default function Footer() {
       { label: t('dashboard.seller.title'), path: '/seller/dashboard' },
     ],
     [t('support.title')]: [
-      { label: t('footer.contact'), path: '/support#contact' },
+      { label: t('footer.contact'), path: '/chat' },
       { label: 'Live Chat', path: '/chat' },
     ],
   };

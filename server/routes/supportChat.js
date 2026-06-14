@@ -11,7 +11,8 @@ router.post('/', async (req, res) => {
     return res.status(503).json({ message: 'Support storage unavailable (database offline)' });
   }
 
-  const { userId, email, fullName, message, railwayTicketId } = req.body;
+  const { userId, email, fullName, message, railwayTicketId, brandId, brandName, messageType } =
+    req.body;
   if (!email || !message?.trim()) {
     return res.status(400).json({ message: 'email and message are required' });
   }
@@ -23,6 +24,9 @@ router.post('/', async (req, res) => {
       fullName: fullName || 'Guest',
       message: message.trim(),
       railwayTicketId: railwayTicketId || undefined,
+      brandId: brandId ? String(brandId) : undefined,
+      brandName: brandName || undefined,
+      messageType: messageType || (brandId ? 'brand_inquiry' : 'support'),
     });
 
     return res.status(201).json({ data: ticket });
@@ -36,17 +40,22 @@ router.get('/', async (req, res) => {
     return res.status(503).json({ message: 'Support storage unavailable (database offline)' });
   }
 
-  const { userId, email } = req.query;
-  if (!userId && !email) {
-    return res.status(400).json({ message: 'userId or email is required' });
+  const { userId, email, brandId } = req.query;
+  if (!userId && !email && !brandId) {
+    return res.status(400).json({ message: 'userId, email, or brandId is required' });
   }
 
   try {
-    const query = userId
-      ? { userId: String(userId) }
-      : { email: String(email).toLowerCase().trim() };
+    let query;
+    if (brandId) {
+      query = { brandId: String(brandId), messageType: 'brand_inquiry' };
+    } else {
+      query = userId
+        ? { userId: String(userId) }
+        : { email: String(email).toLowerCase().trim() };
+    }
 
-    const tickets = await SupportTicket.find(query).sort({ createdAt: 1 });
+    const tickets = await SupportTicket.find(query).sort({ createdAt: -1 });
     return res.json({ data: tickets });
   } catch (err) {
     return res.status(500).json({ message: err.message || 'Failed to load support tickets' });

@@ -199,6 +199,74 @@ export default function HomePage() {
         { cat: isRTL ? 'عضوي' : 'Organic', name: isRTL ? 'عسل طبيعي' : 'Natural Honey', from: isRTL ? '250 ج.م' : '250 EGP', icon: '🍯', image: null, slug: null },
       ];
 
+  const renderHeroShowcaseCard = (item, index, size) => {
+    const heightClass = size === 'tall' ? 'h-[212px]' : 'h-[148px]';
+    const cardClass = `relative ${heightClass} w-full bg-white/10 backdrop-blur-sm rounded-3xl overflow-hidden border border-white/15 hover:border-brand-gold/50 hover:shadow-xl hover:shadow-black/20 transition-all duration-300 hover:-translate-y-1 cursor-pointer animate-fade-in block ${isRTL ? 'text-right' : 'text-left'}`;
+
+    const cardContent = (
+      <>
+        {item.image ? (
+          <img
+            src={item.image}
+            alt={item.name}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="text-4xl flex items-center justify-center h-full bg-white/10">
+            {item.icon}
+          </div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-black/5 pointer-events-none" />
+        <div className={`absolute bottom-0 left-0 right-0 p-3.5 ${isRTL ? 'text-right' : 'text-left'}`}>
+          <p className="text-brand-gold/90 text-[10px] font-bold uppercase tracking-[0.14em] mb-1">
+            {item.cat}
+          </p>
+          <p className="text-white font-display font-semibold text-[15px] leading-snug line-clamp-2 mb-1">
+            {item.name}
+          </p>
+          <p className="text-white/90 text-xs font-medium">
+            {isRTL ? 'من' : 'From'}{' '}
+            <span className="text-brand-gold font-bold">{item.from}</span>
+          </p>
+        </div>
+      </>
+    );
+
+    if (item.slug) {
+      return (
+        <Link
+          key={item.slug}
+          to={`/product/${item.slug}`}
+          className={cardClass}
+          style={{ animationDelay: `${index * 0.1}s` }}
+        >
+          {cardContent}
+        </Link>
+      );
+    }
+
+    return (
+      <div
+        key={`hero-fallback-${index}`}
+        className={cardClass}
+        style={{ animationDelay: `${index * 0.1}s` }}
+      >
+        {cardContent}
+      </div>
+    );
+  };
+
+  const heroShowcaseColumns = [
+    [
+      { item: heroShowcase[0], index: 0, size: 'tall' },
+      { item: heroShowcase[2], index: 2, size: 'short' },
+    ],
+    [
+      { item: heroShowcase[1], index: 1, size: 'short' },
+      { item: heroShowcase[3], index: 3, size: 'tall' },
+    ],
+  ];
+
   return (
     <div className="overflow-x-hidden">
       {/* ===== HERO ===== */}
@@ -259,63 +327,33 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Right - Product Showcase */}
-            <div className="relative hidden lg:block">
-              <div className="grid grid-cols-2 gap-4">
+            {/* Right - Bento showcase: col1 tall→short, col2 short→tall */}
+            <div className="relative hidden lg:flex justify-end">
+              <div className={`flex gap-3.5 w-full max-w-[400px] ${isRTL ? 'flex-row-reverse' : ''}`}>
                 {productsLoading ? (
-                  [...Array(4)].map((_, i) => (
-                    <div key={i} className="bg-white/10 rounded-2xl h-40 animate-pulse" />
+                  heroShowcaseColumns.map((column, colIdx) => (
+                    <div key={colIdx} className="flex flex-col gap-3.5 flex-1 min-w-0">
+                      {column.map((slot) => (
+                        <div
+                          key={slot.index}
+                          className={`bg-white/10 rounded-3xl animate-pulse ${slot.size === 'tall' ? 'h-[212px]' : 'h-[148px]'}`}
+                        />
+                      ))}
+                    </div>
                   ))
                 ) : (
-                  heroShowcase.map((item, i) => {
-                    const cardClass = `relative h-40 bg-white/10 backdrop-blur-sm rounded-2xl overflow-hidden border border-white/20 hover:bg-white/15 transition-all duration-200 hover:-translate-y-1 cursor-pointer animate-fade-in block ${isRTL ? 'text-right' : 'text-left'}`;
-                    const cardContent = (
-                      <>
-                        {item.image ? (
-                          <img
-                            src={item.image}
-                            alt={item.name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="text-4xl flex items-center justify-center h-full bg-white/10">
-                            {item.icon}
-                          </div>
-                        )}
-                        <div className={`absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/60 to-transparent ${isRTL ? 'text-right' : 'text-left'}`}>
-                          <p className="text-white/70 text-xs">{item.cat}</p>
-                          <p className="text-white font-semibold text-sm truncate">{item.name}</p>
-                          <p className="text-brand-gold text-xs font-bold">
-                            {isRTL ? 'من' : 'From'} {item.from}
-                          </p>
-                        </div>
-                      </>
-                    );
-
-                    return item.slug ? (
-                      <Link
-                        key={item.slug}
-                        to={`/product/${item.slug}`}
-                        className={cardClass}
-                        style={{ animationDelay: `${i * 0.1}s` }}
-                      >
-                        {cardContent}
-                      </Link>
-                    ) : (
-                      <div
-                        key={i}
-                        className={cardClass}
-                        style={{ animationDelay: `${i * 0.1}s` }}
-                      >
-                        {cardContent}
-                      </div>
-                    );
-                  })
+                  heroShowcaseColumns.map((column, colIdx) => (
+                    <div key={colIdx} className="flex flex-col gap-3.5 flex-1 min-w-0">
+                      {column.map((slot) =>
+                        renderHeroShowcaseCard(
+                          slot.item,
+                          slot.index,
+                          slot.size
+                        )
+                      )}
+                    </div>
+                  ))
                 )}
-              </div>
-              {/* Floating badge */}
-              <div className={`absolute -top-4 ${isRTL ? '-left-4' : '-right-4'} bg-brand-gold text-white px-4 py-2 rounded-2xl text-sm font-bold shadow-gold animate-float`}>
-                {isRTL ? '🔥 رائج الآن' : '🔥 Trending'}
               </div>
             </div>
           </div>

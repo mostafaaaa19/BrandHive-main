@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard, Store, Package, ShoppingBag, DollarSign, Target, Star, Megaphone,
@@ -13,7 +13,13 @@ import {
   productsAPI,
   inventoryAPI,
   fetchSellerProducts,
-  resolveSellerBrandId,
+  fetchSellerOrders,
+  readCachedSellerProducts,
+  getCachedSellerProductCount,
+  fetchSellerPayoutSummary,
+  saveSellerPayoutProfile,
+  requestSellerWithdrawal,
+  resolveSellerBrand,
 } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../../context/LanguageContext';
@@ -36,6 +42,138 @@ const STATUS_COLORS = {
   Processing: 'bg-gray-100 text-gray-600',
 };
 
+const getOrderStatus = (order) => String(order?.status || 'pending').toLowerCase();
+
+const pickMetricNumber = (...values) => {
+  let fallback = 0;
+  for (const value of values) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) continue;
+    if (parsed > 0) return parsed;
+    fallback = parsed;
+  }
+  return fallback;
+};
+
+const getOrderTotal = (order) =>
+  Number(order?.totalAmount ?? order?.total ?? order?.subtotal ?? 0) || 0;
+
+const isActiveOrder = (order) => !['canceled', 'cancelled'].includes(getOrderStatus(order));
+
+const computeSellerOrderStats = (orders = [], locale = 'en') => {
+  const list = Array.isArray(orders) ? orders : [];
+  const activeOrders = list.filter(isActiveOrder);
+  const totalRevenue = activeOrders.reduce((sum, order) => sum + getOrderTotal(order), 0);
+  const pendingCount = list.filter((order) => getOrderStatus(order) === 'pending').length;
+  const now = new Date();
+  const ordersThisMonth = list.filter((order) => {
+    if (!order?.createdAt) return false;
+    const created = new Date(order.createdAt);
+    return (
+      created.getMonth() === now.getMonth() &&
+      created.getFullYear() === now.getFullYear()
+    );
+  }).length;
+  const avgOrderValue = activeOrders.length
+    ? Math.round(totalRevenue / activeOrders.length)
+    : 0;
+
+  const monthBuckets = [];
+  for (let i = 6; i >= 0; i -= 1) {
+    const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    monthBuckets.push({
+      key: `${date.getFullYear()}-${date.getMonth()}`,
+      month: date.toLocaleDateString(locale, { month: 'short' }),
+      revenue: 0,
+    });
+  }
+
+  activeOrders.forEach((order) => {
+    if (!order?.createdAt) return;
+    const created = new Date(order.createdAt);
+    const key = `${created.getFullYear()}-${created.getMonth()}`;
+    const bucket = monthBuckets.find((entry) => entry.key === key);
+    if (bucket) bucket.revenue += getOrderTotal(order);
+  });
+
+  const productMap = new Map();
+  activeOrders.forEach((order) => {
+    (order.items || []).forEach((item) => {
+      const name = item?.name || item?.product?.name || 'Product';
+      const id = item?.productId || item?.product?._id || item?.product?.id || name;
+      const sales =
+        (Number(item?.quantity) || 1) * (Number(item?.price) || 0);
+      const existing = productMap.get(String(id)) || {
+        _id: id,
+        productId: id,
+        name,
+        productName: name,
+        totalSales: 0,
+      };
+      existing.totalSales += sales;
+      productMap.set(String(id), existing);
+    });
+  });
+
+  return {
+    totalCount: list.length,
+    pendingCount,
+    totalRevenue,
+    ordersThisMonth,
+    avgOrderValue,
+    revenueChart: monthBuckets.map(({ month, revenue }) => ({ month, revenue })),
+    topProducts: [...productMap.values()].sort(
+      (a, b) => (b.totalSales || 0) - (a.totalSales || 0)
+    ),
+  };
+};
+
+const computeBazaarHealth = (orders = [], products = [], isRTL = false) => {
+  const active = (Array.isArray(orders) ? orders : []).filter(isActiveOrder);
+  const total = active.length;
+  const delivered = active.filter((order) => getOrderStatus(order) === 'delivered').length;
+  const processed = active.filter((order) => getOrderStatus(order) !== 'pending').length;
+  const prodList = Array.isArray(products) ? products : [];
+  const inStock = prodList.filter((product) => Number(product.stock ?? 0) > 0).length;
+
+  const completionRate = total > 0 ? Math.round((delivered / total) * 100) : 0;
+  const fulfillmentRate = total > 0 ? Math.round((processed / total) * 100) : 0;
+  const stockHealth = prodList.length > 0 ? Math.round((inStock / prodList.length) * 100) : 0;
+
+  return [
+    {
+      label: isRTL ? 'معدل الإنجاز' : 'Completion Rate',
+      value: total > 0 ? `${completionRate}%` : '—',
+      percent: completionRate,
+      color: 'bg-emerald-500',
+    },
+    {
+      label: isRTL ? 'معدل المعالجة' : 'Fulfillment Rate',
+      value: total > 0 ? `${fulfillmentRate}%` : '—',
+      percent: fulfillmentRate,
+      color: 'bg-blue-500',
+    },
+    {
+      label: isRTL ? 'صحة المخزون' : 'Stock Health',
+      value: prodList.length > 0 ? `${stockHealth}%` : '—',
+      percent: stockHealth,
+      color: 'bg-brand-gold',
+    },
+  ];
+};
+
+const pickTopProducts = (orderStats, analytics, products = []) => {
+  if (orderStats?.topProducts?.length > 0) return orderStats.topProducts;
+  if (analytics?.topProducts?.length > 0) return analytics.topProducts;
+  return (Array.isArray(products) ? products : []).slice(0, 5).map((product) => ({
+    _id: product._id || product.id,
+    productId: product._id || product.id,
+    name: product.name,
+    productName: product.name,
+    totalSales: 0,
+  }));
+};
+
 function SidebarItem({ icon: Icon, label, tab, activeTab, setActiveTab, isRTL }) {
   const isActive = activeTab === tab;
   return (
@@ -46,31 +184,27 @@ function SidebarItem({ icon: Icon, label, tab, activeTab, setActiveTab, isRTL })
   );
 }
 
-function SellerOrdersTab({ orders, isRTL, sellerAPI, t }) {
+function SellerOrdersTab({ orders, isRTL, t }) {
   const [filter, setFilter] = useState('all');
   const [filteredOrders, setFilteredOrders] = useState(orders);
-  const [loading, setLoading] = useState(false);
 
-  const filterOrders = async (status) => {
+  useEffect(() => {
+    if (filter === 'all') {
+      setFilteredOrders(orders);
+    }
+  }, [orders, filter]);
+
+  const filterOrders = (status) => {
     setFilter(status);
     if (status === 'all') {
       setFilteredOrders(orders);
       return;
     }
-    setLoading(true);
-    try {
-      const res = await sellerAPI.filterOrders(status);
-      const data = res.data?.data || res.data?.orders || res.data || [];
-      setFilteredOrders(Array.isArray(data) ? data : []);
-    } catch {
-      setFilteredOrders(
-        orders.filter(o => 
-          o.status?.toLowerCase() === status.toLowerCase()
-        )
-      );
-    } finally {
-      setLoading(false);
-    }
+    setFilteredOrders(
+      orders.filter(
+        (order) => getOrderStatus(order) === status.toLowerCase()
+      )
+    );
   };
 
   const STATUS_FILTERS = [
@@ -126,13 +260,7 @@ function SellerOrdersTab({ orders, isRTL, sellerAPI, t }) {
       <div className="bg-white dark:bg-dark-surface 
         rounded-2xl shadow-card dark:shadow-none 
         dark:border dark:border-dark-border overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center">
-            <div className="w-6 h-6 border-2 
-              border-brand-gold border-t-transparent 
-              rounded-full animate-spin mx-auto" />
-          </div>
-        ) : filteredOrders.length === 0 ? (
+        {filteredOrders.length === 0 ? (
           <div className="p-8 text-center">
             <Package className="mx-auto text-gray-300 mb-3" size={40} />
             <p className="text-gray-500 dark:text-dark-muted">
@@ -210,35 +338,420 @@ function SellerOrdersTab({ orders, isRTL, sellerAPI, t }) {
   );
 }
 
-function SellerRevenueTab({ dashboard, analytics, analyticsLoading, isRTL, t }) {
+const PAYOUT_METHODS = [
+  { value: 'vodafone_cash', labelEn: 'Vodafone Cash', labelAr: 'فودافون كاش' },
+  { value: 'instapay', labelEn: 'InstaPay', labelAr: 'إنستا باي' },
+  { value: 'bank_transfer', labelEn: 'Bank Transfer', labelAr: 'تحويل بنكي' },
+];
+
+const WITHDRAWAL_STATUS_COLORS = {
+  pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400',
+  approved: 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
+  paid: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400',
+  rejected: 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400',
+};
+
+function SellerPayoutsTab({ user, brandId, orderStats, isRTL }) {
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [amount, setAmount] = useState('');
+  const [profile, setProfile] = useState({
+    method: 'vodafone_cash',
+    walletNumber: '',
+    instapayId: '',
+    bankName: '',
+    accountNumber: '',
+    accountHolder: '',
+  });
+
+  const loadSummary = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await fetchSellerPayoutSummary(user, brandId);
+      setSummary(data);
+      if (data?.profile) {
+        setProfile({
+          method: data.profile.method || 'vodafone_cash',
+          walletNumber: data.profile.walletNumber || '',
+          instapayId: data.profile.instapayId || '',
+          bankName: data.profile.bankName || '',
+          accountNumber: data.profile.accountNumber || '',
+          accountHolder: data.profile.accountHolder || '',
+        });
+      }
+    } catch {
+      setSummary(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [user, brandId]);
+
+  useEffect(() => {
+    loadSummary();
+  }, [loadSummary]);
+
+  const fallbackGross = orderStats?.totalRevenue || 0;
+  const grossRevenue = summary?.grossRevenue ?? fallbackGross;
+  const platformFee = summary?.platformFee ?? Math.round(fallbackGross * 0.05);
+  const availableBalance =
+    summary?.availableBalance ?? Math.max(0, fallbackGross - platformFee);
+  const pendingWithdrawal = summary?.pendingWithdrawal ?? 0;
+  const totalWithdrawn = summary?.totalWithdrawn ?? 0;
+  const withdrawals = summary?.withdrawals || [];
+
+  const validateProfile = () => {
+    if (profile.method === 'vodafone_cash' && !profile.walletNumber?.trim()) {
+      return isRTL ? 'أدخل رقم المحفظة' : 'Enter wallet number';
+    }
+    if (profile.method === 'instapay' && !profile.instapayId?.trim()) {
+      return isRTL ? 'أدخل معرف InstaPay' : 'Enter InstaPay ID';
+    }
+    if (profile.method === 'bank_transfer') {
+      if (!profile.bankName?.trim() || !profile.accountNumber?.trim() || !profile.accountHolder?.trim()) {
+        return isRTL ? 'أكمل بيانات الحساب البنكي' : 'Complete bank account details';
+      }
+    }
+    return null;
+  };
+
+  const handleSaveProfile = async () => {
+    const error = validateProfile();
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      await saveSellerPayoutProfile(user, profile);
+      toast.success(isRTL ? 'تم حفظ بيانات الدفع' : 'Payout details saved');
+      await loadSummary();
+    } catch (err) {
+      toast.error(err.message || (isRTL ? 'فشل الحفظ' : 'Save failed'));
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleWithdraw = async () => {
+    const profileError = validateProfile();
+    if (profileError) {
+      toast.error(isRTL ? 'احفظ بيانات الدفع أولاً' : 'Save payout details first');
+      return;
+    }
+
+    const parsedAmount = Number(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount < 50) {
+      toast.error(isRTL ? 'الحد الأدنى للسحب 50 ج.م' : 'Minimum withdrawal is 50 EGP');
+      return;
+    }
+    if (parsedAmount > availableBalance) {
+      toast.error(isRTL ? 'المبلغ أكبر من الرصيد المتاح' : 'Amount exceeds available balance');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await saveSellerPayoutProfile(user, profile);
+      await requestSellerWithdrawal(user, {
+        brandId,
+        amount: parsedAmount,
+        method: profile.method,
+        accountDetails: {
+          walletNumber: profile.walletNumber,
+          instapayId: profile.instapayId,
+          bankName: profile.bankName,
+          accountNumber: profile.accountNumber,
+          accountHolder: profile.accountHolder,
+        },
+      });
+      toast.success(isRTL ? 'تم إرسال طلب السحب' : 'Withdrawal request submitted');
+      setAmount('');
+      await loadSummary();
+    } catch (err) {
+      toast.error(err.message || (isRTL ? 'فشل طلب السحب' : 'Withdrawal failed'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading && !summary) {
+    return (
+      <div className="p-12 text-center">
+        <div className="w-8 h-8 border-2 border-brand-gold border-t-transparent rounded-full animate-spin mx-auto" />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
+        {isRTL ? 'المدفوعات' : 'Payouts'}
+      </h1>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        {[
+          {
+            icon: '💰',
+            label: isRTL ? 'الرصيد المتاح' : 'Available Balance',
+            value: `${availableBalance.toLocaleString()} ${isRTL ? 'ج.م' : 'EGP'}`,
+            color: 'bg-emerald-50 dark:bg-emerald-900/10',
+          },
+          {
+            icon: '📤',
+            label: isRTL ? 'قيد السحب' : 'Pending Withdrawal',
+            value: `${pendingWithdrawal.toLocaleString()} ${isRTL ? 'ج.م' : 'EGP'}`,
+            color: 'bg-amber-50 dark:bg-amber-900/10',
+          },
+          {
+            icon: '✅',
+            label: isRTL ? 'إجمالي المسحوب' : 'Total Withdrawn',
+            value: `${totalWithdrawn.toLocaleString()} ${isRTL ? 'ج.م' : 'EGP'}`,
+            color: 'bg-blue-50 dark:bg-blue-900/10',
+          },
+        ].map((item) => (
+          <div key={item.label} className={`${item.color} rounded-2xl p-5 ${isRTL ? 'text-right' : ''}`}>
+            <div className="text-3xl mb-2">{item.icon}</div>
+            <div className="text-xl font-bold text-gray-900 dark:text-dark-text">{item.value}</div>
+            <div className="text-xs text-gray-500 dark:text-dark-muted mt-1">{item.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <p className={`text-xs text-gray-400 dark:text-dark-muted mb-6 ${isRTL ? 'text-right' : ''}`}>
+        {isRTL
+          ? `إجمالي الأرباح: ${grossRevenue.toLocaleString()} ج.م — عمولة المنصة (5%): ${platformFee.toLocaleString()} ج.م`
+          : `Gross earnings: ${grossRevenue.toLocaleString()} EGP — Platform fee (5%): ${platformFee.toLocaleString()} EGP`}
+      </p>
+
+      <div className="grid lg:grid-cols-2 gap-6 mb-6">
+        <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
+          <h3 className={`font-bold text-gray-900 dark:text-dark-text mb-4 ${isRTL ? 'text-right' : ''}`}>
+            {isRTL ? 'بيانات الدفع' : 'Payout Details'}
+          </h3>
+          <div className="space-y-3">
+            <div>
+              <label className={`block text-xs font-semibold text-gray-500 mb-1 ${isRTL ? 'text-right' : ''}`}>
+                {isRTL ? 'طريقة الدفع' : 'Payment method'}
+              </label>
+              <select
+                value={profile.method}
+                onChange={(e) => setProfile((prev) => ({ ...prev, method: e.target.value }))}
+                className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg px-3 py-2 text-sm"
+              >
+                {PAYOUT_METHODS.map((method) => (
+                  <option key={method.value} value={method.value}>
+                    {isRTL ? method.labelAr : method.labelEn}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {profile.method === 'vodafone_cash' && (
+              <input
+                type="text"
+                placeholder={isRTL ? 'رقم المحفظة' : 'Wallet number'}
+                value={profile.walletNumber}
+                onChange={(e) => setProfile((prev) => ({ ...prev, walletNumber: e.target.value }))}
+                className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg px-3 py-2 text-sm"
+              />
+            )}
+
+            {profile.method === 'instapay' && (
+              <input
+                type="text"
+                placeholder={isRTL ? 'معرف InstaPay أو رقم الهاتف' : 'InstaPay ID or phone'}
+                value={profile.instapayId}
+                onChange={(e) => setProfile((prev) => ({ ...prev, instapayId: e.target.value }))}
+                className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg px-3 py-2 text-sm"
+              />
+            )}
+
+            {profile.method === 'bank_transfer' && (
+              <>
+                <input
+                  type="text"
+                  placeholder={isRTL ? 'اسم البنك' : 'Bank name'}
+                  value={profile.bankName}
+                  onChange={(e) => setProfile((prev) => ({ ...prev, bankName: e.target.value }))}
+                  className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg px-3 py-2 text-sm"
+                />
+                <input
+                  type="text"
+                  placeholder={isRTL ? 'رقم الحساب / IBAN' : 'Account number / IBAN'}
+                  value={profile.accountNumber}
+                  onChange={(e) => setProfile((prev) => ({ ...prev, accountNumber: e.target.value }))}
+                  className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg px-3 py-2 text-sm"
+                />
+                <input
+                  type="text"
+                  placeholder={isRTL ? 'اسم صاحب الحساب' : 'Account holder name'}
+                  value={profile.accountHolder}
+                  onChange={(e) => setProfile((prev) => ({ ...prev, accountHolder: e.target.value }))}
+                  className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg px-3 py-2 text-sm"
+                />
+              </>
+            )}
+
+            <button
+              type="button"
+              onClick={handleSaveProfile}
+              disabled={savingProfile}
+              className="btn-primary w-full disabled:opacity-50"
+            >
+              {savingProfile
+                ? (isRTL ? 'جاري الحفظ...' : 'Saving...')
+                : (isRTL ? 'حفظ بيانات الدفع' : 'Save payout details')}
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
+          <h3 className={`font-bold text-gray-900 dark:text-dark-text mb-4 ${isRTL ? 'text-right' : ''}`}>
+            {isRTL ? 'طلب سحب' : 'Request Withdrawal'}
+          </h3>
+          {!import.meta.env.DEV ? (
+            <div className={`flex items-start gap-3 bg-amber-50 dark:bg-amber-900/10 rounded-xl p-4 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+              <span className="text-xl">⚠️</span>
+              <p className="text-sm text-amber-700 dark:text-amber-400">
+                {isRTL
+                  ? 'طلبات السحب متاحة في وضع التطوير مع السيرفر المحلي.'
+                  : 'Withdrawal requests require local dev mode with npm run server.'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <input
+                type="number"
+                min="50"
+                step="1"
+                placeholder={isRTL ? 'المبلغ (ج.م)' : 'Amount (EGP)'}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg px-3 py-2 text-sm"
+              />
+              <p className={`text-xs text-gray-400 ${isRTL ? 'text-right' : ''}`}>
+                {isRTL ? `الحد الأدنى 50 ج.م — المتاح: ${availableBalance.toLocaleString()} ج.م` : `Min 50 EGP — Available: ${availableBalance.toLocaleString()} EGP`}
+              </p>
+              <button
+                type="button"
+                onClick={handleWithdraw}
+                disabled={submitting || availableBalance < 50}
+                className="btn-primary w-full disabled:opacity-50"
+              >
+                {submitting
+                  ? (isRTL ? 'جاري الإرسال...' : 'Submitting...')
+                  : (isRTL ? 'إرسال طلب السحب' : 'Submit withdrawal request')}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
+        <h3 className={`font-bold text-gray-900 dark:text-dark-text mb-4 ${isRTL ? 'text-right' : ''}`}>
+          {isRTL ? 'سجل السحب' : 'Withdrawal History'}
+        </h3>
+        {withdrawals.length === 0 ? (
+          <p className={`text-sm text-gray-400 italic ${isRTL ? 'text-right' : ''}`}>
+            {isRTL ? 'لا توجد طلبات سحب بعد' : 'No withdrawal requests yet'}
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className={`w-full text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
+              <thead>
+                <tr className="border-b border-gray-100 dark:border-dark-border">
+                  {[
+                    isRTL ? 'التاريخ' : 'Date',
+                    isRTL ? 'المبلغ' : 'Amount',
+                    isRTL ? 'الطريقة' : 'Method',
+                    isRTL ? 'الحالة' : 'Status',
+                  ].map((header) => (
+                    <th key={header} className="pb-3 px-2 text-xs font-semibold text-gray-400 uppercase">{header}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {withdrawals.map((entry) => (
+                  <tr key={entry._id} className="border-b border-gray-50 dark:border-dark-border/50 last:border-0">
+                    <td className="py-3 px-2 text-gray-500">
+                      {entry.createdAt ? new Date(entry.createdAt).toLocaleDateString() : '—'}
+                    </td>
+                    <td className="py-3 px-2 font-semibold">
+                      {Number(entry.amount || 0).toLocaleString()} {isRTL ? 'ج.م' : 'EGP'}
+                    </td>
+                    <td className="py-3 px-2 text-gray-500">
+                      {PAYOUT_METHODS.find((m) => m.value === entry.method)?.[isRTL ? 'labelAr' : 'labelEn'] || entry.method}
+                    </td>
+                    <td className="py-3 px-2">
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${WITHDRAWAL_STATUS_COLORS[entry.status] || 'bg-gray-100 text-gray-600'}`}>
+                        {entry.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SellerRevenueTab({ dashboard, analytics, analyticsLoading, orderStats, isRTL, t }) {
+  const totalRevenue = pickMetricNumber(
+    orderStats?.totalRevenue,
+    analytics?.totalRevenue,
+    dashboard?.totalRevenue,
+    dashboard?.revenue?.total
+  );
+  const ordersThisMonth = pickMetricNumber(
+    orderStats?.ordersThisMonth,
+    analytics?.ordersThisMonth,
+    dashboard?.ordersCount
+  );
+  const avgOrderValue = pickMetricNumber(
+    orderStats?.avgOrderValue,
+    analytics?.avgOrderValue,
+    dashboard?.avgOrderValue
+  );
+
   const stats = [
     { 
       label: isRTL ? 'إجمالي الأرباح' : 'Total Revenue', 
-      value: `${(analytics?.totalRevenue || dashboard?.totalRevenue || dashboard?.revenue || 0).toLocaleString()} ${t('common.egp')}`,
+      value: `${totalRevenue.toLocaleString()} ${t('common.egp')}`,
       icon: '💰',
       color: 'bg-emerald-50 dark:bg-emerald-900/10'
     },
     { 
       label: isRTL ? 'طلبات هذا الشهر' : 'Orders This Month', 
-      value: analytics?.ordersThisMonth || dashboard?.ordersCount || 0,
+      value: ordersThisMonth,
       icon: '📦',
       color: 'bg-blue-50 dark:bg-blue-900/10'
     },
     { 
       label: isRTL ? 'متوسط قيمة الطلب' : 'Avg Order Value', 
-      value: `${(analytics?.avgOrderValue || dashboard?.avgOrderValue || 0).toLocaleString()} ${t('common.egp')}`,
+      value: `${avgOrderValue.toLocaleString()} ${t('common.egp')}`,
       icon: '📊',
       color: 'bg-purple-50 dark:bg-purple-900/10'
     },
     { 
       label: isRTL ? 'عمولة المنصة (5%)' : 'Platform Fee (5%)', 
-      value: `${Math.round((analytics?.totalRevenue || dashboard?.totalRevenue || 0) * 0.05).toLocaleString()} ${t('common.egp')}`,
+      value: `${Math.round(totalRevenue * 0.05).toLocaleString()} ${t('common.egp')}`,
       icon: '🏷️',
       color: 'bg-amber-50 dark:bg-amber-900/10'
     },
   ];
 
-  const chartData = analytics?.revenueChart || analytics?.chartData || dashboard?.chartData || null;
+  const chartData =
+    analytics?.revenueChart ||
+    analytics?.chartData ||
+    dashboard?.chartData ||
+    (orderStats?.revenueChart?.some((entry) => entry.revenue > 0)
+      ? orderStats.revenueChart
+      : null);
 
   return (
     <div>
@@ -393,11 +906,10 @@ function SellerReviewsTab({ isRTL, sellerAPI }) {
   );
 }
 
-function SellerBazaarTab({ isRTL, sellerAPI }) {
+function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats }) {
   const [bazaar, setBazaar] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notifying, setNotifying] = useState(false);
-  const [bazaarFetched, setBazaarFetched] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -407,25 +919,86 @@ function SellerBazaarTab({ isRTL, sellerAPI }) {
     facebookLink: '',
   });
 
-  useEffect(() => {
-    if (bazaarFetched) return;
-    setBazaarFetched(true);
+  const bazaarProfileKey = `brandhive_seller_bazaar_${user?.id || user?._id || 'default'}`;
 
-    const fetchBazaar = async () => {
-      try {
-        const res = await sellerAPI.getBazaar();
-        setBazaar(res.data?.data || res.data || null);
-      } catch (err) {
-        if (err.response?.status !== 500 && err.response?.status !== 404) {
-          console.error('Bazaar error:', err.message);
-        }
-        setBazaar(null);
-      } finally {
-        setLoading(false);
-      }
+  const readLocalBazaarProfile = () => {
+    try {
+      const raw = localStorage.getItem(bazaarProfileKey);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  };
+
+  const buildBazaarFromBrand = (brand, localProfile = {}) => ({
+    _id: brand._id || brand.id,
+    name: brand.name || 'My Bazaar',
+    slug: brand.slug,
+    description: localProfile.description || brand.description || '',
+    whatsappLink: localProfile.whatsappLink || brand.whatsappLink || brand.whatsapp || '',
+    instagramLink: localProfile.instagramLink || brand.instagramLink || brand.instagram || '',
+    facebookLink: localProfile.facebookLink || brand.facebookLink || brand.facebook || '',
+    followersCount: brand.followers || brand.followersCount || 0,
+    viewsCount: brand.views || brand.viewsCount || 0,
+    averageRating: brand.rating || brand.averageRating || 0,
+    productCount: Array.isArray(products) ? products.length : 0,
+    ordersCount: orderStats?.totalCount || 0,
+    _fromBrand: true,
+  });
+
+  const mergeBazaarProfile = (base) => {
+    const localProfile = readLocalBazaarProfile();
+    return {
+      ...base,
+      description: localProfile.description || base.description || '',
+      whatsappLink: localProfile.whatsappLink || base.whatsappLink || '',
+      instagramLink: localProfile.instagramLink || base.instagramLink || '',
+      facebookLink: localProfile.facebookLink || base.facebookLink || '',
     };
-    fetchBazaar();
-  }, [bazaarFetched]);
+  };
+
+  const loadBazaar = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await sellerAPI.getBazaar();
+      const apiBazaar = res.data?.data || res.data;
+      if (apiBazaar && (apiBazaar._id || apiBazaar.id || apiBazaar.name)) {
+        setBazaar(mergeBazaarProfile(apiBazaar));
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // fall through to brand fallback
+    }
+
+    try {
+      const brand = await resolveSellerBrand(user);
+      if (brand) {
+        let fullBrand = brand;
+        const id = brand._id || brand.id || brandId;
+        if (id) {
+          try {
+            const brandRes = await brandsAPI.getOne(id);
+            fullBrand = brandRes.data?.data || brandRes.data?.brand || brandRes.data || brand;
+          } catch {
+            fullBrand = brand;
+          }
+        }
+        setBazaar(buildBazaarFromBrand(fullBrand, readLocalBazaarProfile()));
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // ignore brand resolution errors
+    }
+
+    setBazaar(null);
+    setLoading(false);
+  }, [user, products, brandId, orderStats?.totalCount, sellerAPI]);
+
+  useEffect(() => {
+    loadBazaar();
+  }, [loadBazaar]);
 
   useEffect(() => {
     if (bazaar) {
@@ -441,15 +1014,28 @@ function SellerBazaarTab({ isRTL, sellerAPI }) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const res = await sellerAPI.updateBazaar(editForm);
-      setBazaar(res.data?.data || res.data || bazaar);
+      localStorage.setItem(bazaarProfileKey, JSON.stringify(editForm));
+      const updated = { ...bazaar, ...editForm };
+      setBazaar(updated);
       setEditing(false);
+
+      if (!bazaar?._fromBrand) {
+        const res = await sellerAPI.updateBazaar(editForm);
+        setBazaar(mergeBazaarProfile(res.data?.data || res.data || updated));
+      }
+
       toast.success(isRTL ? 'تم تحديث البازار ✅' : 'Bazaar updated ✅');
     } catch (err) {
-      toast.error(
-        err.response?.data?.message ||
-        (isRTL ? 'فشل التحديث' : 'Update failed')
-      );
+      if (bazaar?._fromBrand) {
+        setBazaar({ ...bazaar, ...editForm });
+        setEditing(false);
+        toast.success(isRTL ? 'تم حفظ التغييرات محلياً ✅' : 'Changes saved locally ✅');
+      } else {
+        toast.error(
+          err.response?.data?.message ||
+          (isRTL ? 'فشل التحديث' : 'Update failed')
+        );
+      }
     } finally {
       setSaving(false);
     }
@@ -521,15 +1107,31 @@ function SellerBazaarTab({ isRTL, sellerAPI }) {
         </div>
       ) : bazaar ? (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+          <div className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5 flex items-center justify-between gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={isRTL ? 'text-right' : ''}>
+              <h2 className="text-lg font-display font-bold text-gray-900 dark:text-dark-text">{bazaar.name}</h2>
+              {bazaar._fromBrand && (
+                <p className="text-xs text-gray-400 dark:text-dark-muted mt-1">
+                  {isRTL ? 'متجرك مرتبط بماركة BrandHive' : 'Linked to your BrandHive brand'}
+                </p>
+              )}
+            </div>
+            {bazaar.slug && (
+              <Link
+                to={`/brand/${bazaar.slug}`}
+                className="btn-outline text-sm whitespace-nowrap"
+              >
+                {isRTL ? 'عرض المتجر' : 'View Store'}
+              </Link>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
             {[
-              { label: isRTL ? 'المتابعون' : 'Followers', 
-                value: bazaar.followersCount || 0, emoji: '👥' },
-              { label: isRTL ? 'المشاهدات' : 'Views', 
-                value: bazaar.viewsCount || 0, emoji: '👁' },
-              { label: isRTL ? 'التقييم' : 'Rating', 
-                value: (bazaar.averageRating || 0).toFixed(1), 
-                emoji: '⭐' },
+              { label: isRTL ? 'المتابعون' : 'Followers', value: bazaar.followersCount || 0, emoji: '👥' },
+              { label: isRTL ? 'المشاهدات' : 'Views', value: bazaar.viewsCount || 0, emoji: '👁' },
+              { label: isRTL ? 'المنتجات' : 'Products', value: bazaar.productCount ?? products.length ?? 0, emoji: '📦' },
+              { label: isRTL ? 'التقييم' : 'Rating', value: (bazaar.averageRating || 0).toFixed(1), emoji: '⭐' },
             ].map(stat => (
               <div key={stat.label}
                 className={`bg-white dark:bg-dark-surface 
@@ -668,9 +1270,13 @@ function SellerBazaarTab({ isRTL, sellerAPI }) {
             {isRTL ? 'لا يوجد بازار بعد' : 'No Bazaar Yet'}
           </h3>
           <p className="text-gray-500 dark:text-dark-muted">
-            {isRTL 
-              ? 'سيتم إنشاء بازارك بعد موافقة الإدارة'
-              : 'Your bazaar will be created after admin approval'}
+            {products.length > 0
+              ? (isRTL
+                ? 'تعذر ربط البازار بماركتك. جرّب تحديث الصفحة أو تواصل مع الدعم.'
+                : 'Could not link your bazaar to your brand. Try refreshing or contact support.')
+              : (isRTL
+                ? 'سيتم إنشاء بازارك بعد موافقة الإدارة وإضافة منتجاتك'
+                : 'Your bazaar will appear after admin approval and once you add products')}
           </p>
         </div>
       )}
@@ -1244,7 +1850,7 @@ export default function SellerDashboard() {
 
   const [dashboard, setDashboard] = useState(null);
   const [orders, setOrders] = useState([]);
-  const [products, setProducts] = useState([]);
+  const [products, setProducts] = useState(() => readCachedSellerProducts(user));
   const [myBrandId, setMyBrandId] = useState(
     () => localStorage.getItem(`brandhive_seller_brand_${user?.id || user?._id || 'default'}`) || null
   );
@@ -1253,16 +1859,51 @@ export default function SellerDashboard() {
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [stockAlerts, setStockAlerts] = useState([]);
 
+  const orderStats = useMemo(
+    () => computeSellerOrderStats(orders, isRTL ? 'ar-EG' : 'en-US'),
+    [orders, isRTL]
+  );
+
+  const activeProductCount = useMemo(
+    () =>
+      products.length ||
+      getCachedSellerProductCount(user) ||
+      dashboard?.products?.active ||
+      0,
+    [products.length, user, dashboard?.products?.active]
+  );
+
+  const bazaarHealth = useMemo(
+    () => computeBazaarHealth(orders, products, isRTL),
+    [orders, products, isRTL]
+  );
+
+  const topProducts = useMemo(
+    () => pickTopProducts(orderStats, analytics, products),
+    [orderStats, analytics, products]
+  );
+
   const loadSellerProducts = useCallback(async () => {
     try {
-      const brandId = await resolveSellerBrandId(user);
-      if (brandId) {
-        setMyBrandId(brandId);
-      }
       const prodData = await fetchSellerProducts(user);
       setProducts(Array.isArray(prodData) ? prodData : []);
+      const brandId =
+        localStorage.getItem(
+          `brandhive_seller_brand_${user?.id || user?._id || 'default'}`
+        ) || null;
+      if (brandId) setMyBrandId(brandId);
     } catch {
-      setProducts([]);
+      const cached = readCachedSellerProducts(user);
+      if (cached.length > 0) setProducts(cached);
+    }
+  }, [user]);
+
+  const loadSellerOrders = useCallback(async () => {
+    try {
+      const ordData = await fetchSellerOrders(user);
+      setOrders(Array.isArray(ordData) ? ordData : []);
+    } catch {
+      setOrders([]);
     }
   }, [user]);
 
@@ -1274,49 +1915,51 @@ export default function SellerDashboard() {
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      try {
-        // Fetch seller dashboard stats
-        const dashRes = await sellerAPI.getDashboard();
-        const dashData = dashRes.data?.data || dashRes.data || {};
+
+      const cachedProducts = readCachedSellerProducts(user);
+      if (cachedProducts.length > 0) {
+        setProducts((prev) => (prev.length > 0 ? prev : cachedProducts));
+      }
+
+      const [dashResult, analyticsResult] = await Promise.allSettled([
+        sellerAPI.getDashboard(),
+        sellerAPI.getAnalytics(),
+        loadSellerOrders(),
+        loadSellerProducts(),
+      ]);
+
+      if (dashResult.status === 'fulfilled') {
+        const dashData =
+          dashResult.value.data?.data || dashResult.value.data || {};
         setDashboard(dashData);
-      } catch {
+      } else {
         setDashboard(null);
       }
 
-      try {
-        const ordRes = await sellerAPI.getOrders();
-        const ordData = ordRes.data?.data || ordRes.data?.orders || ordRes.data || [];
-        setOrders(Array.isArray(ordData) ? ordData : []);
-      } catch {
-        setOrders([]);
-      }
-
-      await loadSellerProducts();
-
-      // Fetch analytics
-      try {
-        setAnalyticsLoading(true);
-        const analyticsRes = await sellerAPI.getAnalytics();
-        setAnalytics(analyticsRes.data?.data || analyticsRes.data || null);
-      } catch {
+      if (analyticsResult.status === 'fulfilled') {
+        setAnalytics(
+          analyticsResult.value.data?.data ||
+            analyticsResult.value.data ||
+            null
+        );
+      } else {
         setAnalytics(null);
-      } finally {
-        setAnalyticsLoading(false);
       }
 
-      // Stock alerts endpoint not available yet
       setStockAlerts([]);
-
       setLoading(false);
     };
     fetchData();
-  }, [user, loadSellerProducts]);
+  }, [user, loadSellerProducts, loadSellerOrders]);
 
   useEffect(() => {
     if (activeTab === 'products') {
       loadSellerProducts();
     }
-  }, [activeTab, loadSellerProducts]);
+    if (activeTab === 'orders' || activeTab === 'dashboard') {
+      loadSellerOrders();
+    }
+  }, [activeTab, loadSellerProducts, loadSellerOrders]);
 
   const brandName = user?.name || 'Seller';
 
@@ -1498,11 +2141,11 @@ export default function SellerDashboard() {
                 {/* Stat cards */}
                 <div className={`grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8 ${isRTL ? 'flex-row-reverse' : ''}`}>
                   {[
-                    { icon: DollarSign, label: isRTL ? 'الأرباح (ج.م)' : 'Revenue (EGP)', value: (dashboard?.revenue?.total || dashboard?.totalRevenue || 0).toLocaleString(), change: '+0%', color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' },
-                    { icon: Package, label: isRTL ? 'إجمالي الطلبات' : 'Total Orders', value: (dashboard?.orders?.total || orders.length || 0).toString(), change: '+0%', color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' },
-                    { icon: ShoppingBag, label: isRTL ? 'المنتجات النشطة' : 'Active Products', value: (dashboard?.products?.active || products.length || 0).toString(), change: '+0', color: 'bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400' },
+                    { icon: DollarSign, label: isRTL ? 'الأرباح (ج.م)' : 'Revenue (EGP)', value: pickMetricNumber(orderStats.totalRevenue, dashboard?.totalRevenue, dashboard?.revenue?.total).toLocaleString(), change: '+0%', color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' },
+                    { icon: Package, label: isRTL ? 'إجمالي الطلبات' : 'Total Orders', value: pickMetricNumber(orderStats.totalCount, orders.length, dashboard?.orders?.total).toString(), change: '+0%', color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' },
+                    { icon: ShoppingBag, label: isRTL ? 'المنتجات النشطة' : 'Active Products', value: activeProductCount.toString(), change: '+0', color: 'bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400' },
                     { icon: Star, label: isRTL ? 'متوسط التقييم' : 'Avg Rating', value: (dashboard?.reviews?.averageRating || 0).toFixed(1), change: '+0', color: 'bg-rose-100 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400' },
-                    { icon: Users, label: isRTL ? 'طلبات معلقة' : 'Pending Orders', value: (dashboard?.orders?.pending || 0).toString(), change: '+0', color: 'bg-amber-100 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400' },
+                    { icon: Users, label: isRTL ? 'طلبات معلقة' : 'Pending Orders', value: pickMetricNumber(orderStats.pendingCount, dashboard?.orders?.pending).toString(), change: '+0', color: 'bg-amber-100 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400' },
                   ].map(stat => (
                     <div key={stat.label} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-4 ${isRTL ? 'text-right' : ''}`}>
                       <div className={`w-9 h-9 rounded-xl ${stat.color} flex items-center justify-center mb-3 ${isRTL ? 'mr-0 ml-auto' : ''}`}>
@@ -1529,7 +2172,10 @@ export default function SellerDashboard() {
                     <div className={isRTL ? 'direction-ltr' : ''}>
                       {(() => {
                         const chartData = analytics?.revenueChart || analytics?.chartData || 
-                                          dashboard?.chartData || dashboard?.revenueData || null;
+                                          dashboard?.chartData || dashboard?.revenueData ||
+                                          (orderStats.revenueChart.some((entry) => entry.revenue > 0)
+                                            ? orderStats.revenueChart
+                                            : null);
                         return chartData ? (
                           <ResponsiveContainer width="100%" height={200}>
                             <BarChart data={chartData} barSize={24}>
@@ -1557,48 +2203,48 @@ export default function SellerDashboard() {
                   <div className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 ${isRTL ? 'text-right' : ''}`}>
                     <h3 className="font-display font-bold text-gray-900 dark:text-dark-text mb-4">{isRTL ? 'صحة المتجر' : 'Bazaar Health'}</h3>
                     <div className="space-y-4 mb-6">
-                      {[
-                        { label: isRTL ? 'معدل الإنجاز' : 'Completion Rate', value: '94%', color: 'bg-emerald-500' },
-                        { label: isRTL ? 'معدل الرد' : 'Response Rate', value: '98%', color: 'bg-blue-500' },
-                        { label: isRTL ? 'تصنيف المنصة' : 'Platform Rank', value: isRTL ? 'أفضل 5%' : 'Top 5%', color: 'bg-brand-gold' },
-                      ].map(m => (
-                        <div key={m.label}>
+                      {bazaarHealth.map((metric) => (
+                        <div key={metric.label}>
                           <div className={`flex justify-between text-sm mb-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                            <span className="text-gray-600 dark:text-dark-muted">{m.label}</span>
-                            <span className="font-semibold text-gray-900 dark:text-dark-text">{m.value}</span>
+                            <span className="text-gray-600 dark:text-dark-muted">{metric.label}</span>
+                            <span className="font-semibold text-gray-900 dark:text-dark-text">{metric.value}</span>
                           </div>
                           <div className="h-2 bg-gray-100 dark:bg-dark-bg rounded-full overflow-hidden">
-                            <div className={`h-full ${m.color} rounded-full`} style={{ width: m.value.includes('%') ? (m.value.includes('5%') ? '5%' : m.value) : '80%' }} />
+                            <div
+                              className={`h-full ${metric.color} rounded-full transition-all`}
+                              style={{ width: `${metric.percent}%` }}
+                            />
                           </div>
                         </div>
                       ))}
                     </div>
 
                     <h4 className="font-semibold text-gray-900 dark:text-dark-text mb-3 text-sm">{isRTL ? 'أفضل المنتجات' : 'Top Products'}</h4>
-                    {(analytics?.topProducts || []).length > 0 ? (
-                      analytics.topProducts.slice(0, 5).map((p, i) => {
-                        const maxSales = analytics.topProducts[0]?.totalSales || 1;
-                        const percent = Math.round(((p.totalSales || p.sales || 0) / maxSales) * 100);
+                    {topProducts.length > 0 ? (
+                      topProducts.slice(0, 5).map((product, index) => {
+                        const maxSales = topProducts[0]?.totalSales || topProducts[0]?.sales || 1;
+                        const sales = product.totalSales || product.sales || 0;
+                        const percent = maxSales > 0 ? Math.round((sales / maxSales) * 100) : 0;
                         return (
-                          <div key={p._id || p.productId || i} className={`flex items-center gap-2 mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <div key={product._id || product.productId || index} className={`flex items-center gap-2 mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
                             <span className="text-xs text-gray-600 dark:text-dark-muted flex-1 truncate">
-                              {p.productName || p.name || 'Product'}
+                              {product.productName || product.name || 'Product'}
                             </span>
                             <div className="w-24 h-1.5 bg-gray-100 dark:bg-dark-bg rounded-full overflow-hidden">
-                              <div className="h-full bg-brand-gold rounded-full" style={{ width: `${percent}%` }} />
+                              <div className="h-full bg-brand-gold rounded-full" style={{ width: `${sales > 0 ? percent : 8}%` }} />
                             </div>
-                            <span className="text-xs text-gray-500 dark:text-dark-muted w-8 text-right">{percent}%</span>
+                            <span className="text-xs text-gray-500 dark:text-dark-muted w-14 text-right whitespace-nowrap">
+                              {sales > 0
+                                ? `${sales.toLocaleString()} ${isRTL ? 'ج.م' : 'EGP'}`
+                                : (isRTL ? 'بدون مبيعات' : 'No sales')}
+                            </span>
                           </div>
                         );
                       })
                     ) : (
-                      [
-                        { name: isRTL ? 'لا توجد بيانات بعد' : 'No data yet', percent: 0 },
-                      ].map(p => (
-                        <div key={p.name} className="text-xs text-gray-400 dark:text-dark-muted italic py-2">
-                          {p.name}
-                        </div>
-                      ))
+                      <div className="text-xs text-gray-400 dark:text-dark-muted italic py-2">
+                        {isRTL ? 'لا توجد بيانات بعد' : 'No data yet'}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1633,7 +2279,7 @@ export default function SellerDashboard() {
                             <tr key={order._id || order.id} className="border-b border-gray-50 dark:border-dark-border/50 last:border-0 hover:bg-gray-50/50 dark:hover:bg-dark-bg/50">
                               <td className="py-3 px-2 font-mono text-xs text-brand-navy dark:text-brand-gold font-semibold">#{(order._id || order.id).slice(-4).toUpperCase()}</td>
                               <td className="py-3 px-2 font-medium dark:text-dark-text">{order.user?.name || 'Customer'}</td>
-                              <td className="py-3 px-2 text-gray-600 dark:text-dark-muted max-w-[140px] truncate">{order.items?.[0]?.product?.name || 'Product'}</td>
+                              <td className="py-3 px-2 text-gray-600 dark:text-dark-muted max-w-[140px] truncate">{order.items?.[0]?.name || order.items?.[0]?.product?.name || 'Product'}</td>
                               <td className="py-3 px-2 font-semibold dark:text-dark-text">{(order.totalAmount || order.total).toLocaleString()} {t('common.egp')}</td>
                               <td className="py-3 px-2 text-gray-500 dark:text-dark-muted">{new Date(order.createdAt).toLocaleDateString()}</td>
                               <td className="py-3 px-2">
@@ -1657,7 +2303,6 @@ export default function SellerDashboard() {
               <SellerOrdersTab 
                 orders={orders} 
                 isRTL={isRTL} 
-                sellerAPI={sellerAPI}
                 t={t}
               />
             )}
@@ -1668,6 +2313,7 @@ export default function SellerDashboard() {
                 dashboard={dashboard}
                 analytics={analytics}
                 analyticsLoading={analyticsLoading}
+                orderStats={orderStats}
                 isRTL={isRTL}
                 t={t}
               />
@@ -1683,9 +2329,13 @@ export default function SellerDashboard() {
 
             {/* Bazaar Tab */}
             {activeTab === 'bazaar' && (
-              <SellerBazaarTab 
+              <SellerBazaarTab
                 isRTL={isRTL}
                 sellerAPI={sellerAPI}
+                user={user}
+                products={products}
+                brandId={myBrandId}
+                orderStats={orderStats}
               />
             )}
 
@@ -1730,52 +2380,12 @@ export default function SellerDashboard() {
             )}
 
             {activeTab === 'payouts' && (
-              <div>
-                <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
-                  {isRTL ? 'المدفوعات' : 'Payouts'}
-                </h1>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                  {[
-                    {
-                      icon: '💰',
-                      label: isRTL ? 'الرصيد المتاح' : 'Available Balance',
-                      value: `${(dashboard?.revenue?.total || 0).toLocaleString()} ${isRTL ? 'ج.م' : 'EGP'}`,
-                      color: 'bg-emerald-50 dark:bg-emerald-900/10',
-                    },
-                    {
-                      icon: '📤',
-                      label: isRTL ? 'قيد السحب' : 'Pending Withdrawal',
-                      value: `0 ${isRTL ? 'ج.م' : 'EGP'}`,
-                      color: 'bg-amber-50 dark:bg-amber-900/10',
-                    },
-                    {
-                      icon: '✅',
-                      label: isRTL ? 'إجمالي المسحوب' : 'Total Withdrawn',
-                      value: `0 ${isRTL ? 'ج.م' : 'EGP'}`,
-                      color: 'bg-blue-50 dark:bg-blue-900/10',
-                    },
-                  ].map((item, i) => (
-                    <div key={i} className={`${item.color} rounded-2xl p-5 ${isRTL ? 'text-right' : ''}`}>
-                      <div className="text-3xl mb-2">{item.icon}</div>
-                      <div className="text-xl font-bold text-gray-900 dark:text-dark-text">{item.value}</div>
-                      <div className="text-xs text-gray-500 dark:text-dark-muted mt-1">{item.label}</div>
-                    </div>
-                  ))}
-                </div>
-                <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
-                  <h3 className={`font-bold text-gray-900 dark:text-dark-text mb-4 ${isRTL ? 'text-right' : ''}`}>
-                    {isRTL ? 'طلب سحب' : 'Request Withdrawal'}
-                  </h3>
-                  <div className={`flex items-start gap-3 bg-amber-50 dark:bg-amber-900/10 rounded-xl p-4 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
-                    <span className="text-xl">⚠️</span>
-                    <p className="text-sm text-amber-700 dark:text-amber-400">
-                      {isRTL
-                        ? 'خاصية السحب قيد التطوير. سيتم إشعارك عند توفرها.'
-                        : 'Withdrawal feature is coming soon. You will be notified when available.'}
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <SellerPayoutsTab
+                user={user}
+                brandId={myBrandId}
+                orderStats={orderStats}
+                isRTL={isRTL}
+              />
             )}
 
             {activeTab === 'promotions' && (

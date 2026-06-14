@@ -140,7 +140,7 @@ function NotificationsTab({ isRTL }) {
 export default function UserDashboard() {
   const { t } = useTranslation();
   const { isRTL } = useLanguage();
-  const { user, logout, updateUser } = useAuth();
+  const { user, logout, updateUser, hasSellerApiAccess } = useAuth();
   const { items: wishlistItems, toggleWishlist, moveToCart } = useWishlist();
   const { addToCart } = useCart();
   const [searchParams] = useSearchParams();
@@ -216,7 +216,7 @@ export default function UserDashboard() {
   }, [user, profileInitialized]);
 
   useEffect(() => {
-    if (activeTab !== 'reviews') return;
+    if (activeTab !== 'reviews' || hasSellerApiAccess) return;
     const fetchMyReviews = async () => {
       setReviewsLoading(true);
       try {
@@ -231,7 +231,7 @@ export default function UserDashboard() {
       }
     };
     fetchMyReviews();
-  }, [activeTab]);
+  }, [activeTab, hasSellerApiAccess]);
 
   useEffect(() => {
     const fetchUnreadCount = async () => {
@@ -388,6 +388,11 @@ export default function UserDashboard() {
   };
 
   const fetchOrders = async () => {
+    if (hasSellerApiAccess) {
+      setOrders([]);
+      setOrdersLoading(false);
+      return;
+    }
     setOrdersLoading(true);
     setOrdersError(null);
     try {

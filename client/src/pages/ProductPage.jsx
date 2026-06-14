@@ -39,7 +39,7 @@ export default function ProductPage() {
   const navigate = useNavigate();
   const { addToCart } = useCart();
   const { toggleWishlist, isInWishlist } = useWishlist();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, hasSellerApiAccess } = useAuth();
 
   const [product, setProduct] = useState(null);
   const [relatedProducts, setRelatedProducts] = useState([]);
@@ -151,7 +151,7 @@ export default function ProductPage() {
   }, [slug, user?.id, user?._id]);
 
   useEffect(() => {
-    if (!isAuthenticated || !product?.id) {
+    if (!isAuthenticated || !product?.id || hasSellerApiAccess) {
       setEligibleOrders([]);
       setSelectedOrderId('');
       return;
@@ -179,7 +179,7 @@ export default function ProductPage() {
     };
 
     fetchEligibleOrders();
-  }, [isAuthenticated, product?.id]);
+  }, [isAuthenticated, product?.id, hasSellerApiAccess]);
 
   if (loading) {
     return (

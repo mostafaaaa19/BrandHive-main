@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { authAPI, humanizeApiError } from '../services/api';
+import { authAPI, humanizeApiError, syncSellerBrandNameForUser } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -34,9 +34,13 @@ export const AuthProvider = ({ children }) => {
         const roleOverride = localStorage.getItem(
           'brandhive_role_override'
         );
+        if (!parsed.serverRole && parsed.role) {
+          parsed.serverRole = parsed.role;
+        }
         if (roleOverride) {
           parsed.role = roleOverride;
         }
+        syncSellerBrandNameForUser(parsed);
         setUser(parsed);
         // Also update localStorage with override applied
         localStorage.setItem(
@@ -74,10 +78,17 @@ export const AuthProvider = ({ children }) => {
 
       const userToStore = {
         ...userData,
+        serverRole: userData?.role || 'customer',
+        role: userData?.role || 'customer',
         token,
         accessToken: token,
         refreshToken,
       };
+      const roleOverride = localStorage.getItem('brandhive_role_override');
+      if (roleOverride) {
+        userToStore.role = roleOverride;
+      }
+      syncSellerBrandNameForUser(userToStore);
       setUser(userToStore);
       localStorage.setItem(
         'brandhive_user',
@@ -116,6 +127,8 @@ export const AuthProvider = ({ children }) => {
           ...userData,
           email: userData?.email || email,
           name: userData?.name || name,
+          serverRole: userData?.role || 'customer',
+          role: userData?.role || 'customer',
           token,
           accessToken: token,
           refreshToken,
@@ -172,20 +185,25 @@ export const AuthProvider = ({ children }) => {
 
   // ── upgradeToSeller (called after successful brand creation) ──────────────
   const upgradeToSeller = () => {
-    const updated = { ...user, role: 'seller' };
+    const updated = {
+      ...user,
+      role: 'seller',
+      serverRole: user?.serverRole || user?.role || 'customer',
+    };
     setUser(updated);
     localStorage.setItem(
       'brandhive_user', 
       JSON.stringify(updated)
     );
-    // Store role override separately as backup
     localStorage.setItem('brandhive_role_override', 'seller');
   };
 
+  const serverRole = user?.serverRole || user?.role || 'customer';
   const isAuthenticated = !!user;
   const isAdmin = user?.role === 'admin';
   const isSeller = user?.role === 'seller';
   const isCustomer = user?.role === 'customer';
+  const hasSellerApiAccess = serverRole === 'seller' || serverRole === 'admin';
 
   return (
     <AuthContext.Provider
@@ -204,6 +222,8 @@ export const AuthProvider = ({ children }) => {
         isAdmin,
         isSeller,
         isCustomer,
+        hasSellerApiAccess,
+        serverRole,
       }}
     >
       {children}

@@ -5,7 +5,7 @@ import {
   CreditCard, Smartphone, Banknote, Building2, CheckCircle, Shield
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
-import { ordersAPI, cartAPI, addressesAPI, aiAPI } from '../services/api';
+import { ordersAPI, cartAPI, addressesAPI, aiAPI, mirrorSellerOrder, lookupProductBrand } from '../services/api';
 import { mapProduct } from '../utils/mappers';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -13,15 +13,15 @@ import { useLanguage } from '../context/LanguageContext';
 import toast from 'react-hot-toast';
 
 const CATEGORY_ICONS = {
-  Fashion: '≡اّù', Jewelry: '≡اْ', Handmade: '≡ا║', 'Home Decor': '≡اب',
-  Organic: '≡اî┐', 'Art & Culture': '≡اذ', Food: '≡ا»', Beauty: '≡اْ', default: '≡اؤي╕',
+  Fashion: '👗', Jewelry: '💍', Handmade: '🏺', 'Home Decor': '🏠',
+  Organic: '🌿', 'Art & Culture': '🎨', Food: '🍯', Beauty: '💄', default: '🛍️',
 };
 
 export default function CartPage() {
   const { t } = useTranslation();
   const { isRTL } = useLanguage();
   const { items, removeFromCart, updateQuantity, clearCart, subtotal, itemCount, addToCart } = useCart();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [savedAddresses, setSavedAddresses] = useState([]);
   const [selectedAddressId, setSelectedAddressId] = useState(null);
   const [addressesLoading, setAddressesLoading] = useState(false);
@@ -176,7 +176,54 @@ export default function CartPage() {
         paymentMethod: selectedPayment,
       };
 
-      await ordersAPI.create(orderData);
+      const orderRes = await ordersAPI.create(orderData);
+      const orderPayload = orderRes.data?.data || orderRes.data || {};
+      const railwayOrderId = orderPayload._id || orderPayload.id;
+
+      const enrichedItems = await Promise.all(
+        items.map(async (item) => {
+          const productId = item.id || item.productId;
+          let brandId = item.brandId;
+          let brandName = item.brandName;
+          if (!brandId && productId) {
+            const brand = await lookupProductBrand(productId);
+            brandId = brand?.brandId;
+            brandName = brand?.brandName || brandName;
+          }
+          return {
+            productId,
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+            brandId,
+            brandName,
+          };
+        })
+      );
+
+      if (enrichedItems.length > 0) {
+        await mirrorSellerOrder({
+          railwayOrderId,
+          customerUserId: user?.id || user?._id,
+          customerEmail: user?.email,
+          customerName: delivery.name?.trim() || user?.name,
+          brandIds: [
+            ...new Set(
+              enrichedItems
+                .map((item) => item.brandId)
+                .filter(Boolean)
+                .map(String)
+            ),
+          ],
+          items: enrichedItems,
+          subtotal,
+          totalAmount: subtotal,
+          paymentMethod: selectedPayment,
+          status: orderPayload.status || 'pending',
+          shippingAddress: orderData.shippingAddress,
+        });
+      }
+
       await clearCart();
       setOrderPlaced(true);
       setTimeout(() => navigate('/account?tab=orders'), 3000);
@@ -584,9 +631,10 @@ export default function CartPage() {
               <button
                 onClick={() => canProceedDelivery && setStep(2)}
                 disabled={!canProceedDelivery}
-                className={`flex-1 btn-primary py-4 text-base ${!canProceedDelivery ? 'opacity-50 cursor-not-allowed' : ''}`}
+                className={`flex-1 btn-primary py-4 text-base flex items-center justify-center gap-2 ${!canProceedDelivery ? 'opacity-50 cursor-not-allowed' : ''} ${isRTL ? 'flex-row-reverse' : ''}`}
               >
-                {isRTL ? '╪د┘╪د╪│╪ز┘à╪▒╪د╪▒ ┘┘╪»┘╪╣ ظ' : 'Continue to Payment ظْ'}
+                {isRTL ? 'الاستمرار للدفع' : 'Continue to Payment'}
+                <ChevronRight size={18} className={isRTL ? 'rotate-180' : ''} />
               </button>
             </div>
           </div>
@@ -630,8 +678,9 @@ export default function CartPage() {
               <button onClick={() => setStep(1)} className={`btn-ghost flex items-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
                 <ArrowLeft size={16} className={isRTL ? 'rotate-180' : ''} /> {isRTL ? '╪▒╪ش┘ê╪╣' : 'Back'}
               </button>
-              <button onClick={() => setStep(3)} className="flex-1 btn-primary py-4 text-base">
-                {isRTL ? '┘à╪▒╪د╪ش╪╣╪ر ╪د┘╪╖┘╪ذ ظ' : 'Review Order ظْ'}
+              <button onClick={() => setStep(3)} className={`flex-1 btn-primary py-4 text-base flex items-center justify-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                {isRTL ? 'مراجعة الطلب' : 'Review Order'}
+                <ChevronRight size={18} className={isRTL ? 'rotate-180' : ''} />
               </button>
             </div>
           </div>
@@ -649,7 +698,9 @@ export default function CartPage() {
               <h3 className="font-semibold text-gray-900 dark:text-dark-text mb-3">{isRTL ? '┘à┘╪ز╪ش╪د╪ز ╪د┘╪╖┘╪ذ' : 'Order Items'}</h3>
               {items.map((item, idx) => (
                 <div key={item.key || item.id || idx} className={`flex justify-between items-center py-2 border-b border-gray-50 dark:border-dark-border last:border-0 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  <span className="text-sm text-gray-700 dark:text-dark-muted">{item.name} ├ù {item.quantity}</span>
+                  <span className="text-sm text-gray-700 dark:text-dark-muted">
+                    {item.name} × {item.quantity}
+                  </span>
                   <span className="text-sm font-semibold dark:text-dark-text">{((Number(item.price) || 0) * (Number(item.quantity) || 1)).toLocaleString()} {isRTL ? '╪ش.┘à' : t('common.egp')}</span>
                 </div>
               ))}
@@ -690,7 +741,10 @@ export default function CartPage() {
                     {isRTL ? '╪ش╪د╪▒┘è ╪ح╪ز┘à╪د┘à ╪د┘╪╖┘╪ذ...' : 'Placing order...'}
                   </span>
                 ) : (
-                  isRTL ? '╪ح╪ز┘à╪د┘à ╪د┘╪╖┘╪ذ ظ£ô' : 'Place Order ظ£ô'
+                  <span className={`flex items-center justify-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    {isRTL ? 'إتمام الطلب' : 'Place Order'}
+                    <CheckCircle size={18} />
+                  </span>
                 )}
               </button>
             </div>

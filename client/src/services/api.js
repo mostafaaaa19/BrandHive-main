@@ -21,6 +21,58 @@ const localSupport = import.meta.env.DEV
     })
   : null;
 
+const localSellerOrders = import.meta.env.DEV
+  ? axios.create({
+      baseURL: '/orders-local',
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+      withCredentials: false,
+    })
+  : null;
+
+const localSellerPayouts = import.meta.env.DEV
+  ? axios.create({
+      baseURL: '/payouts-local',
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+      withCredentials: false,
+    })
+  : null;
+
+export const lookupProductBrand = async (productId) => {
+  if (!productId) return null;
+
+  try {
+    const res = await api.get(`/product/${encodeURIComponent(productId)}`);
+    const raw = res.data?.data || res.data?.product || res.data;
+    const brandId = raw?.brand?._id || raw?.brand?.id;
+    if (brandId) {
+      return {
+        brandId: String(brandId),
+        brandName: raw?.brand?.name || '',
+      };
+    }
+  } catch {
+    // fall through to public search
+  }
+
+  try {
+    const searchRes = await api.get('/search/products', { params: { limit: 200 } });
+    const found = getResponseArray(searchRes).find(
+      (product) => String(product.id || product._id) === String(productId)
+    );
+    const brandId = found?.brand?._id || found?.brand?.id;
+    if (brandId) {
+      return {
+        brandId: String(brandId),
+        brandName: found?.brand?.name || '',
+      };
+    }
+  } catch {
+    // ignore lookup errors
+  }
+
+  return null;
+};
+
 const getResponseArray = (response) =>
   response.data?.data ||
   response.data?.products ||
@@ -70,19 +122,51 @@ const isTransientNetworkError = (err) => {
 };
 
 export const humanizeApiError = (err, fallback = 'Request failed. Please try again.') => {
-  const raw = err?.response?.data?.message || err?.message || '';
+  const raw = err?.response?.data?.message ?? err?.message ?? '';
+  const message = Array.isArray(raw)
+    ? raw.join(', ')
+    : typeof raw === 'string'
+      ? raw
+      : '';
   const status = err?.response?.status;
   if (
     isTransientNetworkError(err) ||
-    /temporarily unavailable/i.test(String(raw))
+    /temporarily unavailable/i.test(message)
   ) {
     return 'تعذر الاتصال بالخادم. تحقق من الإنترنت وحاول مرة أخرى بعد قليل.';
   }
   if (status === 429) {
     return 'طلبات كثيرة جداً. انتظر قليلاً ثم حاول مجدداً.';
   }
-  return raw || fallback;
+  if (status === 403) {
+    return message || 'ليس لديك صلاحية لتنفيذ هذا الإجراء على السيرفر.';
+  }
+  if (status === 409) {
+    return message || 'هذا الاسم مستخدم بالفعل. غيّر اسم المنتج وحاول مجدداً.';
+  }
+  if (status === 500) {
+    return message && message !== 'Internal server error'
+      ? message
+      : 'خطأ داخلي في السيرفر. جرّب تغيير اسم المنتج أو إزالة الخصم مؤقتاً، ثم حاول مجدداً.';
+  }
+  return message || fallback;
 };
+
+export const getServerRole = () => {
+  const parsed = getStoredAuth();
+  return parsed?.serverRole || parsed?.role || 'customer';
+};
+
+export const hasSellerApiAccess = () => {
+  const role = getServerRole();
+  return role === 'seller' || role === 'admin';
+};
+
+export const isCustomerApiRole = () => getServerRole() === 'customer';
+
+const isMongoId = (value) => /^[a-f0-9]{24}$/i.test(String(value || ''));
+
+export const isValidMongoId = isMongoId;
 
 const isRetriableAuthRequest = (url = '') =>
   /\/auth\/(login|register|refresh)/.test(url);
@@ -215,10 +299,11 @@ const getPublicBrands = async (params = {}) => {
     const id = brand._id || brand.id || brand.slug || brand.name;
     if (!id) return;
 
-    const existing = brandMap.get(id);
-    brandMap.set(id, {
+    const existing = brandMap.get(String(id));
+    brandMap.set(String(id), {
       ...(typeof brand === 'object' ? brand : { name: brand }),
       _id: brand._id || brand.id || id,
+      id: brand._id || brand.id || id,
       productsCount: (existing?.productsCount || 0) + 1,
     });
   });
@@ -232,6 +317,29 @@ const getPublicBrands = async (params = {}) => {
     },
   };
 };
+
+const mergeBrandLists = (...lists) => {
+  const byId = new Map();
+  lists.forEach((list) => {
+    if (!Array.isArray(list)) return;
+    list.forEach((brand) => {
+      const id = brand?._id || brand?.id;
+      if (!id) return;
+      byId.set(String(id), { ...byId.get(String(id)), ...brand, _id: id, id });
+    });
+  });
+  return Array.from(byId.values());
+};
+
+const slugifyBrandName = (name) =>
+  String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+    .replace(/^-+|-+$/g, '');
+
+const sellerBrandNameByEmailKey = (email) =>
+  `brandhive_seller_brand_email_${String(email || 'default').toLowerCase()}`;
 
 const PUBLIC_BROWSE_PATHS = [
   '/search/',
@@ -563,7 +671,10 @@ export const brandsAPI = {
       return getPublicBrands(params);
     }
     try {
-      return await api.get('/brand', { params });
+      const res = await api.get('/brand', { params });
+      const authedBrands = getResponseArray(res);
+      if (authedBrands.length > 0) return res;
+      return getPublicBrands(params);
     } catch (err) {
       if (err.response?.status === 401 || err.response?.status === 403) {
         return getPublicBrands(params);
@@ -669,12 +780,7 @@ export const sellerAPI = {
   getOrders: () => api.get('/seller/orders'),
   getProducts: () => api.get('/seller/products'),
   getProduct: (id) => api.get(`/seller/products/${id}`),
-  createProduct: (data) => {
-    const isFormData = data instanceof FormData;
-    return api.post('/seller/products', data, isFormData ? {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    } : undefined);
-  },
+  createProduct: (data) => api.post('/seller/products', data),
   updateProduct: (id, data) => api.put(`/seller/products/${id}`, data),
   deleteProduct: (id) => api.delete(`/seller/products/${id}`),
   updateOrderStatus: (id, status) => api.patch(`/seller/orders/${id}/status`, { status }),
@@ -692,6 +798,42 @@ export const sellerAPI = {
   getStockAlerts: () => api.get('/seller/inventory/alerts'),
   adjustStock: (productId, data) =>
     api.post(`/seller/inventory/${productId}/adjust`, data),
+};
+
+const sanitizeProductPayload = (payload = {}) => {
+  const clean = {};
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value == null || value === '') return;
+    if (key === 'images') return;
+    if (typeof value === 'number' && Number.isNaN(value)) return;
+    if (key === 'tags' && Array.isArray(value)) {
+      if (value.length > 0) clean.tags = value;
+      return;
+    }
+    clean[key] = value;
+  });
+  return clean;
+};
+
+export const createSellerProduct = async (payload) => {
+  const clean = sanitizeProductPayload(payload);
+
+  const postToSeller = () => sellerAPI.createProduct(clean);
+  const postToProduct = () => productsAPI.create(clean);
+
+  try {
+    return await postToSeller();
+  } catch (err) {
+    const status = err.response?.status;
+    if (status === 500 || status === 502 || status === 503) {
+      try {
+        return await postToProduct();
+      } catch (fallbackErr) {
+        throw fallbackErr;
+      }
+    }
+    throw err;
+  }
 };
 
 const sellerBrandStorageKey = (userId) =>
@@ -732,9 +874,137 @@ const brandOwnedByUser = (brand, userId) => {
 const sellerBrandNameStorageKey = (userId) =>
   `brandhive_seller_brand_name_${userId || 'default'}`;
 
-export const rememberSellerBrandName = (userId, brandName) => {
-  if (!userId || !brandName?.trim()) return;
-  localStorage.setItem(sellerBrandNameStorageKey(userId), brandName.trim());
+const sellerProductsCacheKey = (userId) =>
+  `brandhive_seller_products_${userId || 'default'}`;
+
+export const readCachedSellerProducts = (user) => {
+  const userId = user?.id || user?._id;
+  if (!userId) return [];
+  try {
+    const raw = localStorage.getItem(sellerProductsCacheKey(userId));
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+export const getCachedSellerProductCount = (user) => readCachedSellerProducts(user).length;
+
+const cacheSellerProducts = (userId, products) => {
+  if (!userId || !Array.isArray(products) || products.length === 0) return;
+  try {
+    localStorage.setItem(sellerProductsCacheKey(userId), JSON.stringify(products));
+  } catch {
+    // ignore quota errors
+  }
+};
+
+export const rememberSellerBrandName = (userId, brandName, email) => {
+  const trimmed = brandName?.trim();
+  if (!trimmed) return;
+  if (userId) {
+    localStorage.setItem(sellerBrandNameStorageKey(userId), trimmed);
+  }
+  const emailKey = email || null;
+  if (emailKey) {
+    localStorage.setItem(sellerBrandNameByEmailKey(emailKey), trimmed);
+  }
+};
+
+export const syncSellerBrandNameForUser = (user) => {
+  const userId = user?.id || user?._id;
+  const email = user?.email?.toLowerCase();
+  if (!userId || !email) return null;
+
+  const byUserId = localStorage.getItem(sellerBrandNameStorageKey(userId));
+  const byEmail = localStorage.getItem(sellerBrandNameByEmailKey(email));
+
+  if (byEmail && !byUserId) {
+    localStorage.setItem(sellerBrandNameStorageKey(userId), byEmail);
+    return byEmail;
+  }
+  if (byUserId && !byEmail) {
+    localStorage.setItem(sellerBrandNameByEmailKey(email), byUserId);
+    return byUserId;
+  }
+  return byUserId || byEmail || null;
+};
+
+const collectSellerBrandHints = (user) => {
+  const userId = user?.id || user?._id;
+  const email = user?.email?.toLowerCase();
+  syncSellerBrandNameForUser(user);
+
+  const savedName =
+    (userId && localStorage.getItem(sellerBrandNameStorageKey(userId))) ||
+    (email && localStorage.getItem(sellerBrandNameByEmailKey(email))) ||
+    user?.brandName ||
+    null;
+  const savedSlug =
+    (userId && localStorage.getItem(sellerBrandSlugStorageKey(userId))) ||
+    (savedName ? slugifyBrandName(savedName) : null);
+  const cachedId = userId
+    ? localStorage.getItem(sellerBrandStorageKey(userId))
+    : null;
+
+  return { userId, email, savedName, savedSlug, cachedId };
+};
+
+const findBrandByHints = (brands, hints) => {
+  if (!Array.isArray(brands) || brands.length === 0) return null;
+  const { userId, savedName, savedSlug, cachedId } = hints;
+  const normalizedName = savedName?.trim().toLowerCase();
+  const normalizedSlug = savedSlug?.trim().toLowerCase();
+  const nameSlug = savedName ? slugifyBrandName(savedName) : null;
+
+  if (cachedId) {
+    const byId = brands.find(
+      (brand) => String(brand._id || brand.id) === String(cachedId)
+    );
+    if (byId) return byId;
+  }
+
+  if (normalizedSlug) {
+    const bySlug = brands.find(
+      (brand) => String(brand.slug || '').toLowerCase() === normalizedSlug
+    );
+    if (bySlug) return bySlug;
+  }
+
+  if (normalizedName) {
+    const byName = brands.find(
+      (brand) => String(brand.name || '').trim().toLowerCase() === normalizedName
+    );
+    if (byName) return byName;
+  }
+
+  if (nameSlug) {
+    const bySlugifiedName = brands.find(
+      (brand) => slugifyBrandName(brand.name) === nameSlug
+    );
+    if (bySlugifiedName) return bySlugifiedName;
+  }
+
+  if (userId) {
+    const owned = brands.find((brand) => brandOwnedByUser(brand, userId));
+    if (owned) return owned;
+  }
+
+  return null;
+};
+
+const loadBrandsForSellerResolution = async () => {
+  const results = await Promise.allSettled([
+    brandsAPI.getAll({ limit: 50 }),
+    getPublicBrands({ limit: 100 }),
+  ]);
+
+  const lists = results
+    .filter((result) => result.status === 'fulfilled')
+    .map((result) => getResponseArray(result.value));
+
+  return mergeBrandLists(...lists);
 };
 
 const normalizeSellerBrand = (brand, fallbackName = 'My Brand') => {
@@ -791,6 +1061,8 @@ const getAuthedBrandsList = async () => {
 
 const getApprovedBrandRequestForUser = async (user) => {
   if (!hasAuthToken() || !user) return null;
+  if (getServerRole() !== 'admin') return null;
+
   const userId = user.id || user._id;
   const email = user.email?.toLowerCase();
 
@@ -843,15 +1115,22 @@ const getCachedSellerBrand = (userId, savedName, savedSlug) => {
 };
 
 export const resolveSellerBrand = async (user) => {
-  const userId = user?.id || user?._id;
+  const hints = collectSellerBrandHints(user);
+  const { userId, savedName, savedSlug, cachedId } = hints;
   if (!userId) return null;
 
-  const savedName =
-    localStorage.getItem(sellerBrandNameStorageKey(userId)) ||
-    user?.brandName;
-  const savedSlug = localStorage.getItem(sellerBrandSlugStorageKey(userId));
   const cachedBrand = getCachedSellerBrand(userId, savedName, savedSlug);
   let apiUnreachable = false;
+
+  try {
+    const brands = await loadBrandsForSellerResolution();
+    const hinted = findBrandByHints(brands, hints);
+    if (hinted) {
+      return pickSellerBrand(userId, hinted, savedName);
+    }
+  } catch (err) {
+    if (isTransientNetworkError(err)) apiUnreachable = true;
+  }
 
   try {
     const sellerProductsRes = await sellerAPI.getProducts();
@@ -999,14 +1278,31 @@ export const resolveSellerBrand = async (user) => {
     );
   }
 
+  if (cachedBrand && (savedName || cachedId)) {
+    return cachedBrand;
+  }
+
   if (cachedBrand && apiUnreachable) return cachedBrand;
 
   return null;
 };
 
 export const resolveSellerBrandId = async (user) => {
-  const userId = user?.id || user?._id;
+  const hints = collectSellerBrandHints(user);
+  const { userId, savedName, savedSlug } = hints;
   if (!userId) return null;
+
+  try {
+    const brands = await loadBrandsForSellerResolution();
+    const hinted = findBrandByHints(brands, hints);
+    const hintedId = hinted?._id || hinted?.id;
+    if (hintedId) {
+      rememberSellerBrand(userId, hinted);
+      return hintedId;
+    }
+  } catch {
+    // fall through
+  }
 
   let dashBrand = null;
   try {
@@ -1088,106 +1384,339 @@ export const fetchSellerProducts = async (user) => {
     if (id) candidateBrandIds.add(String(id));
   };
 
-  try {
-    const sellerRes = await sellerAPI.getProducts();
-    addProducts(getResponseArray(sellerRes));
-  } catch {
-    // seller endpoint may be empty or unavailable
-  }
+  const cachedBrandId = userId
+    ? localStorage.getItem(sellerBrandStorageKey(userId))
+    : null;
+  if (cachedBrandId) rememberBrandId(cachedBrandId);
 
-  const brandId = await resolveSellerBrandId(user);
-  rememberBrandId(brandId);
+  const savedSlug = userId
+    ? localStorage.getItem(sellerBrandSlugStorageKey(userId))
+    : null;
 
-  try {
-    const brandsRes = await brandsAPI.getAll({ limit: 50 });
-    const brands = getResponseArray(brandsRes);
-    brands.forEach((brand) => {
-      if (brandOwnedByUser(brand, userId)) {
-        rememberBrandId(brand._id || brand.id);
-      }
-    });
+  const fastFetches = [
+    sellerAPI.getProducts().catch(() => null),
+    cachedBrandId
+      ? productsAPI.getByBrand(cachedBrandId).catch(() => null)
+      : Promise.resolve(null),
+    cachedBrandId
+      ? getPublicProducts({ brand: cachedBrandId, limit: 100 }).catch(() => null)
+      : Promise.resolve(null),
+  ];
 
-    const savedSlug = localStorage.getItem(sellerBrandSlugStorageKey(userId));
-    if (savedSlug) {
-      const bySlug = brands.find((brand) => brand.slug === savedSlug);
-      rememberBrandId(bySlug?._id || bySlug?.id);
-    }
-  } catch {
-    // ignore brand list errors
-  }
-
-  for (const id of candidateBrandIds) {
-    try {
-      const brandRes = await productsAPI.getByBrand(id);
-      addProducts(getResponseArray(brandRes));
-    } catch {
-      // try next brand id
-    }
-  }
-
-  if (byId.size === 0 && candidateBrandIds.size > 0) {
-    try {
-      const searchRes = await getAllPublicProducts({ limit: 100 });
-      addProducts(
-        getResponseArray(searchRes).filter((product) =>
-          candidateBrandIds.has(
-            String(product.brand?._id || product.brand?.id)
-          )
-        )
-      );
-    } catch {
-      // ignore search fallback errors
-    }
-  }
+  const [sellerRes, brandProductsRes, publicBrandRes] = await Promise.all(fastFetches);
+  if (sellerRes) addProducts(getResponseArray(sellerRes));
+  if (brandProductsRes) addProducts(getResponseArray(brandProductsRes));
+  if (publicBrandRes) addProducts(getResponseArray(publicBrandRes));
 
   if (byId.size === 0) {
+    const brandId = await resolveSellerBrandId(user);
+    rememberBrandId(brandId);
+
     try {
-      let dashBrandName = null;
-      try {
-        const dashRes = await sellerAPI.getDashboard();
-        const dashBrand = dashRes.data?.data?.brand || dashRes.data?.brand;
-        dashBrandName = dashBrand?.name || null;
-        rememberBrandId(dashBrand?._id || dashBrand?.id);
-      } catch {
-        // ignore dashboard errors
+      const brandsRes = await brandsAPI.getAll({ limit: 50 });
+      const brands = getResponseArray(brandsRes);
+      brands.forEach((brand) => {
+        if (brandOwnedByUser(brand, userId)) {
+          rememberBrandId(brand._id || brand.id);
+        }
+      });
+
+      if (savedSlug) {
+        const bySlug = brands.find((brand) => brand.slug === savedSlug);
+        rememberBrandId(bySlug?._id || bySlug?.id);
       }
-
-      const savedSlug = localStorage.getItem(sellerBrandSlugStorageKey(userId));
-      const catalogRes = await getAllPublicProducts({ limit: 100 });
-      addProducts(
-        getResponseArray(catalogRes).filter((product) => {
-          const productBrandId = String(
-            product.brand?._id || product.brand?.id || ''
-          );
-          const productBrandName = product.brand?.name?.toLowerCase() || '';
-          const productBrandSlug = product.brand?.slug?.toLowerCase() || '';
-
-          if (candidateBrandIds.has(productBrandId)) return true;
-          if (
-            savedSlug &&
-            productBrandSlug === String(savedSlug).toLowerCase()
-          ) {
-            return true;
-          }
-          if (
-            dashBrandName &&
-            productBrandName === String(dashBrandName).toLowerCase()
-          ) {
-            return true;
-          }
-          return false;
-        })
-      );
     } catch {
-      // ignore catalog fallback errors
+      // ignore brand list errors
+    }
+
+    const brandFetches = [...candidateBrandIds].map((id) =>
+      productsAPI.getByBrand(id).catch(() => null)
+    );
+    const brandResults = await Promise.all(brandFetches);
+    brandResults.forEach((res) => {
+      if (res) addProducts(getResponseArray(res));
+    });
+
+    if (byId.size === 0 && candidateBrandIds.size > 0) {
+      try {
+        const searchRes = await getAllPublicProducts({ limit: 100 });
+        addProducts(
+          getResponseArray(searchRes).filter((product) =>
+            candidateBrandIds.has(
+              String(product.brand?._id || product.brand?.id)
+            )
+          )
+        );
+      } catch {
+        // ignore search fallback errors
+      }
+    }
+
+    if (byId.size === 0) {
+      try {
+        let dashBrandName = null;
+        try {
+          const dashRes = await sellerAPI.getDashboard();
+          const dashBrand = dashRes.data?.data?.brand || dashRes.data?.brand;
+          dashBrandName = dashBrand?.name || null;
+          rememberBrandId(dashBrand?._id || dashBrand?.id);
+        } catch {
+          // ignore dashboard errors
+        }
+
+        const catalogRes = await getAllPublicProducts({ limit: 100 });
+        addProducts(
+          getResponseArray(catalogRes).filter((product) => {
+            const productBrandId = String(
+              product.brand?._id || product.brand?.id || ''
+            );
+            const productBrandName = product.brand?.name?.toLowerCase() || '';
+            const productBrandSlug = product.brand?.slug?.toLowerCase() || '';
+
+            if (candidateBrandIds.has(productBrandId)) return true;
+            if (
+              savedSlug &&
+              productBrandSlug === String(savedSlug).toLowerCase()
+            ) {
+              return true;
+            }
+            if (
+              dashBrandName &&
+              productBrandName === String(dashBrandName).toLowerCase()
+            ) {
+              return true;
+            }
+            return false;
+          })
+        );
+      } catch {
+        // ignore catalog fallback errors
+      }
     }
   }
 
-  return [...byId.values()].sort(
+  const products = [...byId.values()].sort(
     (a, b) =>
       new Date(b.createdAt || 0).getTime() -
       new Date(a.createdAt || 0).getTime()
   );
+
+  if (products.length > 0) {
+    cacheSellerProducts(userId, products);
+    cacheProducts(products);
+  }
+
+  return products;
+};
+
+const normalizeMirroredSellerOrder = (order) => ({
+  _id: order.railwayOrderId || order._id,
+  id: order.railwayOrderId || order._id,
+  status: order.status || 'pending',
+  items: order.items || [],
+  totalAmount: order.totalAmount || order.subtotal || 0,
+  total: order.totalAmount || order.subtotal || 0,
+  subtotal: order.subtotal || order.totalAmount || 0,
+  shippingAddress: order.shippingAddress,
+  user: {
+    name: order.customerName || order.shippingAddress?.fullName || 'Customer',
+    email: order.customerEmail,
+  },
+  createdAt: order.createdAt,
+  paymentMethod: order.paymentMethod,
+  _mirrored: true,
+});
+
+export const mirrorSellerOrder = async (payload) => {
+  if (!localSellerOrders || !payload?.items?.length) return null;
+
+  const enrichedItems = [];
+  for (const item of payload.items) {
+    let brandId = item.brandId;
+    let brandName = item.brandName;
+    if (!brandId && item.productId) {
+      const brand = await lookupProductBrand(item.productId);
+      brandId = brand?.brandId;
+      brandName = brand?.brandName || brandName;
+    }
+    if (!brandId) continue;
+    enrichedItems.push({
+      ...item,
+      brandId: String(brandId),
+      brandName: brandName || item.name || 'Brand',
+    });
+  }
+
+  if (enrichedItems.length === 0) return null;
+
+  const mirrorPayload = {
+    ...payload,
+    items: enrichedItems,
+    brandIds: [
+      ...new Set([
+        ...(Array.isArray(payload.brandIds) ? payload.brandIds.map(String) : []),
+        ...enrichedItems.map((item) => String(item.brandId)),
+      ]),
+    ],
+  };
+
+  try {
+    const res = await localSellerOrders.post('/', mirrorPayload);
+    return res.data?.data || res.data || null;
+  } catch (err) {
+    console.warn('[mirrorSellerOrder]', err.response?.data || err.message);
+    return null;
+  }
+};
+
+const collectSellerBrandIds = async (user) => {
+  const brandIds = new Set();
+  const userId = user?.id || user?._id;
+  if (userId) {
+    const cached = localStorage.getItem(sellerBrandStorageKey(userId));
+    if (cached) brandIds.add(String(cached));
+  }
+
+  const resolved = await resolveSellerBrandId(user);
+  if (resolved) brandIds.add(String(resolved));
+
+  try {
+    const products = await fetchSellerProducts(user);
+    products.forEach((product) => {
+      const id =
+        product.brand?._id ||
+        product.brand?.id ||
+        product.brandId;
+      if (id) brandIds.add(String(id));
+    });
+  } catch {
+    // ignore product lookup errors
+  }
+
+  return [...brandIds];
+};
+
+export const fetchSellerOrders = async (user) => {
+  const merged = new Map();
+
+  try {
+    const ordRes = await sellerAPI.getOrders();
+    getResponseArray(ordRes).forEach((order) => {
+      const id = order._id || order.id;
+      if (id) merged.set(String(id), order);
+    });
+  } catch {
+    // Railway seller orders may be empty when products aren't linked server-side
+  }
+
+  if (localSellerOrders) {
+    try {
+      const brandIds = await collectSellerBrandIds(user);
+      if (brandIds.length > 0) {
+        const localRes = await localSellerOrders.get('/', {
+          params: { brandIds: brandIds.join(','), _t: Date.now() },
+        });
+        getResponseArray(localRes).forEach((order) => {
+          const normalized = normalizeMirroredSellerOrder(order);
+          const id = normalized._id || normalized.id;
+          if (id) merged.set(String(id), normalized);
+        });
+      }
+    } catch (err) {
+      console.warn('[fetchSellerOrders]', err.response?.data || err.message);
+    }
+  }
+
+  return [...merged.values()].sort(
+    (a, b) =>
+      new Date(b.createdAt || 0).getTime() -
+      new Date(a.createdAt || 0).getTime()
+  );
+};
+
+const emptyPayoutSummary = () => ({
+  grossRevenue: 0,
+  platformFee: 0,
+  netEarnings: 0,
+  availableBalance: 0,
+  pendingWithdrawal: 0,
+  totalWithdrawn: 0,
+  withdrawals: [],
+  profile: null,
+});
+
+export const fetchSellerPayoutSummary = async (user, brandId) => {
+  if (!localSellerPayouts || !user) return emptyPayoutSummary();
+
+  const sellerUserId = user.id || user._id;
+  try {
+    const res = await localSellerPayouts.get('/summary', {
+      params: { sellerUserId, brandId, _t: Date.now() },
+    });
+    return res.data?.data || emptyPayoutSummary();
+  } catch (err) {
+    console.warn('[fetchSellerPayoutSummary]', err.response?.data || err.message);
+    return emptyPayoutSummary();
+  }
+};
+
+export const saveSellerPayoutProfile = async (user, profile) => {
+  if (!localSellerPayouts || !user) return null;
+
+  try {
+    const res = await localSellerPayouts.post('/profile', {
+      sellerUserId: user.id || user._id,
+      sellerEmail: user.email,
+      ...profile,
+    });
+    return res.data?.data || null;
+  } catch (err) {
+    throw new Error(err.response?.data?.message || err.message || 'Failed to save payout profile');
+  }
+};
+
+export const requestSellerWithdrawal = async (user, payload) => {
+  if (!localSellerPayouts || !user) {
+    throw new Error('Withdrawals are only available in local development mode');
+  }
+
+  try {
+    const res = await localSellerPayouts.post('/withdrawals', {
+      sellerUserId: user.id || user._id,
+      sellerEmail: user.email,
+      sellerName: user.name,
+      ...payload,
+    });
+    return res.data?.data || null;
+  } catch (err) {
+    throw new Error(err.response?.data?.message || err.message || 'Failed to create withdrawal');
+  }
+};
+
+export const fetchAdminWithdrawals = async () => {
+  if (!localSellerPayouts) return [];
+
+  try {
+    const res = await localSellerPayouts.get('/admin/withdrawals', {
+      params: { _t: Date.now() },
+    });
+    return getResponseArray(res);
+  } catch (err) {
+    console.warn('[fetchAdminWithdrawals]', err.response?.data || err.message);
+    return [];
+  }
+};
+
+export const updateWithdrawalStatus = async (id, status, adminNote = '') => {
+  if (!localSellerPayouts) {
+    throw new Error('Withdrawals are only available in local development mode');
+  }
+
+  const res = await localSellerPayouts.patch(`/admin/withdrawals/${id}`, {
+    status,
+    adminNote,
+  });
+  return res.data?.data || null;
 };
 
 // ─── Admin ───────────────────────────────────────────────────────────────────

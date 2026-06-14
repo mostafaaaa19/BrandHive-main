@@ -113,8 +113,8 @@ export default function SellerRegistration() {
       await brandsAPI.request(submitData);
 
       const userId = user?.id || user?._id;
-      if (userId) {
-        rememberSellerBrandName(userId, form.brandName.trim());
+      if (userId || user?.email) {
+        rememberSellerBrandName(userId, form.brandName.trim(), user?.email);
       }
 
       toast.success(

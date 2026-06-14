@@ -74,6 +74,13 @@ export const CartProvider = ({ children }) => {
             item.image || null,
           slug: item.product?.slug || item.productId?.slug || item.slug || '',
           brandName: item.product?.brand?.name || item.productId?.brand?.name || item.brandName || '',
+          brandId:
+            item.product?.brand?._id ||
+            item.product?.brand?.id ||
+            item.productId?.brand?._id ||
+            item.productId?.brand?.id ||
+            item.brandId ||
+            '',
           brandSlug: item.product?.brand?.slug || item.productId?.brand?.slug || '',
           category: item.product?.category?.name || item.productId?.category?.name || '',
         }));

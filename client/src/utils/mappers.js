@@ -18,6 +18,7 @@ export const mapProduct = (p) => ({
   category: p.category?.name || p.category || '',
   categorySlug: p.category?.slug || '',
   brandName: p.brand?.name || '',
+  brandId: p.brand?._id || p.brand?.id || p.brandId || '',
   brandSlug: p.brand?.slug || '',
   brandLogo: p.brand?.logo?.url || null,
   rating: p.stats?.averageRating || 0,

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Store, Package, DollarSign, Search as SearchIcon,
-  Flag, Target, Settings, Bell, FileText, LogOut, CheckCircle, Eye, BarChart3, XCircle, Trash2, Tag, Plus, MessageSquare
+  Flag, Target, Settings, Bell, FileText, LogOut, CheckCircle, Eye, BarChart3, XCircle, Trash2, Tag, Plus, MessageSquare, CreditCard
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useAuth } from '../../context/AuthContext';
@@ -14,6 +14,8 @@ import {
   categoriesAPI,
   supportAPI,
   syncLocalSupportReply,
+  fetchAdminWithdrawals,
+  updateWithdrawalStatus,
 } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../../context/LanguageContext';
@@ -1104,6 +1106,168 @@ function AdminFeaturedSlotsTab({ isRTL, productsAPI }) {
 
 const MIN_SUPPORT_REPLY_LENGTH = 10;
 
+function AdminPayoutsTab({ isRTL, toast }) {
+  const [withdrawals, setWithdrawals] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [updatingId, setUpdatingId] = useState(null);
+
+  const loadWithdrawals = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchAdminWithdrawals();
+      setWithdrawals(Array.isArray(data) ? data : []);
+    } catch {
+      setWithdrawals([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadWithdrawals();
+  }, []);
+
+  const handleStatus = async (id, status) => {
+    setUpdatingId(id);
+    try {
+      await updateWithdrawalStatus(id, status);
+      toast.success(isRTL ? 'تم تحديث الحالة' : 'Status updated');
+      await loadWithdrawals();
+    } catch (err) {
+      toast.error(err.message || (isRTL ? 'فشل التحديث' : 'Update failed'));
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  if (!import.meta.env.DEV) {
+    return (
+      <div>
+        <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
+          {isRTL ? 'طلبات السحب' : 'Withdrawal Requests'}
+        </h1>
+        <p className="text-sm text-gray-400">
+          {isRTL ? 'إدارة السحب متاحة في وضع التطوير مع السيرفر المحلي.' : 'Payout management requires local dev mode with npm run server.'}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
+        {isRTL ? 'طلبات السحب' : 'Withdrawal Requests'}
+      </h1>
+      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center">
+            <div className="w-6 h-6 border-2 border-brand-gold border-t-transparent rounded-full animate-spin mx-auto" />
+          </div>
+        ) : withdrawals.length === 0 ? (
+          <div className="p-8 text-center text-sm text-gray-400">
+            {isRTL ? 'لا توجد طلبات سحب' : 'No withdrawal requests'}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className={`w-full text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
+              <thead className="bg-gray-50 dark:bg-dark-bg">
+                <tr>
+                  {[
+                    isRTL ? 'البائع' : 'Seller',
+                    isRTL ? 'المبلغ' : 'Amount',
+                    isRTL ? 'الطريقة' : 'Method',
+                    isRTL ? 'التفاصيل' : 'Details',
+                    isRTL ? 'التاريخ' : 'Date',
+                    isRTL ? 'الحالة' : 'Status',
+                    isRTL ? 'إجراءات' : 'Actions',
+                  ].map((header) => (
+                    <th key={header} className="px-4 py-3 text-xs font-bold text-gray-400 uppercase">{header}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
+                {withdrawals.map((entry) => {
+                  const details = entry.accountDetails || {};
+                  const detailText =
+                    entry.method === 'vodafone_cash'
+                      ? details.walletNumber
+                      : entry.method === 'instapay'
+                      ? details.instapayId
+                      : `${details.bankName || ''} ${details.accountNumber || ''}`.trim();
+
+                  return (
+                    <tr key={entry._id}>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{entry.sellerName || 'Seller'}</div>
+                        <div className="text-xs text-gray-400">{entry.sellerEmail}</div>
+                      </td>
+                      <td className="px-4 py-3 font-semibold">
+                        {Number(entry.amount || 0).toLocaleString()} EGP
+                      </td>
+                      <td className="px-4 py-3 text-gray-500">{entry.method}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500 max-w-[160px] truncate">{detailText || '—'}</td>
+                      <td className="px-4 py-3 text-xs text-gray-400">
+                        {entry.createdAt ? new Date(entry.createdAt).toLocaleDateString() : '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${
+                          entry.status === 'paid'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : entry.status === 'rejected'
+                            ? 'bg-red-100 text-red-700'
+                            : entry.status === 'approved'
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {entry.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {entry.status === 'pending' || entry.status === 'approved' ? (
+                          <div className="flex gap-1 flex-wrap">
+                            {entry.status === 'pending' && (
+                              <button
+                                type="button"
+                                disabled={updatingId === entry._id}
+                                onClick={() => handleStatus(entry._id, 'approved')}
+                                className="text-[10px] px-2 py-1 rounded-lg bg-blue-50 text-blue-700 font-semibold"
+                              >
+                                {isRTL ? 'موافقة' : 'Approve'}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              disabled={updatingId === entry._id}
+                              onClick={() => handleStatus(entry._id, 'paid')}
+                              className="text-[10px] px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-semibold"
+                            >
+                              {isRTL ? 'تم الدفع' : 'Mark paid'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={updatingId === entry._id}
+                              onClick={() => handleStatus(entry._id, 'rejected')}
+                              className="text-[10px] px-2 py-1 rounded-lg bg-red-50 text-red-700 font-semibold"
+                            >
+                              {isRTL ? 'رفض' : 'Reject'}
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AdminSupportTab({ isRTL, toast }) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1637,6 +1801,7 @@ export default function AdminDashboard() {
         { icon: Package, label: isRTL ? 'الطلبات' : 'Orders', tab: 'orders' },
         { icon: Tag, label: isRTL ? 'الكوبونات' : 'Coupons', tab: 'coupons' },
         { icon: DollarSign, label: isRTL ? 'الأرباح' : 'Revenue', tab: 'revenue' },
+        { icon: CreditCard, label: isRTL ? 'طلبات السحب' : 'Payouts', tab: 'payouts' },
       ],
     },
     {
@@ -2320,6 +2485,10 @@ export default function AdminDashboard() {
 
             {activeTab === 'support' && (
               <AdminSupportTab isRTL={isRTL} toast={toast} />
+            )}
+
+            {activeTab === 'payouts' && (
+              <AdminPayoutsTab isRTL={isRTL} toast={toast} />
             )}
 
             {activeTab === 'audit' && (

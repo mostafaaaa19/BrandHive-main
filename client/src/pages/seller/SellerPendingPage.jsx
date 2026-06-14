@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { Clock, CheckCircle2, Mail, Home, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { brandsAPI, rememberSellerBrand } from '../../services/api';
+import { brandsAPI, rememberSellerBrand, rememberSellerBrandName } from '../../services/api';
 import toast from 'react-hot-toast';
 
 export default function SellerPendingPage() {
@@ -46,6 +46,7 @@ export default function SellerPendingPage() {
           upgradeToSeller();
           const userId = user?.id || user?._id || 'default';
           rememberSellerBrand(userId, brand);
+          rememberSellerBrandName(userId, brand.name, user?.email);
           toast.success(
             isRTL ? 'تمت الموافقة على ماركتك! 🎉' : 'Your brand has been approved! 🎉',
             { style: { borderRadius: '12px' }, duration: 4000 }

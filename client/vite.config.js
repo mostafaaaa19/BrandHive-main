@@ -29,6 +29,20 @@ export default defineConfig(({ mode }) => {
           timeout: 60000,
           rewrite: (path) => path.replace(/^\/support-local/, '/support/chat'),
         },
+        '/orders-local': {
+          target: chatTarget,
+          changeOrigin: true,
+          secure: false,
+          timeout: 60000,
+          rewrite: (path) => path.replace(/^\/orders-local/, '/orders/seller-mirror'),
+        },
+        '/payouts-local': {
+          target: chatTarget,
+          changeOrigin: true,
+          secure: false,
+          timeout: 60000,
+          rewrite: (path) => path.replace(/^\/payouts-local/, '/payouts/seller'),
+        },
         '/brandhive-api': {
           target: apiTarget,
           changeOrigin: true,

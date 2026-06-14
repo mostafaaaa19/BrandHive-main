@@ -44,6 +44,8 @@ app.use('/product', require('./routes/products'));
 app.use('/orders', require('./routes/orders'));
 app.use('/users', require('./routes/users'));
 app.use('/support/chat', require('./routes/supportChat'));
+app.use('/orders/seller-mirror', require('./routes/sellerOrders'));
+app.use('/payouts/seller', require('./routes/sellerPayouts'));
 
 // Health check
 app.get('/health', (req, res) => {
@@ -54,7 +56,7 @@ app.get('/', (req, res) => {
   res.json({
     status: 'OK',
     message: 'BrandHive API — use the React app at http://localhost:5173',
-    endpoints: ['/health', '/auth', '/brand', '/product', '/orders', '/users', '/chat/ai', '/support/chat'],
+    endpoints: ['/health', '/auth', '/brand', '/product', '/orders', '/users', '/chat/ai', '/support/chat', '/orders/seller-mirror', '/payouts/seller'],
   });
 });
 

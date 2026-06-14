@@ -7,16 +7,20 @@ import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import {
   categoriesAPI,
-  sellerAPI,
+  createSellerProduct,
   rememberSellerBrand,
+  rememberSellerBrandName,
   resolveSellerBrand,
   humanizeApiError,
+  hasSellerApiAccess,
+  isValidMongoId,
 } from '../../services/api';
 
 export default function AddProductPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { isRTL } = useLanguage();
+  const sellerApiReady = hasSellerApiAccess();
   
   // Data State
   const [categories, setCategories] = useState([]);
@@ -25,6 +29,7 @@ export default function AddProductPage() {
   const [brandLoading, setBrandLoading] = useState(true);
   const [brandError, setBrandError] = useState(null);
   const [brandRetrying, setBrandRetrying] = useState(false);
+  const [manualBrandName, setManualBrandName] = useState('');
 
   const loadSellerBrand = async () => {
     setBrandLoading(true);
@@ -40,8 +45,8 @@ export default function AddProductPage() {
       } else {
         setBrandError(
           isRTL
-            ? 'لم نتمكن من ربط ماركتك بهذا الحساب تلقائياً. إذا وافق الأدمن بالفعل، اضغط «إعادة الربط» أو سجّل خروج ثم ادخل بحساب البائع نفسه.'
-            : 'We could not link your brand to this account. If admin already approved you, click “Retry link” or log out and sign in with the same seller account.'
+            ? 'لم نتمكن من ربط ماركتك تلقائياً. اكتب اسم ماركتك بالضبط كما سجّلته (مثل BrandM) ثم اضغط «ربط الماركة».'
+            : 'We could not link your brand automatically. Enter your exact brand name as registered (e.g. BrandM), then click “Link brand”.'
         );
       }
     } catch (err) {
@@ -57,6 +62,19 @@ export default function AddProductPage() {
       setBrandLoading(false);
       setBrandRetrying(false);
     }
+  };
+
+  const linkBrandByName = async () => {
+    const brandName = manualBrandName.trim();
+    if (!brandName) {
+      toast.error(isRTL ? 'اكتب اسم ماركتك أولاً' : 'Enter your brand name first');
+      return;
+    }
+
+    const userId = user?.id || user?._id;
+    rememberSellerBrandName(userId, brandName, user?.email);
+    setBrandRetrying(true);
+    await loadSellerBrand();
   };
   
   // Form State
@@ -87,20 +105,10 @@ export default function AddProductPage() {
     const fetchInitialData = async () => {
       try {
         const res = await categoriesAPI.getAll();
-        const cats = res.data?.data || res.data || [];
-        if (cats.length > 0) {
-          setCategories(cats);
-        } else {
-          const { categories: mockCats } = await import('../../data/mockData');
-          setCategories(mockCats.map(c => ({ _id: c.id || c.slug, name: c.name })));
-        }
+        const cats = res.data?.data || res.data?.categories || res.data || [];
+        setCategories(Array.isArray(cats) ? cats.filter((c) => isValidMongoId(c._id || c.id)) : []);
       } catch {
-        try {
-          const { categories: mockCats } = await import('../../data/mockData');
-          setCategories(mockCats.map(c => ({ _id: c.id || c.slug, name: c.name })));
-        } catch {
-          setCategories([]);
-        }
+        setCategories([]);
       } finally {
         setLoadingCats(false);
       }
@@ -183,12 +191,28 @@ export default function AddProductPage() {
     if (!formData.price || parseFloat(formData.price) <= 0) newErrors.price = 'Price must be greater than 0';
     if (!formData.stock || parseInt(formData.stock) < 0) newErrors.stock = 'Stock cannot be negative';
     if (!formData.category) newErrors.category = 'Category is required';
+    else if (!isValidMongoId(formData.category)) {
+      newErrors.category = isRTL
+        ? 'الفئة غير صالحة. حدّث الصفحة واختر فئة من القائمة.'
+        : 'Invalid category. Refresh the page and pick a category from the list.';
+    }
     if (!formData.brand) {
       newErrors.brand = isRTL
         ? 'يرجى اختيار الماركة'
         : 'Please select a brand';
+    } else if (!isValidMongoId(formData.brand)) {
+      newErrors.brand = isRTL
+        ? 'معرّف الماركة غير صالح. اربط ماركتك من جديد.'
+        : 'Invalid brand ID. Link your brand again.';
     }
-    if (!mainImage) newErrors.images = 'At least one main image is required';
+    if (
+      formData.discountPrice &&
+      parseFloat(formData.discountPrice) >= parseFloat(formData.price)
+    ) {
+      newErrors.discountPrice = isRTL
+        ? 'سعر الخصم يجب أن يكون أقل من السعر الأصلي'
+        : 'Discount price must be less than the original price';
+    }
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -208,6 +232,16 @@ export default function AddProductPage() {
     setSubmitType(type);
 
     try {
+      if (!hasSellerApiAccess()) {
+        toast.error(
+          isRTL
+            ? 'حسابك على السيرفر ليس بائعاً بعد. سجّل خروج ثم ادخل من جديد بعد موافقة الأدمن، أو تواصل مع الدعم.'
+            : 'Your server account is not a seller yet. Log out and sign in again after admin approval.',
+          { style: { borderRadius: '12px' }, duration: 6000 }
+        );
+        return;
+      }
+
       const catObj = categories.find(c =>
         c.name === formData.category ||
         c._id === formData.category ||
@@ -215,26 +249,48 @@ export default function AddProductPage() {
       );
       const categoryId = catObj?._id || catObj?.id || formData.category;
 
+      const price = parseFloat(formData.price);
+      const stock = parseInt(formData.stock, 10);
+      if (Number.isNaN(price) || price <= 0) {
+        toast.error(isRTL ? 'السعر غير صالح' : 'Invalid price');
+        return;
+      }
+      if (Number.isNaN(stock) || stock < 0) {
+        toast.error(isRTL ? 'الكمية غير صالحة' : 'Invalid stock quantity');
+        return;
+      }
+
       const payload = {
         name: formData.name.trim(),
         description: formData.description.trim(),
-        price: parseFloat(formData.price),
-        stock: parseInt(formData.stock, 10),
+        price,
+        stock,
         category: categoryId,
         brand: formData.brand,
       };
 
-      if (formData.discountPrice && parseFloat(formData.discountPrice) > 0) {
-        payload.discountPrice = parseFloat(formData.discountPrice);
+      const discountPrice = parseFloat(formData.discountPrice);
+      if (formData.discountPrice && !Number.isNaN(discountPrice) && discountPrice > 0) {
+        payload.discountPrice = discountPrice;
       }
-      if (formData.weight) {
-        payload.weight = parseFloat(formData.weight);
+      const weight = parseFloat(formData.weight);
+      if (formData.weight && !Number.isNaN(weight) && weight > 0) {
+        payload.weight = weight;
       }
       if (tagList.length > 0) {
         payload.tags = tagList;
       }
 
-      await sellerAPI.createProduct(payload);
+      await createSellerProduct(payload);
+
+      if (mainImage || additionalImages.length > 0) {
+        toast(
+          isRTL
+            ? 'تم إنشاء المنتج. رفع الصور غير مدعوم حالياً من السيرفر — يمكنك تعديل المنتج لاحقاً.'
+            : 'Product created. Image upload is not supported on create yet — you can edit the product later.',
+          { icon: 'ℹ️', duration: 5000 }
+        );
+      }
 
       const userId = user?.id || user?._id;
       rememberSellerBrand(userId, myBrand || { _id: formData.brand });
@@ -247,15 +303,13 @@ export default function AddProductPage() {
       );
       navigate('/seller/dashboard?tab=products');
     } catch (err) {
-      const errData = err.response?.data;
-      const msg = typeof errData?.message === 'string'
-        ? errData.message
-        : Array.isArray(errData?.message)
-          ? errData.message.join(', ')
-          : (isRTL ? 'فشل إنشاء المنتج' : 'Failed to create product');
+      const msg = humanizeApiError(
+        err,
+        isRTL ? 'فشل إنشاء المنتج' : 'Failed to create product'
+      );
 
-      console.error('Create product error:', errData);
-      toast.error(msg, { style: { borderRadius: '12px' } });
+      console.error('Create product error:', err.response?.data || err.message);
+      toast.error(msg, { style: { borderRadius: '12px' }, duration: 6000 });
     } finally {
       setIsSubmitting(false);
       setSubmitType(null);
@@ -283,6 +337,13 @@ export default function AddProductPage() {
           </Link>
           
           <h1 className="text-3xl font-display font-bold text-brand-navy dark:text-white">Add New Product</h1>
+          {!sellerApiReady && (
+            <p className="mt-3 text-sm text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3">
+              {isRTL
+                ? 'تنبيه: حسابك على السيرفر ليس بائعاً بعد. لن تتمكن من إضافة منتجات حتى يحدّث الأدمن صلاحياتك. جرّب تسجيل الخروج والدخول مرة أخرى.'
+                : 'Note: your server account is not a seller yet. You cannot add products until admin updates your role. Try logging out and back in.'}
+            </p>
+          )}
         </div>
 
         <div className="flex flex-col lg:flex-row gap-8">
@@ -331,9 +392,13 @@ export default function AddProductPage() {
                       <option value="">Select Category</option>
                       {loadingCats ? (
                         <option disabled>Loading...</option>
+                      ) : categories.length === 0 ? (
+                        <option disabled>
+                          {isRTL ? 'لا توجد فئات — حدّث الصفحة' : 'No categories — refresh page'}
+                        </option>
                       ) : (
                         categories.map((c, i) => (
-                          <option key={c._id || i} value={c._id || c.name}>{c.name}</option>
+                          <option key={c._id || i} value={c._id || c.id}>{c.name}</option>
                         ))
                       )}
                     </select>
@@ -361,26 +426,43 @@ export default function AddProductPage() {
                               ? 'لم يتم العثور على ماركة مرتبطة بحسابك.'
                               : 'No brand linked to your account yet.')}
                         </p>
-                        <div className={`flex flex-wrap gap-3 mt-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setBrandRetrying(true);
-                              loadSellerBrand();
-                            }}
-                            disabled={brandRetrying}
-                            className="text-xs font-semibold text-brand-navy dark:text-brand-gold hover:underline disabled:opacity-50"
-                          >
-                            {brandRetrying
-                              ? (isRTL ? 'جاري الربط...' : 'Linking...')
-                              : (isRTL ? 'إعادة الربط' : 'Retry link')}
-                          </button>
-                          <Link
-                            to="/sell"
-                            className="text-xs font-semibold text-brand-navy dark:text-brand-gold hover:underline"
-                          >
-                            {isRTL ? 'تسجيل بائع جديد' : 'Seller registration'}
-                          </Link>
+                        <div className={`mt-3 space-y-2 ${isRTL ? 'text-right' : ''}`}>
+                          <input
+                            type="text"
+                            value={manualBrandName}
+                            onChange={(e) => setManualBrandName(e.target.value)}
+                            placeholder={isRTL ? 'اسم ماركتك (مثل BrandM)' : 'Your brand name (e.g. BrandM)'}
+                            className="w-full rounded-lg border border-amber-200 dark:border-amber-700 bg-white dark:bg-dark-bg px-3 py-2 text-sm"
+                          />
+                          <div className={`flex flex-wrap gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <button
+                              type="button"
+                              onClick={linkBrandByName}
+                              disabled={brandRetrying}
+                              className="text-xs font-semibold text-brand-navy dark:text-brand-gold hover:underline disabled:opacity-50"
+                            >
+                              {brandRetrying
+                                ? (isRTL ? 'جاري الربط...' : 'Linking...')
+                                : (isRTL ? 'ربط الماركة' : 'Link brand')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBrandRetrying(true);
+                                loadSellerBrand();
+                              }}
+                              disabled={brandRetrying}
+                              className="text-xs font-semibold text-brand-navy dark:text-brand-gold hover:underline disabled:opacity-50"
+                            >
+                              {isRTL ? 'إعادة المحاولة' : 'Retry link'}
+                            </button>
+                            <Link
+                              to="/sell"
+                              className="text-xs font-semibold text-brand-navy dark:text-brand-gold hover:underline"
+                            >
+                              {isRTL ? 'تسجيل بائع جديد' : 'Seller registration'}
+                            </Link>
+                          </div>
                         </div>
                       </div>
                     )}
@@ -518,7 +600,9 @@ export default function AddProductPage() {
                     ) : (
                       <>
                         <Upload size={32} className="text-brand-gold mb-3" />
-                        <p className="text-sm font-medium text-brand-navy dark:text-white mb-1">Click or drag to upload main image</p>
+                        <p className="text-sm font-medium text-brand-navy dark:text-white mb-1">
+                          {isRTL ? 'اضغط أو اسحب لرفع الصورة الرئيسية (اختياري)' : 'Click or drag to upload main image (optional)'}
+                        </p>
                         <p className="text-xs text-gray-500 dark:text-dark-muted">PNG, JPG up to 5MB</p>
                       </>
                     )}

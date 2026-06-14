@@ -611,41 +611,30 @@ function SellerPayoutsTab({ user, brandId, orderStats, isRTL }) {
           <h3 className={`font-bold text-gray-900 dark:text-dark-text mb-4 ${isRTL ? 'text-right' : ''}`}>
             {isRTL ? 'طلب سحب' : 'Request Withdrawal'}
           </h3>
-          {!import.meta.env.DEV ? (
-            <div className={`flex items-start gap-3 bg-amber-50 dark:bg-amber-900/10 rounded-xl p-4 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
-              <span className="text-xl">⚠️</span>
-              <p className="text-sm text-amber-700 dark:text-amber-400">
-                {isRTL
-                  ? 'طلبات السحب متاحة في وضع التطوير مع السيرفر المحلي.'
-                  : 'Withdrawal requests require local dev mode with npm run server.'}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <input
-                type="number"
-                min="50"
-                step="1"
-                placeholder={isRTL ? 'المبلغ (ج.م)' : 'Amount (EGP)'}
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg px-3 py-2 text-sm"
-              />
-              <p className={`text-xs text-gray-400 ${isRTL ? 'text-right' : ''}`}>
-                {isRTL ? `الحد الأدنى 50 ج.م — المتاح: ${availableBalance.toLocaleString()} ج.م` : `Min 50 EGP — Available: ${availableBalance.toLocaleString()} EGP`}
-              </p>
-              <button
-                type="button"
-                onClick={handleWithdraw}
-                disabled={submitting || availableBalance < 50}
-                className="btn-primary w-full disabled:opacity-50"
-              >
-                {submitting
-                  ? (isRTL ? 'جاري الإرسال...' : 'Submitting...')
-                  : (isRTL ? 'إرسال طلب السحب' : 'Submit withdrawal request')}
-              </button>
-            </div>
-          )}
+          <div className="space-y-3">
+            <input
+              type="number"
+              min="50"
+              step="1"
+              placeholder={isRTL ? 'المبلغ (ج.م)' : 'Amount (EGP)'}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg px-3 py-2 text-sm"
+            />
+            <p className={`text-xs text-gray-400 ${isRTL ? 'text-right' : ''}`}>
+              {isRTL ? `الحد الأدنى 50 ج.م — المتاح: ${availableBalance.toLocaleString()} ج.م` : `Min 50 EGP — Available: ${availableBalance.toLocaleString()} EGP`}
+            </p>
+            <button
+              type="button"
+              onClick={handleWithdraw}
+              disabled={submitting || availableBalance < 50}
+              className="btn-primary w-full disabled:opacity-50"
+            >
+              {submitting
+                ? (isRTL ? 'جاري الإرسال...' : 'Submitting...')
+                : (isRTL ? 'إرسال طلب السحب' : 'Submit withdrawal request')}
+            </button>
+          </div>
         </div>
       </div>
 

@@ -60,6 +60,140 @@ const localAuditLog = import.meta.env.DEV
 
 const productImageMirrorCache = new Map();
 
+const SELLER_ORDERS_STORAGE_KEY = 'brandhive_seller_orders_mirror';
+const PRODUCT_IMAGES_STORAGE_KEY = 'brandhive_product_images_mirror';
+const sellerPayoutStorageKey = (userId) =>
+  `brandhive_seller_payout_${userId || 'default'}`;
+const PLATFORM_FEE_RATE = 0.05;
+
+const readStoredSellerOrders = () => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SELLER_ORDERS_STORAGE_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeStoredSellerOrder = (order) => {
+  if (!order) return;
+  const id = String(order.railwayOrderId || order._id || order.id || '');
+  if (!id) return;
+
+  const list = readStoredSellerOrders().filter(
+    (entry) => String(entry.railwayOrderId || entry._id || entry.id) !== id
+  );
+  list.unshift({
+    ...order,
+    _id: id,
+    railwayOrderId: order.railwayOrderId || id,
+    createdAt: order.createdAt || new Date().toISOString(),
+  });
+  try {
+    localStorage.setItem(SELLER_ORDERS_STORAGE_KEY, JSON.stringify(list.slice(0, 500)));
+  } catch {
+    // ignore quota errors
+  }
+};
+
+const readPayoutStore = (sellerUserId) => {
+  if (!sellerUserId) return { profile: null, withdrawals: [] };
+  try {
+    const parsed = JSON.parse(
+      localStorage.getItem(sellerPayoutStorageKey(sellerUserId)) || '{}'
+    );
+    return {
+      profile: parsed.profile || null,
+      withdrawals: Array.isArray(parsed.withdrawals) ? parsed.withdrawals : [],
+    };
+  } catch {
+    return { profile: null, withdrawals: [] };
+  }
+};
+
+const writePayoutStore = (sellerUserId, store) => {
+  if (!sellerUserId) return;
+  try {
+    localStorage.setItem(
+      sellerPayoutStorageKey(sellerUserId),
+      JSON.stringify({
+        profile: store.profile || null,
+        withdrawals: Array.isArray(store.withdrawals) ? store.withdrawals : [],
+      })
+    );
+  } catch {
+    // ignore quota errors
+  }
+};
+
+const activeOrderTotal = (orders = []) =>
+  orders
+    .filter(
+      (order) =>
+        !['canceled', 'cancelled'].includes(String(order.status || '').toLowerCase())
+    )
+    .reduce(
+      (sum, order) =>
+        sum + (Number(order.totalAmount) || Number(order.subtotal) || 0),
+      0
+    );
+
+const computeClientPayoutSummary = (orders = [], withdrawals = []) => {
+  const grossRevenue = activeOrderTotal(orders);
+  const platformFee = Math.round(grossRevenue * PLATFORM_FEE_RATE);
+  const netEarnings = grossRevenue - platformFee;
+  const pendingWithdrawal = withdrawals
+    .filter((entry) => ['pending', 'approved'].includes(entry.status))
+    .reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0);
+  const totalWithdrawn = withdrawals
+    .filter((entry) => entry.status === 'paid')
+    .reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0);
+  const availableBalance = Math.max(0, netEarnings - pendingWithdrawal - totalWithdrawn);
+
+  return {
+    grossRevenue,
+    platformFee,
+    netEarnings,
+    availableBalance,
+    pendingWithdrawal,
+    totalWithdrawn,
+    withdrawals,
+  };
+};
+
+const orderMatchesBrandIds = (order, brandIds = []) => {
+  if (!brandIds.length) return true;
+  const ids = brandIds.map(String);
+  if (Array.isArray(order.brandIds) && order.brandIds.some((id) => ids.includes(String(id)))) {
+    return true;
+  }
+  return (order.items || []).some((item) =>
+    ids.includes(String(item.brandId || item.brand?._id || item.brand?.id || ''))
+  );
+};
+
+const persistProductImageMirror = (entry) => {
+  if (!entry?.productId) return;
+  productImageMirrorCache.set(String(entry.productId), entry);
+  try {
+    const raw = localStorage.getItem(PRODUCT_IMAGES_STORAGE_KEY);
+    const map = raw ? JSON.parse(raw) : {};
+    map[String(entry.productId)] = entry;
+    localStorage.setItem(PRODUCT_IMAGES_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // ignore quota errors
+  }
+};
+
+try {
+  const storedImages = JSON.parse(localStorage.getItem(PRODUCT_IMAGES_STORAGE_KEY) || '{}');
+  Object.entries(storedImages).forEach(([id, entry]) => {
+    if (entry) productImageMirrorCache.set(String(id), entry);
+  });
+} catch {
+  // ignore corrupt cache
+}
+
 export const lookupProductBrand = async (productId) => {
   if (!productId) return null;
 
@@ -1082,7 +1216,7 @@ const extractCreatedProduct = (response) =>
   null;
 
 const mirrorProductImages = async (productId, mainImage, additionalImages = []) => {
-  if (!localProductImages || !productId) return null;
+  if (!productId) return null;
 
   const dataUrls = [];
   if (mainImage) {
@@ -1093,34 +1227,49 @@ const mirrorProductImages = async (productId, mainImage, additionalImages = []) 
   }
   if (dataUrls.length === 0) return null;
 
-  const res = await localProductImages.post('/', {
+  const entry = {
     productId: String(productId),
     mainImage: dataUrls[0],
     images: dataUrls,
-  });
+  };
 
-  const entry = res.data?.data || null;
-  if (entry) {
-    productImageMirrorCache.set(String(productId), entry);
+  if (localProductImages) {
+    try {
+      const res = await localProductImages.post('/', entry);
+      const saved = res.data?.data || entry;
+      persistProductImageMirror(saved);
+      return saved;
+    } catch (err) {
+      console.warn('[mirrorProductImages]', err.response?.data || err.message);
+    }
   }
+
+  persistProductImageMirror(entry);
   return entry;
 };
 
 export const loadLocalProductImages = async (productIds = []) => {
-  if (!localProductImages) return;
-
   const ids = [...new Set(productIds.map(String).filter(Boolean))];
   if (ids.length === 0) return;
+
+  ids.forEach((id) => {
+    try {
+      const raw = localStorage.getItem(PRODUCT_IMAGES_STORAGE_KEY);
+      const map = raw ? JSON.parse(raw) : {};
+      if (map[id]) productImageMirrorCache.set(id, map[id]);
+    } catch {
+      // ignore
+    }
+  });
+
+  if (!localProductImages) return;
 
   try {
     const res = await localProductImages.get('/', {
       params: { productIds: ids.join(','), _t: Date.now() },
     });
-    const entries = getResponseArray(res);
-    entries.forEach((entry) => {
-      if (entry?.productId) {
-        productImageMirrorCache.set(String(entry.productId), entry);
-      }
+    getResponseArray(res).forEach((entry) => {
+      if (entry?.productId) persistProductImageMirror(entry);
     });
   } catch (err) {
     console.warn('[loadLocalProductImages]', err.response?.data || err.message);
@@ -1924,7 +2073,7 @@ const normalizeMirroredSellerOrder = (order) => ({
 });
 
 export const mirrorSellerOrder = async (payload) => {
-  if (!localSellerOrders || !payload?.items?.length) return null;
+  if (!payload?.items?.length) return null;
 
   const enrichedItems = [];
   for (const item of payload.items) {
@@ -1954,15 +2103,22 @@ export const mirrorSellerOrder = async (payload) => {
         ...enrichedItems.map((item) => String(item.brandId)),
       ]),
     ],
+    _id: payload.railwayOrderId || payload._id || `local-${Date.now()}`,
+    createdAt: payload.createdAt || new Date().toISOString(),
   };
 
-  try {
-    const res = await localSellerOrders.post('/', mirrorPayload);
-    return res.data?.data || res.data || null;
-  } catch (err) {
-    console.warn('[mirrorSellerOrder]', err.response?.data || err.message);
-    return null;
+  writeStoredSellerOrder(mirrorPayload);
+
+  if (localSellerOrders) {
+    try {
+      const res = await localSellerOrders.post('/', mirrorPayload);
+      return res.data?.data || res.data || mirrorPayload;
+    } catch (err) {
+      console.warn('[mirrorSellerOrder]', err.response?.data || err.message);
+    }
   }
+
+  return mirrorPayload;
 };
 
 const collectSellerBrandIds = async (user) => {
@@ -1994,6 +2150,7 @@ const collectSellerBrandIds = async (user) => {
 
 export const fetchSellerOrders = async (user) => {
   const merged = new Map();
+  const brandIds = await collectSellerBrandIds(user);
 
   try {
     const ordRes = await sellerAPI.getOrders();
@@ -2005,23 +2162,28 @@ export const fetchSellerOrders = async (user) => {
     // Railway seller orders may be empty when products aren't linked server-side
   }
 
-  if (localSellerOrders) {
+  if (localSellerOrders && brandIds.length > 0) {
     try {
-      const brandIds = await collectSellerBrandIds(user);
-      if (brandIds.length > 0) {
-        const localRes = await localSellerOrders.get('/', {
-          params: { brandIds: brandIds.join(','), _t: Date.now() },
-        });
-        getResponseArray(localRes).forEach((order) => {
-          const normalized = normalizeMirroredSellerOrder(order);
-          const id = normalized._id || normalized.id;
-          if (id) merged.set(String(id), normalized);
-        });
-      }
+      const localRes = await localSellerOrders.get('/', {
+        params: { brandIds: brandIds.join(','), _t: Date.now() },
+      });
+      getResponseArray(localRes).forEach((order) => {
+        const normalized = normalizeMirroredSellerOrder(order);
+        const id = normalized._id || normalized.id;
+        if (id) merged.set(String(id), normalized);
+      });
     } catch (err) {
-      console.warn('[fetchSellerOrders]', err.response?.data || err.message);
+      console.warn('[fetchSellerOrders/local]', err.response?.data || err.message);
     }
   }
+
+  readStoredSellerOrders()
+    .filter((order) => orderMatchesBrandIds(order, brandIds))
+    .forEach((order) => {
+      const normalized = normalizeMirroredSellerOrder(order);
+      const id = normalized._id || normalized.id;
+      if (id) merged.set(String(id), normalized);
+    });
 
   return [...merged.values()].sort(
     (a, b) =>
@@ -2042,77 +2204,185 @@ const emptyPayoutSummary = () => ({
 });
 
 export const fetchSellerPayoutSummary = async (user, brandId) => {
-  if (!localSellerPayouts || !user) return emptyPayoutSummary();
+  const sellerUserId = user?.id || user?._id;
+  if (!sellerUserId) return emptyPayoutSummary();
 
-  const sellerUserId = user.id || user._id;
-  try {
-    const res = await localSellerPayouts.get('/summary', {
-      params: { sellerUserId, brandId, _t: Date.now() },
-    });
-    return res.data?.data || emptyPayoutSummary();
-  } catch (err) {
-    console.warn('[fetchSellerPayoutSummary]', err.response?.data || err.message);
-    return emptyPayoutSummary();
+  if (localSellerPayouts) {
+    try {
+      const res = await localSellerPayouts.get('/summary', {
+        params: { sellerUserId, brandId, _t: Date.now() },
+      });
+      return res.data?.data || emptyPayoutSummary();
+    } catch (err) {
+      console.warn('[fetchSellerPayoutSummary]', err.response?.data || err.message);
+    }
   }
+
+  const store = readPayoutStore(sellerUserId);
+  const orders = await fetchSellerOrders(user);
+  const scopedOrders = brandId
+    ? orders.filter((order) => orderMatchesBrandIds(order, [brandId]))
+    : orders;
+  const summary = computeClientPayoutSummary(
+    scopedOrders,
+    store.withdrawals || []
+  );
+
+  return {
+    ...summary,
+    profile: store.profile || null,
+    withdrawals: store.withdrawals || [],
+  };
 };
 
 export const saveSellerPayoutProfile = async (user, profile) => {
-  if (!localSellerPayouts || !user) return null;
+  if (!user) return null;
 
-  try {
-    const res = await localSellerPayouts.post('/profile', {
-      sellerUserId: user.id || user._id,
-      sellerEmail: user.email,
-      ...profile,
-    });
-    return res.data?.data || null;
-  } catch (err) {
-    throw new Error(err.response?.data?.message || err.message || 'Failed to save payout profile');
+  if (localSellerPayouts) {
+    try {
+      const res = await localSellerPayouts.post('/profile', {
+        sellerUserId: user.id || user._id,
+        sellerEmail: user.email,
+        ...profile,
+      });
+      return res.data?.data || null;
+    } catch (err) {
+      throw new Error(err.response?.data?.message || err.message || 'Failed to save payout profile');
+    }
   }
+
+  const sellerUserId = user.id || user._id;
+  const store = readPayoutStore(sellerUserId);
+  store.profile = {
+    ...profile,
+    sellerUserId: String(sellerUserId),
+    sellerEmail: user.email,
+  };
+  writePayoutStore(sellerUserId, store);
+  return store.profile;
 };
 
 export const requestSellerWithdrawal = async (user, payload) => {
-  if (!localSellerPayouts || !user) {
-    throw new Error('Withdrawals are only available in local development mode');
+  if (!user) {
+    throw new Error('You must be logged in to request a withdrawal');
   }
 
-  try {
-    const res = await localSellerPayouts.post('/withdrawals', {
-      sellerUserId: user.id || user._id,
-      sellerEmail: user.email,
-      sellerName: user.name,
-      ...payload,
-    });
-    return res.data?.data || null;
-  } catch (err) {
-    throw new Error(err.response?.data?.message || err.message || 'Failed to create withdrawal');
+  const sellerUserId = user.id || user._id;
+  const parsedAmount = Number(payload?.amount);
+  if (!Number.isFinite(parsedAmount) || parsedAmount < 50) {
+    throw new Error('Minimum withdrawal amount is 50 EGP');
   }
+
+  if (localSellerPayouts) {
+    try {
+      const res = await localSellerPayouts.post('/withdrawals', {
+        sellerUserId,
+        sellerEmail: user.email,
+        sellerName: user.name,
+        ...payload,
+      });
+      return res.data?.data || null;
+    } catch (err) {
+      throw new Error(err.response?.data?.message || err.message || 'Failed to create withdrawal');
+    }
+  }
+
+  const summary = await fetchSellerPayoutSummary(user, payload?.brandId);
+  if (parsedAmount > summary.availableBalance) {
+    throw new Error(`Amount exceeds available balance (${summary.availableBalance} EGP)`);
+  }
+
+  const store = readPayoutStore(sellerUserId);
+  const withdrawal = {
+    _id: `local-withdrawal-${Date.now()}`,
+    sellerUserId: String(sellerUserId),
+    sellerEmail: user.email,
+    sellerName: user.name || 'Seller',
+    brandId: payload?.brandId,
+    brandName: payload?.brandName,
+    amount: parsedAmount,
+    method: payload?.method,
+    accountDetails: payload?.accountDetails || {},
+    availableBalanceAtRequest: summary.availableBalance,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+  };
+
+  store.withdrawals = [withdrawal, ...(store.withdrawals || [])];
+  writePayoutStore(sellerUserId, store);
+  return withdrawal;
 };
 
 export const fetchAdminWithdrawals = async () => {
-  if (!localSellerPayouts) return [];
-
-  try {
-    const res = await localSellerPayouts.get('/admin/withdrawals', {
-      params: { _t: Date.now() },
-    });
-    return getResponseArray(res);
-  } catch (err) {
-    console.warn('[fetchAdminWithdrawals]', err.response?.data || err.message);
-    return [];
+  if (localSellerPayouts) {
+    try {
+      const res = await localSellerPayouts.get('/admin/withdrawals', {
+        params: { _t: Date.now() },
+      });
+      return getResponseArray(res);
+    } catch (err) {
+      console.warn('[fetchAdminWithdrawals]', err.response?.data || err.message);
+    }
   }
+
+  const merged = [];
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith('brandhive_seller_payout_')) continue;
+      const store = JSON.parse(localStorage.getItem(key) || '{}');
+      if (Array.isArray(store.withdrawals)) merged.push(...store.withdrawals);
+    }
+  } catch {
+    // ignore
+  }
+
+  return merged.sort(
+    (a, b) =>
+      new Date(b.createdAt || 0).getTime() -
+      new Date(a.createdAt || 0).getTime()
+  );
 };
 
 export const updateWithdrawalStatus = async (id, status, adminNote = '') => {
-  if (!localSellerPayouts) {
-    throw new Error('Withdrawals are only available in local development mode');
+  if (localSellerPayouts) {
+    const res = await localSellerPayouts.patch(`/admin/withdrawals/${id}`, {
+      status,
+      adminNote,
+    });
+    return res.data?.data || null;
   }
 
-  const res = await localSellerPayouts.patch(`/admin/withdrawals/${id}`, {
-    status,
-    adminNote,
-  });
-  return res.data?.data || null;
+  let updated = null;
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith('brandhive_seller_payout_')) continue;
+      const store = JSON.parse(localStorage.getItem(key) || '{}');
+      if (!Array.isArray(store.withdrawals)) continue;
+
+      const index = store.withdrawals.findIndex(
+        (entry) => String(entry._id || entry.id) === String(id)
+      );
+      if (index === -1) continue;
+
+      store.withdrawals[index] = {
+        ...store.withdrawals[index],
+        status,
+        ...(adminNote !== undefined ? { adminNote: String(adminNote).trim() } : {}),
+      };
+      localStorage.setItem(key, JSON.stringify(store));
+      updated = store.withdrawals[index];
+      break;
+    }
+  } catch {
+    // ignore
+  }
+
+  if (!updated) {
+    throw new Error('Withdrawal not found');
+  }
+  return updated;
 };
 
 export const logAdminAction = async (actor, entry = {}) => {

@@ -21,6 +21,64 @@ const isValidMongoId = (id) =>
   id && typeof id === 'string' && 
   /^[a-f\d]{24}$/i.test(id);
 
+const mapApiCartItem = (item) => ({
+  key: item.product?.id || item._id || item.productId?._id || item.productId,
+  id: item.product?.id || item._id || item.id || item.productId?._id,
+  productId: item.product?.id || item.productId,
+  name: item.product?.name || item.productId?.name || item.name || '',
+  price: Number(
+    item.effectivePrice ||
+    item.lockedPrice ||
+    item.currentPrice ||
+    item.product?.price ||
+    item.productId?.finalPrice ||
+    item.productId?.price ||
+    item.price ||
+    0
+  ),
+  quantity: Number(item.quantity) || 1,
+  image: item.product?.image ||
+    item.product?.images?.[0] ||
+    item.productId?.images?.[0]?.url ||
+    item.image || null,
+  slug: item.product?.slug || item.productId?.slug || item.slug || '',
+  brandName: item.product?.brand?.name || item.productId?.brand?.name || item.brandName || '',
+  brandId:
+    item.product?.brand?._id ||
+    item.product?.brand?.id ||
+    item.productId?.brand?._id ||
+    item.productId?.brand?.id ||
+    item.brandId ||
+    '',
+  brandSlug: item.product?.brand?.slug || item.productId?.brand?.slug || '',
+  category: item.product?.category?.name || item.productId?.category?.name || '',
+});
+
+const normalizeCartItems = (items) => {
+  const byProduct = new Map();
+
+  items.forEach((item) => {
+    const productId = String(item.id || item.productId || '');
+    if (!productId) return;
+
+    const existing = byProduct.get(productId);
+    if (existing) {
+      existing.quantity += Number(item.quantity) || 1;
+      return;
+    }
+
+    byProduct.set(productId, {
+      ...item,
+      id: productId,
+      productId,
+      key: productId,
+      quantity: Number(item.quantity) || 1,
+    });
+  });
+
+  return Array.from(byProduct.values());
+};
+
 export const CartProvider = ({ children }) => {
   const [items, setItems] = useState([]);
   const { isAuthenticated, isCustomer } = useAuth();
@@ -39,7 +97,7 @@ export const CartProvider = ({ children }) => {
   // Fetch cart from API (when logged in)
   const fetchCart = useCallback(async () => {
     // Cart API is customer-only; seller/admin JWTs get 403
-    if (!isAuthenticated || !isCustomer) return;
+    if (!isAuthenticated || !isCustomer) return null;
     try {
       const res = await cartAPI.get();
       const data = res.data;
@@ -50,48 +108,37 @@ export const CartProvider = ({ children }) => {
         data?.items || 
         data?.data || 
         [];
-      if (Array.isArray(cartItems) && cartItems.length > 0) {
-        // Map API items to local format
-        const mapped = cartItems.map(item => ({
-          key: item.product?.id || item._id || item.productId?._id || item.productId,
-          id: item.product?.id || item._id || item.id || item.productId?._id,
-          productId: item.product?.id || item.productId,
-          name: item.product?.name || item.productId?.name || item.name || '',
-          price: Number(
-            item.effectivePrice ||
-            item.lockedPrice ||
-            item.currentPrice ||
-            item.product?.price ||
-            item.productId?.finalPrice ||
-            item.productId?.price ||
-            item.price ||
-            0
-          ),
-          quantity: Number(item.quantity) || 1,
-          image: item.product?.image ||
-            item.product?.images?.[0] ||
-            item.productId?.images?.[0]?.url ||
-            item.image || null,
-          slug: item.product?.slug || item.productId?.slug || item.slug || '',
-          brandName: item.product?.brand?.name || item.productId?.brand?.name || item.brandName || '',
-          brandId:
-            item.product?.brand?._id ||
-            item.product?.brand?.id ||
-            item.productId?.brand?._id ||
-            item.productId?.brand?.id ||
-            item.brandId ||
-            '',
-          brandSlug: item.product?.brand?.slug || item.productId?.brand?.slug || '',
-          category: item.product?.category?.name || item.productId?.category?.name || '',
-        }));
-        setItems(mapped);
-        localStorage.setItem(
-          'brandhive_cart', 
-          JSON.stringify(mapped)
+
+      if (!Array.isArray(cartItems)) return null;
+
+      if (cartItems.length === 0) {
+        setItems([]);
+        localStorage.removeItem('brandhive_cart');
+        return [];
+      }
+
+      const mapped = cartItems.map(mapApiCartItem);
+      const normalized = normalizeCartItems(mapped);
+
+      if (normalized.length !== mapped.length) {
+        await Promise.allSettled(
+          normalized.map((item) =>
+            cartAPI.update({
+              productId: item.id,
+              quantity: item.quantity,
+            })
+          )
         );
       }
+
+      setItems(normalized);
+      localStorage.setItem(
+        'brandhive_cart', 
+        JSON.stringify(normalized)
+      );
+      return normalized;
     } catch {
-      // API failed — keep localStorage items
+      return null;
     }
   }, [isAuthenticated, isCustomer]);
 
@@ -102,11 +149,12 @@ export const CartProvider = ({ children }) => {
 
   // addToCart — call API if logged in
   const addToCart = async (product, quantity = 1, options = {}) => {
-    const key = `${product.id}-${options.size||''}-${options.color||''}`;
+    const productId = String(product.id || '');
+    const key = `${productId}-${options.size||''}-${options.color||''}`;
 
-    if (isAuthenticated && isCustomer && isValidMongoId(product.id)) {
+    if (isAuthenticated && isCustomer && isValidMongoId(productId)) {
       try {
-        await cartAPI.add({ productId: product.id, quantity });
+        await cartAPI.add({ productId, quantity });
         const storedUser = JSON.parse(
           localStorage.getItem('brandhive_user') || '{}'
         );
@@ -360,6 +408,31 @@ export const WishlistProvider = ({ children }) => {
     setItems(prev => prev.filter(i => i.id !== productId));
   };
 
+  const moveAllToCart = async (addToCartFn) => {
+    if (items.length === 0) return;
+
+    if (isAuthenticated && isCustomer) {
+      try {
+        await wishlistAPI.moveAllToCart({});
+        if (addToCartFn) {
+          items.forEach((item) => addToCartFn(item, 1));
+        }
+        setItems([]);
+        localStorage.removeItem('brandhive_wishlist');
+        return;
+      } catch {
+        // fall through to per-item local move
+      }
+    }
+
+    const snapshot = [...items];
+    snapshot.forEach((item) => {
+      if (addToCartFn) addToCartFn(item, 1);
+    });
+    setItems([]);
+    localStorage.removeItem('brandhive_wishlist');
+  };
+
   // Clear wishlist
   const clearWishlist = async () => {
     setItems([]);
@@ -383,6 +456,7 @@ export const WishlistProvider = ({ children }) => {
       isInWishlist, 
       itemCount,
       moveToCart,
+      moveAllToCart,
       clearWishlist,
       fetchWishlist,
       loading,

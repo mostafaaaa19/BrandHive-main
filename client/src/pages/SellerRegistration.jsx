@@ -32,6 +32,15 @@ export default function SellerRegistration() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
+  const hasSession = Boolean(user?.token || user?.accessToken);
+
+  useEffect(() => {
+    if (!hasSession) return;
+    if (user?.role === 'seller' || user?.serverRole === 'seller') {
+      navigate('/seller/dashboard', { replace: true });
+    }
+  }, [hasSession, user, navigate]);
+
   const STEPS = [
     { num: 1, label: isRTL ? 'المعلومات الأساسية' : 'Basic Information' },
     { num: 2, label: isRTL ? 'إعداد العلامة التجارية' : 'Brand Setup' },
@@ -80,6 +89,16 @@ export default function SellerRegistration() {
         ? 'يرجى الموافقة على الشروط'
         : 'Please accept the terms'
       );
+      return;
+    }
+    if (!hasSession) {
+      toast.error(
+        isRTL
+          ? 'يجب تسجيل الدخول أولاً لربط الطلب بحسابك'
+          : 'You must sign in first so we can link the application to your account',
+        { style: { borderRadius: '12px' }, duration: 5000 }
+      );
+      navigate('/login', { state: { from: '/sell' } });
       return;
     }
     setLoading(true);
@@ -241,6 +260,18 @@ export default function SellerRegistration() {
           <p className="text-gray-500 dark:text-dark-muted text-sm mb-6">
             {isRTL ? `الخطوة ${step} من ${STEPS.length} · ${STEPS[step - 1].label}` : `Step ${step} of ${STEPS.length} · ${STEPS[step - 1].label}`}
           </p>
+
+          {!hasSession && (
+            <div className={`mb-6 rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-300 ${isRTL ? 'text-right' : ''}`}>
+              {isRTL
+                ? 'سجّل دخولك أو أنشئ حساباً أولاً — الطلب لازم يتربط بحسابك عشان الموافقة تشتغل صح.'
+                : 'Sign in or create an account first — your application must be linked to your account for approval to work.'}
+              {' '}
+              <Link to="/login" state={{ from: '/sell' }} className="font-semibold underline">
+                {isRTL ? 'تسجيل الدخول' : 'Sign in'}
+              </Link>
+            </div>
+          )}
 
           {/* Step 1: Basic Info */}
           {step === 1 && (

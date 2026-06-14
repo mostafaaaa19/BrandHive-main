@@ -5,7 +5,7 @@ import {
   Shield, CheckCircle2, MapPin, Minus, Plus, ChevronRight
 } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
-import { productsAPI, brandsAPI, reviewsAPI, aiAPI, ordersAPI } from '../services/api';
+import { productsAPI, brandsAPI, reviewsAPI, aiAPI, ordersAPI, rememberReviewProduct } from '../services/api';
 import { mapProduct } from '../utils/mappers';
 import { useCart, useWishlist } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -51,6 +51,7 @@ export default function ProductPage() {
   const [selectedSize, setSelectedSize] = useState(0);
   const [selectedColor, setSelectedColor] = useState(0);
   const [quantity, setQuantity] = useState(1);
+  const [cartAdding, setCartAdding] = useState(false);
   const [activeTab, setActiveTab] = useState('description');
   const [activeImg, setActiveImg] = useState(0);
 
@@ -234,23 +235,35 @@ export default function ProductPage() {
     ? product.images 
     : [product.image].filter(Boolean);
 
-  const handleAddToCart = () => {
-    addToCart(product, quantity, {
-      size: product.sizes?.[selectedSize],
-      color: product.colors?.[selectedColor],
-    });
-    toast.success(isRTL ? 'تمت الإضافة للسلة!' : 'Added to cart!', { 
-      icon: '🛒', 
-      style: { borderRadius: '12px', fontFamily: isRTL ? 'Cairo' : 'Inter' } 
-    });
+  const handleAddToCart = async () => {
+    if (cartAdding) return;
+    setCartAdding(true);
+    try {
+      await addToCart(product, quantity, {
+        size: product.sizes?.[selectedSize],
+        color: product.colors?.[selectedColor],
+      });
+      toast.success(isRTL ? 'تمت الإضافة للسلة!' : 'Added to cart!', {
+        icon: '🛒',
+        style: { borderRadius: '12px', fontFamily: isRTL ? 'Cairo' : 'Inter' },
+      });
+    } finally {
+      setCartAdding(false);
+    }
   };
 
-  const handleBuyNow = () => {
-    addToCart(product, quantity, {
-      size: product.sizes?.[selectedSize],
-      color: product.colors?.[selectedColor],
-    });
-    navigate('/cart');
+  const handleBuyNow = async () => {
+    if (cartAdding) return;
+    setCartAdding(true);
+    try {
+      await addToCart(product, quantity, {
+        size: product.sizes?.[selectedSize],
+        color: product.colors?.[selectedColor],
+      });
+      navigate('/cart');
+    } finally {
+      setCartAdding(false);
+    }
   };
 
   const handleWishlist = () => {
@@ -294,6 +307,7 @@ export default function ProductPage() {
         rating: reviewForm.rating,
         comment,
       });
+      rememberReviewProduct(product);
       toast.success(isRTL ? 'تم إضافة تقييمك بنجاح ✅' : 'Review submitted successfully ✅');
       setReviewSubmitted(true);
       setReviewForm({ rating: 5, comment: '' });
@@ -499,11 +513,19 @@ export default function ProductPage() {
 
             {/* CTAs */}
             <div className={`flex gap-3 mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
-              <button onClick={handleAddToCart} className={`flex-1 btn-outline flex items-center justify-center gap-2 py-3.5 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <button
+                onClick={handleAddToCart}
+                disabled={cartAdding}
+                className={`flex-1 btn-outline flex items-center justify-center gap-2 py-3.5 disabled:opacity-60 ${isRTL ? 'flex-row-reverse' : ''}`}
+              >
                 <ShoppingCart size={18} />
-                {t('products.addToCart')}
+                {cartAdding ? (isRTL ? 'جاري الإضافة...' : 'Adding...') : t('products.addToCart')}
               </button>
-              <button onClick={handleBuyNow} className="flex-1 btn-primary flex items-center justify-center gap-2 py-3.5 bg-brand-gold hover:opacity-90 shadow-gold">
+              <button
+                onClick={handleBuyNow}
+                disabled={cartAdding}
+                className="flex-1 btn-primary flex items-center justify-center gap-2 py-3.5 bg-brand-gold hover:opacity-90 shadow-gold disabled:opacity-60"
+              >
                 {isRTL ? 'شراء الآن' : 'Buy Now'}
               </button>
             </div>

@@ -20,8 +20,8 @@ const CATEGORY_ICONS = {
 export default function CartPage() {
   const { t } = useTranslation();
   const { isRTL } = useLanguage();
-  const { items, removeFromCart, updateQuantity, clearCart, subtotal, itemCount, addToCart } = useCart();
-  const { isAuthenticated, user } = useAuth();
+  const { items, removeFromCart, updateQuantity, clearCart, subtotal, itemCount, addToCart, fetchCart } = useCart();
+  const { isAuthenticated, isCustomer, user } = useAuth();
   const [savedAddresses, setSavedAddresses] = useState([]);
   const [selectedAddressId, setSelectedAddressId] = useState(null);
   const [addressesLoading, setAddressesLoading] = useState(false);
@@ -34,34 +34,34 @@ export default function CartPage() {
   const [orderPlaced, setOrderPlaced] = useState(false);
 
   const [delivery, setDelivery] = useState({
-    name: '', phone: '', street: '', governorate: isRTL ? '╪د┘┘é╪د┘ç╪▒╪ر' : 'Cairo', postalCode: '',
+    name: '', phone: '', street: '', governorate: isRTL ? 'القاهرة' : 'Cairo', postalCode: '',
   });
 
   const STEPS = [
-    isRTL ? '╪د┘╪│┘╪ر' : 'Cart',
-    isRTL ? '╪د┘╪ز┘ê╪╡┘è┘' : 'Delivery',
-    isRTL ? '╪د┘╪»┘╪╣' : 'Payment',
-    isRTL ? '╪ز╪ث┘â┘è╪»' : 'Confirm'
+    isRTL ? 'السلة' : 'Cart',
+    isRTL ? 'التوصيل' : 'Delivery',
+    isRTL ? 'الدفع' : 'Payment',
+    isRTL ? 'تأكيد' : 'Confirm',
   ];
 
   const PAYMENT_METHODS = [
-    { 
-      id: 'paymob', 
-      icon: CreditCard, 
-      label: isRTL ? '╪ذ╪╖╪د┘é╪ر ╪د╪خ╪ز┘à╪د┘' : 'Credit / Debit Card', 
-      sub: isRTL ? '┘┘è╪▓╪د╪î ┘à╪د╪│╪ز╪▒┘â╪د╪▒╪»╪î ┘à┘è╪▓╪ر ╪╣╪ذ╪▒ ╪ذ╪د┘è ┘à┘ê╪ذ' : 'Visa, Mastercard, Meeza via Paymob' 
+    {
+      id: 'paymob',
+      icon: CreditCard,
+      label: isRTL ? 'بطاقة ائتمان' : 'Credit / Debit Card',
+      sub: isRTL ? 'فيزا، ماستركارد، ميزة عبر Paymob' : 'Visa, Mastercard, Meeza via Paymob',
     },
-    { 
-      id: 'fawry', 
-      icon: Building2, 
-      label: isRTL ? '┘┘ê╪▒┘è' : 'Fawry', 
-      sub: isRTL ? '╪د╪»┘╪╣ ┘┘è ╪ث┘è ┘à┘┘╪░ ┘┘ê╪▒┘è' : 'Pay at any Fawry outlet' 
+    {
+      id: 'fawry',
+      icon: Building2,
+      label: isRTL ? 'فوري' : 'Fawry',
+      sub: isRTL ? 'ادفع في أي منفذ فوري' : 'Pay at any Fawry outlet',
     },
-    { 
-      id: 'cod', 
-      icon: Banknote, 
-      label: isRTL ? '╪د┘╪»┘╪╣ ╪╣┘╪» ╪د┘╪د╪│╪ز┘╪د┘à' : 'Cash on Delivery', 
-      sub: isRTL ? '╪د╪»┘╪╣ ╪╣┘╪» ╪د╪│╪ز┘╪د┘à ╪╖┘╪ذ┘â' : 'Pay when you receive' 
+    {
+      id: 'cod',
+      icon: Banknote,
+      label: isRTL ? 'الدفع عند الاستلام' : 'Cash on Delivery',
+      sub: isRTL ? 'ادفع عند استلام طلبك' : 'Pay when you receive',
     },
   ];
 
@@ -142,15 +142,15 @@ export default function CartPage() {
 
       toast.success(
         isRTL
-          ? `╪ز┘à ╪ز╪╖╪ذ┘è┘é ╪د┘┘â┘ê╪ذ┘ê┘! ╪«╪╡┘à ${discountValue.toLocaleString()} ╪ش.┘à ≡اë`
-          : `Coupon applied! ${discountValue.toLocaleString()} EGP off ≡اë`,
+          ? `تم تطبيق الكوبون! خصم ${discountValue.toLocaleString()} ج.م`
+          : `Coupon applied! ${discountValue.toLocaleString()} EGP off`,
         { style: { borderRadius: '12px' } }
       );
       return;
     } catch (err) {
       toast.error(
         isRTL
-          ? '┘â┘ê╪ذ┘ê┘ ╪║┘è╪▒ ╪╡╪د┘╪ص ╪ث┘ê ┘à┘╪ز┘ç┘è ╪د┘╪╡┘╪د╪ص┘è╪ر'
+          ? 'كوبون غير صالح أو منتهي الصلاحية'
           : 'Invalid or expired coupon code',
         { style: { borderRadius: '12px' } }
       );
@@ -162,6 +162,20 @@ export default function CartPage() {
   const handlePlaceOrder = async () => {
     setOrderLoading(true);
     try {
+      let checkoutItems = items;
+      if (isAuthenticated && isCustomer) {
+        const synced = await fetchCart();
+        if (Array.isArray(synced)) checkoutItems = synced;
+      }
+
+      if (checkoutItems.length === 0) {
+        toast.error(
+          isRTL ? 'السلة فارغة' : 'Your cart is empty',
+          { style: { borderRadius: '12px' } }
+        );
+        return;
+      }
+
       const orderData = {
         shippingAddress: {
           fullName: delivery.name?.trim() || 'Customer',
@@ -179,7 +193,7 @@ export default function CartPage() {
       const railwayOrderId = orderPayload._id || orderPayload.id;
 
       const enrichedItems = await Promise.all(
-        items.map(async (item) => {
+        checkoutItems.map(async (item) => {
           const productId = item.id || item.productId;
           let brandId = item.brandId;
           let brandName = item.brandName;
@@ -214,8 +228,14 @@ export default function CartPage() {
             ),
           ],
           items: enrichedItems,
-          subtotal,
-          totalAmount: subtotal,
+          subtotal: checkoutItems.reduce(
+            (sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 1),
+            0
+          ),
+          totalAmount: checkoutItems.reduce(
+            (sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 1),
+            0
+          ),
           paymentMethod: selectedPayment,
           status: orderPayload.status || 'pending',
           shippingAddress: orderData.shippingAddress,
@@ -229,7 +249,7 @@ export default function CartPage() {
       const msg = err.response?.data?.message;
       toast.error(
         isRTL
-          ? `┘╪┤┘ ╪ح╪ز┘à╪د┘à ╪د┘╪╖┘╪ذ: ${msg || '┘è╪▒╪ش┘ë ╪د┘┘à╪ص╪د┘ê┘╪ر ┘à╪ش╪»╪»╪د┘ï'}`
+          ? `فشل إتمام الطلب: ${msg || 'يرجى المحاولة مجدداً'}`
           : `Order failed: ${msg || 'Please try again'}`,
         { style: { borderRadius: '12px' } }
       );
@@ -248,13 +268,13 @@ export default function CartPage() {
             <CheckCircle className="text-emerald-600 dark:text-emerald-400" size={40} />
           </div>
           <h2 className="text-3xl font-display font-bold text-gray-900 dark:text-dark-text mb-3">
-            {isRTL ? '╪ز┘à ╪ز┘é╪»┘è┘à ╪د┘╪╖┘╪ذ! ≡اë' : 'Order Placed! ≡اë'}
+            {isRTL ? 'تم تقديم الطلب!' : 'Order Placed!'}
           </h2>
           <p className="text-gray-600 dark:text-dark-muted mb-2">
-            {isRTL ? '╪ز┘à ╪ز┘é╪»┘è┘à ╪╖┘╪ذ┘â ╪ذ┘╪ش╪د╪ص.' : 'Your order has been placed successfully.'}
+            {isRTL ? 'تم تقديم طلبك بنجاح.' : 'Your order has been placed successfully.'}
           </p>
           <p className="text-gray-500 dark:text-dark-muted text-sm mb-8">
-            {isRTL ? '╪ش╪د╪▒┘è ╪ز┘ê╪ش┘è┘ç┘â ┘╪╖┘╪ذ╪د╪ز┘â...' : 'Redirecting to your orders...'}
+            {isRTL ? 'جاري توجيهك لطلباتك...' : 'Redirecting to your orders...'}
           </p>
           <div className="flex items-center justify-center gap-2 text-emerald-600">
             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-bounce" style={{ animationDelay: '0ms' }}></div>
@@ -294,11 +314,11 @@ export default function CartPage() {
         {items.length === 0 && step === 0 && (
           <div className="text-center py-20">
             <ShoppingCart className="mx-auto text-gray-300 dark:text-dark-muted mb-4" size={64} />
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-dark-text mb-2">{isRTL ? '╪│┘╪ز┘â ┘╪د╪▒╪║╪ر' : t('cart.empty')}</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-dark-text mb-2">{isRTL ? 'سلتك فارغة' : t('cart.empty')}</h2>
             <p className="text-gray-500 dark:text-dark-muted mb-6">
-              {isRTL ? '╪د┘â╪ز╪┤┘ ╪ث┘╪╢┘ ╪د┘┘à╪د╪▒┘â╪د╪ز ┘ê╪د┘┘à┘╪ز╪ش╪د╪ز ╪د┘┘à╪╡╪▒┘è╪ر' : 'Discover amazing Egyptian brands and products'}
+              {isRTL ? 'اكتشف أفضل الماركات والمنتجات المصرية' : 'Discover amazing Egyptian brands and products'}
             </p>
-            <Link to="/products" className="btn-primary">{isRTL ? '┘à╪ز╪د╪ذ╪╣╪ر ╪د┘╪ز╪│┘ê┘é' : t('cart.continueShopping')}</Link>
+            <Link to="/products" className="btn-primary">{isRTL ? 'متابعة التسوق' : t('cart.continueShopping')}</Link>
           </div>
         )}
 
@@ -309,10 +329,10 @@ export default function CartPage() {
             <div className="lg:col-span-2">
               <div className={`flex items-center justify-between mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                 <h2 className="text-xl font-display font-bold text-gray-900 dark:text-dark-text">
-                  {isRTL ? `╪│┘╪ز┘â (${itemCount} ┘à┘╪ز╪ش╪د╪ز)` : `Your Cart (${itemCount} items)`}
+                  {isRTL ? `سلتك (${itemCount} منتجات)` : `Your Cart (${itemCount} items)`}
                 </h2>
                 <Link to="/products" className={`flex items-center gap-1 text-sm text-brand-gold hover:underline ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  <ArrowLeft size={14} className={isRTL ? 'rotate-180' : ''} /> {isRTL ? '┘à╪ز╪د╪ذ╪╣╪ر ╪د┘╪ز╪│┘ê┘é' : t('cart.continueShopping')}
+                  <ArrowLeft size={14} className={isRTL ? 'rotate-180' : ''} /> {isRTL ? 'متابعة التسوق' : t('cart.continueShopping')}
                 </Link>
               </div>
 
@@ -353,7 +373,7 @@ export default function CartPage() {
                             <h3 className="text-sm font-semibold text-gray-900 dark:text-dark-text leading-tight">{item.name}</h3>
                             {item.options?.size && (
                               <p className="text-xs text-gray-500 dark:text-dark-muted mt-0.5">
-                                {item.options.size}{item.options.color && ` ┬╖ ${item.options.color}`}
+                                {item.options.size}{item.options.color && ` · ${item.options.color}`}
                               </p>
                             )}
                           </div>
@@ -383,7 +403,7 @@ export default function CartPage() {
                             </button>
                           </div>
                           <span className="font-bold text-brand-navy dark:text-brand-gold">
-                            {((Number(item.price) || 0) * (Number(item.quantity) || 1)).toLocaleString()} {isRTL ? '╪ش.┘à' : t('common.egp')}
+                            {((Number(item.price) || 0) * (Number(item.quantity) || 1)).toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}
                           </span>
                         </div>
                       </div>
@@ -434,31 +454,31 @@ export default function CartPage() {
             <div className="lg:col-span-1">
               <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 sticky top-24">
                 <h3 className="font-display font-bold text-xl text-gray-900 dark:text-dark-text mb-5">
-                  {isRTL ? '┘à┘╪«╪╡ ╪د┘╪╖┘╪ذ' : 'Order Summary'}
+                  {isRTL ? 'ملخص الطلب' : 'Order Summary'}
                 </h3>
 
                 <div className="space-y-3 mb-5">
                   <div className={`flex justify-between text-sm ${isRTL ? 'flex-row-reverse' : ''}`}>
                     <span className="text-gray-600 dark:text-dark-muted">
-                      {isRTL ? `╪د┘┘à╪ش┘à┘ê╪╣ (${itemCount} ┘à┘╪ز╪ش╪د╪ز)` : `Subtotal (${itemCount} items)`}
+                      {isRTL ? `المجموع (${itemCount} منتجات)` : `Subtotal (${itemCount} items)`}
                     </span>
-                    <span className="font-semibold dark:text-dark-text">{subtotal.toLocaleString()} {isRTL ? '╪ش.┘à' : t('common.egp')}</span>
+                    <span className="font-semibold dark:text-dark-text">{subtotal.toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}</span>
                   </div>
                   <div className={`flex justify-between text-sm ${isRTL ? 'flex-row-reverse' : ''}`}>
-                    <span className="text-gray-600 dark:text-dark-muted">{isRTL ? '╪د┘╪┤╪ص┘' : 'Shipping'}</span>
+                    <span className="text-gray-600 dark:text-dark-muted">{isRTL ? 'الشحن' : 'Shipping'}</span>
                     <span className={`font-semibold ${shippingCost === 0 ? 'text-emerald-600 dark:text-emerald-400' : 'dark:text-dark-text'}`}>
-                      {shippingCost === 0 ? (isRTL ? '┘à╪ش╪د┘┘è' : 'Free') : `${shippingCost} ${isRTL ? '╪ش.┘à' : t('common.egp')}`}
+                      {shippingCost === 0 ? (isRTL ? 'مجاني' : 'Free') : `${shippingCost} ${isRTL ? 'ج.م' : t('common.egp')}`}
                     </span>
                   </div>
                   {appliedPromo && (
                     <div className={`flex justify-between text-sm ${isRTL ? 'flex-row-reverse' : ''}`}>
-                      <span className="text-emerald-600 dark:text-emerald-400">{isRTL ? `╪«╪╡┘à (${appliedPromo})` : `Discount (${appliedPromo})`}</span>
-                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">-{discount.toLocaleString()} {isRTL ? '╪ش.┘à' : t('common.egp')}</span>
+                      <span className="text-emerald-600 dark:text-emerald-400">{isRTL ? `خصم (${appliedPromo})` : `Discount (${appliedPromo})`}</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">-{discount.toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}</span>
                     </div>
                   )}
                   <div className={`border-t border-gray-100 dark:border-dark-border pt-3 flex justify-between font-bold text-lg ${isRTL ? 'flex-row-reverse' : ''}`}>
-                    <span className="dark:text-dark-text">{isRTL ? '╪د┘╪ح╪ش┘à╪د┘┘è' : t('cart.total')}</span>
-                    <span className="text-brand-navy dark:text-brand-gold">{total.toLocaleString()} {isRTL ? '╪ش.┘à' : t('common.egp')}</span>
+                    <span className="dark:text-dark-text">{isRTL ? 'الإجمالي' : t('cart.total')}</span>
+                    <span className="text-brand-navy dark:text-brand-gold">{total.toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}</span>
                   </div>
                 </div>
 
@@ -470,7 +490,7 @@ export default function CartPage() {
                       type="text"
                       value={promoCode}
                       onChange={e => setPromoCode(e.target.value)}
-                      placeholder={isRTL ? '╪▒┘à╪▓ ╪ز╪▒┘ê┘è╪ش┘è...' : 'Promo code...'}
+                      placeholder={isRTL ? 'رمز ترويجي...' : 'Promo code...'}
                       className={`input-field ${isRTL ? 'pr-8 pl-4 text-right' : 'pl-8 pr-4'} py-2.5 text-sm`}
                     />
                   </div>
@@ -482,7 +502,7 @@ export default function CartPage() {
                     {promoLoading ? (
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-2" />
                     ) : (
-                      isRTL ? '╪ز╪╖╪ذ┘è┘é' : 'Apply'
+                      isRTL ? 'تطبيق' : 'Apply'
                     )}
                   </button>
                 </div>
@@ -491,11 +511,11 @@ export default function CartPage() {
                   onClick={() => setStep(1)}
                   className={`w-full btn-primary py-4 text-base flex items-center justify-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}
                 >
-                  {isRTL ? '╪د┘╪د╪│╪ز┘à╪▒╪د╪▒ ┘┘╪ز┘ê╪╡┘è┘' : 'Proceed to Delivery'} <ChevronRight size={18} className={isRTL ? 'rotate-180' : ''} />
+                  {isRTL ? 'الاستمرار للتوصيل' : 'Proceed to Delivery'} <ChevronRight size={18} className={isRTL ? 'rotate-180' : ''} />
                 </button>
 
                 <div className={`flex items-center justify-center gap-3 mt-4 text-xs text-gray-400 dark:text-dark-muted ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  <Shield size={12} /> {isRTL ? '╪ت┘à┘ ┬╖ ╪│╪ز╪▒╪د┘è╪ذ ┬╖ SSL 256 ╪ذ╪ز' : 'Secured ┬╖ Stripe ┬╖ 256-bit SSL'}
+                  <Shield size={12} /> {isRTL ? 'آمن · Stripe · SSL 256 بت' : 'Secured · Stripe · 256-bit SSL'}
                 </div>
               </div>
             </div>
@@ -506,7 +526,7 @@ export default function CartPage() {
         {step === 1 && (
           <div className="max-w-2xl mx-auto">
             <h2 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
-              {isRTL ? '╪ز┘╪د╪╡┘è┘ ╪د┘╪ز┘ê╪╡┘è┘' : 'Delivery Details'}
+              {isRTL ? 'تفاصيل التوصيل' : 'Delivery Details'}
             </h2>
             
             {/* Saved Addresses Selector */}
@@ -521,7 +541,7 @@ export default function CartPage() {
                 ) : savedAddresses.length > 0 ? (
                   <div>
                     <p className={`text-sm font-semibold text-gray-700 dark:text-dark-text mb-3 ${isRTL ? 'text-right' : ''}`}>
-                      {isRTL ? '╪د╪«╪ز╪▒ ╪╣┘┘ê╪د┘╪د┘ï ┘à╪ص┘┘ê╪╕╪د┘ï' : 'Choose a saved address'}
+                      {isRTL ? 'اختر عنواناً محفوظاً' : 'Choose a saved address'}
                     </p>
                     <div className="flex gap-3 overflow-x-auto pb-2">
                       {savedAddresses.map(addr => (
@@ -540,15 +560,15 @@ export default function CartPage() {
                         </button>
                       ))}
                       <button
-                        onClick={() => { setSelectedAddressId(null); setDelivery({ name: '', phone: '', street: '', governorate: isRTL ? '╪د┘┘é╪د┘ç╪▒╪ر' : 'Cairo', postalCode: '' }); }}
+                        onClick={() => { setSelectedAddressId(null); setDelivery({ name: '', phone: '', street: '', governorate: isRTL ? 'القاهرة' : 'Cairo', postalCode: '' }); }}
                         className="flex-shrink-0 w-40 p-3 rounded-xl border-2 border-dashed border-gray-300 dark:border-dark-border text-gray-500 dark:text-dark-muted hover:border-brand-gold hover:text-brand-gold transition-all text-sm font-medium flex items-center justify-center"
                       >
-                        + {isRTL ? '╪╣┘┘ê╪د┘ ╪ش╪»┘è╪»' : 'New address'}
+                        + {isRTL ? 'عنوان جديد' : 'New address'}
                       </button>
                     </div>
                     <div className="border-t border-gray-100 dark:border-dark-border my-4" />
                     <p className={`text-xs text-gray-400 dark:text-dark-muted mb-3 ${isRTL ? 'text-right' : ''}`}>
-                      {isRTL ? '╪ث┘ê ╪ث╪»╪«┘ ╪╣┘┘ê╪د┘╪د┘ï ╪ش╪»┘è╪»╪د┘ï:' : 'Or enter a new address:'}
+                      {isRTL ? 'أو أدخل عنواناً جديداً:' : 'Or enter a new address:'}
                     </p>
                   </div>
                 ) : null}
@@ -558,16 +578,16 @@ export default function CartPage() {
             <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 space-y-4 mb-6">
               <div className={`grid grid-cols-2 gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                 <div className={isRTL ? 'text-right' : 'text-left'}>
-                  <label className="input-label dark:text-dark-text block mb-1.5">{isRTL ? '╪د┘╪د╪│┘à ╪د┘┘â╪د┘à┘' : 'Full Name'}</label>
+                  <label className="input-label dark:text-dark-text block mb-1.5">{isRTL ? 'الاسم الكامل' : 'Full Name'}</label>
                   <input 
                     value={delivery.name} 
                     onChange={e => setDelivery({...delivery, name: e.target.value})} 
-                    placeholder={isRTL ? '┘╪د╪»┘è╪ر ┘à╪ص┘à╪»' : 'Nadia Mohamed'} 
+                    placeholder={isRTL ? 'نادية محمد' : 'Nadia Mohamed'} 
                     className={`input-field ${isRTL ? 'text-right' : ''}`} 
                   />
                 </div>
                 <div className={isRTL ? 'text-right' : 'text-left'}>
-                  <label className="input-label dark:text-dark-text block mb-1.5">{isRTL ? '╪▒┘é┘à ╪د┘┘ç╪د╪ز┘' : 'Phone Number'}</label>
+                  <label className="input-label dark:text-dark-text block mb-1.5">{isRTL ? 'رقم الهاتف' : 'Phone Number'}</label>
                   <input 
                     value={delivery.phone} 
                     onChange={e => setDelivery({...delivery, phone: e.target.value})} 
@@ -577,31 +597,31 @@ export default function CartPage() {
                 </div>
               </div>
               <div className={isRTL ? 'text-right' : 'text-left'}>
-                <label className="input-label dark:text-dark-text block mb-1.5">{isRTL ? '╪╣┘┘ê╪د┘ ╪د┘╪┤╪د╪▒╪╣' : 'Street Address'}</label>
+                <label className="input-label dark:text-dark-text block mb-1.5">{isRTL ? 'عنوان الشارع' : 'Street Address'}</label>
                 <input 
                   value={delivery.street} 
                   onChange={e => setDelivery({...delivery, street: e.target.value})} 
-                  placeholder={isRTL ? '5 ╪┤╪د╪▒╪╣ ╪╖┘╪╣╪ز ╪ص╪▒╪ذ╪î ┘ê╪│╪╖ ╪د┘╪ذ┘╪»╪î ╪د┘┘é╪د┘ç╪▒╪ر' : '5 Talaat Harb St, Downtown Cairo'} 
+                  placeholder={isRTL ? '5 شارع طلعت حرب، وسط البلد، القاهرة' : '5 Talaat Harb St, Downtown Cairo'} 
                   className={`input-field ${isRTL ? 'text-right' : ''}`} 
                 />
               </div>
               <div className={`grid grid-cols-2 gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                 <div className={isRTL ? 'text-right' : 'text-left'}>
-                  <label className="input-label dark:text-dark-text block mb-1.5">{isRTL ? '╪د┘┘à╪ص╪د┘╪╕╪ر' : 'Governorate'}</label>
+                  <label className="input-label dark:text-dark-text block mb-1.5">{isRTL ? 'المحافظة' : 'Governorate'}</label>
                   <select 
                     value={delivery.governorate} 
                     onChange={e => setDelivery({...delivery, governorate: e.target.value})} 
                     className={`input-field ${isRTL ? 'text-right pr-4 pl-10' : ''}`}
                   >
                     {[
-                      { en: 'Cairo', ar: '╪د┘┘é╪د┘ç╪▒╪ر' },
-                      { en: 'Alexandria', ar: '╪د┘╪ح╪│┘â┘╪»╪▒┘è╪ر' },
-                      { en: 'Giza', ar: '╪د┘╪ش┘è╪▓╪ر' },
-                      { en: 'Luxor', ar: '╪د┘╪ث┘é╪╡╪▒' },
-                      { en: 'Aswan', ar: '╪ث╪│┘ê╪د┘' },
-                      { en: 'Port Said', ar: '╪ذ┘ê╪▒╪│╪╣┘è╪»' },
-                      { en: 'Suez', ar: '╪د┘╪│┘ê┘è╪│' },
-                      { en: 'Fayoum', ar: '╪د┘┘┘è┘ê┘à' }
+                      { en: 'Cairo', ar: 'القاهرة' },
+                      { en: 'Alexandria', ar: 'الإسكندرية' },
+                      { en: 'Giza', ar: 'الجيزة' },
+                      { en: 'Luxor', ar: 'الأقصر' },
+                      { en: 'Aswan', ar: 'أسوان' },
+                      { en: 'Port Said', ar: 'بورسعيد' },
+                      { en: 'Suez', ar: 'السويس' },
+                      { en: 'Fayoum', ar: 'الفيوم' },
                     ].map((g, idx) => (
                       <option 
                         key={g.en || g.ar || idx} 
@@ -612,7 +632,7 @@ export default function CartPage() {
                   </select>
                 </div>
                 <div className={isRTL ? 'text-right' : 'text-left'}>
-                  <label className="input-label dark:text-dark-text block mb-1.5">{isRTL ? '╪د┘╪▒┘à╪▓ ╪د┘╪ذ╪▒┘è╪»┘è' : 'Postal Code'}</label>
+                  <label className="input-label dark:text-dark-text block mb-1.5">{isRTL ? 'الرمز البريدي' : 'Postal Code'}</label>
                   <input 
                     value={delivery.postalCode} 
                     onChange={e => setDelivery({...delivery, postalCode: e.target.value})} 
@@ -624,7 +644,7 @@ export default function CartPage() {
             </div>
             <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
               <button onClick={() => setStep(0)} className={`btn-ghost flex items-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                <ArrowLeft size={16} className={isRTL ? 'rotate-180' : ''} /> {isRTL ? '╪▒╪ش┘ê╪╣' : 'Back'}
+                <ArrowLeft size={16} className={isRTL ? 'rotate-180' : ''} /> {isRTL ? 'رجوع' : 'Back'}
               </button>
               <button
                 onClick={() => canProceedDelivery && setStep(2)}
@@ -642,7 +662,7 @@ export default function CartPage() {
         {step === 2 && (
           <div className="max-w-2xl mx-auto">
             <h2 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
-              {isRTL ? '╪╖╪▒┘è┘é╪ر ╪د┘╪»┘╪╣' : 'Payment Method'}
+              {isRTL ? 'طريقة الدفع' : 'Payment Method'}
             </h2>
             <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 mb-6">
               <div className="space-y-3">
@@ -674,7 +694,7 @@ export default function CartPage() {
             </div>
             <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
               <button onClick={() => setStep(1)} className={`btn-ghost flex items-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                <ArrowLeft size={16} className={isRTL ? 'rotate-180' : ''} /> {isRTL ? '╪▒╪ش┘ê╪╣' : 'Back'}
+                <ArrowLeft size={16} className={isRTL ? 'rotate-180' : ''} /> {isRTL ? 'رجوع' : 'Back'}
               </button>
               <button onClick={() => setStep(3)} className={`flex-1 btn-primary py-4 text-base flex items-center justify-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
                 {isRTL ? 'مراجعة الطلب' : 'Review Order'}
@@ -688,29 +708,29 @@ export default function CartPage() {
         {step === 3 && (
           <div className="max-w-2xl mx-auto">
             <h2 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
-              {isRTL ? '┘à╪▒╪د╪ش╪╣╪ر ╪╖┘╪ذ┘â' : 'Review Your Order'}
+              {isRTL ? 'مراجعة طلبك' : 'Review Your Order'}
             </h2>
 
             {/* Items summary */}
             <div className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 mb-4 ${isRTL ? 'text-right' : ''}`}>
-              <h3 className="font-semibold text-gray-900 dark:text-dark-text mb-3">{isRTL ? '┘à┘╪ز╪ش╪د╪ز ╪د┘╪╖┘╪ذ' : 'Order Items'}</h3>
+              <h3 className="font-semibold text-gray-900 dark:text-dark-text mb-3">{isRTL ? 'منتجات الطلب' : 'Order Items'}</h3>
               {items.map((item, idx) => (
                 <div key={item.key || item.id || idx} className={`flex justify-between items-center py-2 border-b border-gray-50 dark:border-dark-border last:border-0 ${isRTL ? 'flex-row-reverse' : ''}`}>
                   <span className="text-sm text-gray-700 dark:text-dark-muted">
                     {item.name} × {item.quantity}
                   </span>
-                  <span className="text-sm font-semibold dark:text-dark-text">{((Number(item.price) || 0) * (Number(item.quantity) || 1)).toLocaleString()} {isRTL ? '╪ش.┘à' : t('common.egp')}</span>
+                  <span className="text-sm font-semibold dark:text-dark-text">{((Number(item.price) || 0) * (Number(item.quantity) || 1)).toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}</span>
                 </div>
               ))}
               <div className={`flex justify-between items-center pt-3 font-bold text-lg ${isRTL ? 'flex-row-reverse' : ''}`}>
-                <span className="dark:text-dark-text">{isRTL ? '╪د┘╪ح╪ش┘à╪د┘┘è' : t('cart.total')}</span>
-                <span className="text-brand-navy dark:text-brand-gold">{total.toLocaleString()} {isRTL ? '╪ش.┘à' : t('common.egp')}</span>
+                <span className="dark:text-dark-text">{isRTL ? 'الإجمالي' : t('cart.total')}</span>
+                <span className="text-brand-navy dark:text-brand-gold">{total.toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}</span>
               </div>
             </div>
 
             {/* Delivery summary */}
             <div className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 mb-4 ${isRTL ? 'text-right' : ''}`}>
-              <h3 className="font-semibold text-gray-900 dark:text-dark-text mb-3">{isRTL ? '╪ز┘ê╪╡┘è┘ ╪ح┘┘ë' : 'Delivery To'}</h3>
+              <h3 className="font-semibold text-gray-900 dark:text-dark-text mb-3">{isRTL ? 'توصيل إلى' : 'Delivery To'}</h3>
               <p className="text-sm text-gray-700 dark:text-dark-text">{delivery.name}</p>
               <p className="text-sm text-gray-500 dark:text-dark-muted">{delivery.phone}</p>
               <p className="text-sm text-gray-500 dark:text-dark-muted">{delivery.street}, {delivery.governorate}</p>
@@ -718,7 +738,7 @@ export default function CartPage() {
 
             {/* Payment summary */}
             <div className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 mb-6 ${isRTL ? 'text-right' : ''}`}>
-              <h3 className="font-semibold text-gray-900 dark:text-dark-text mb-3">{isRTL ? '╪╖╪▒┘è┘é╪ر ╪د┘╪»┘╪╣' : 'Payment Method'}</h3>
+              <h3 className="font-semibold text-gray-900 dark:text-dark-text mb-3">{isRTL ? 'طريقة الدفع' : 'Payment Method'}</h3>
               <p className="text-sm text-gray-700 dark:text-dark-text">
                 {PAYMENT_METHODS.find(m => m.id === selectedPayment)?.label}
               </p>
@@ -726,7 +746,7 @@ export default function CartPage() {
 
             <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
               <button onClick={() => setStep(2)} className={`btn-ghost flex items-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                <ArrowLeft size={16} className={isRTL ? 'rotate-180' : ''} /> {isRTL ? '╪▒╪ش┘ê╪╣' : 'Back'}
+                <ArrowLeft size={16} className={isRTL ? 'rotate-180' : ''} /> {isRTL ? 'رجوع' : 'Back'}
               </button>
               <button 
                 onClick={handlePlaceOrder} 
@@ -736,7 +756,7 @@ export default function CartPage() {
                 {orderLoading ? (
                   <span className="flex items-center justify-center gap-2">
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    {isRTL ? '╪ش╪د╪▒┘è ╪ح╪ز┘à╪د┘à ╪د┘╪╖┘╪ذ...' : 'Placing order...'}
+                    {isRTL ? 'جاري إتمام الطلب...' : 'Placing order...'}
                   </span>
                 ) : (
                   <span className={`flex items-center justify-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
@@ -747,7 +767,7 @@ export default function CartPage() {
               </button>
             </div>
             <p className={`text-center text-xs text-gray-400 dark:text-dark-muted mt-3 flex items-center justify-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
-              <Shield size={11} /> {isRTL ? '╪ت┘à┘ ┬╖ ╪│╪ز╪▒╪د┘è╪ذ ┬╖ SSL 256 ╪ذ╪ز' : 'Secured ┬╖ Stripe ┬╖ 256-bit SSL'}
+              <Shield size={11} /> {isRTL ? 'آمن · Stripe · SSL 256 بت' : 'Secured · Stripe · 256-bit SSL'}
             </p>
           </div>
         )}

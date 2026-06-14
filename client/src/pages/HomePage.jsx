@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowRight, Star, Shield, Zap, Heart,
@@ -10,8 +10,9 @@ import BrandCard from '../components/BrandCard';
 import { testimonials } from '../data/mockData';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
-import { productsAPI, brandsAPI, categoriesAPI } from '../services/api';
-import { mapProduct, mapBrand, mapCategory } from '../utils/mappers';
+import { productsAPI, brandsAPI, categoriesAPI, aiAPI, loadLocalProductImages, enrichProductsWithLocalImages, sanitizeFeaturedLocalStorage } from '../services/api';
+import { mapProduct, mapBrand, mapCategory, hydrateProductImages } from '../utils/mappers';
+import { filterHomepageQualityProducts, buildTrendingDisplayList } from '../utils/productQuality';
 
 function CountUp({ target, suffix = '', duration = 2000 }) {
   const [count, setCount] = useState(0);
@@ -56,6 +57,8 @@ export default function HomePage() {
   const [activeTab, setActiveTab] = useState('Popular');
   const [featuredProducts, setFeaturedProducts] = useState([]);
   const [trendingProducts, setTrendingProducts] = useState([]);
+  const [topRatedProducts, setTopRatedProducts] = useState([]);
+  const [newArrivalProducts, setNewArrivalProducts] = useState([]);
   const [topBrands, setTopBrands] = useState([]);
   const [categories, setCategories] = useState([]);
   const [globalBrands, setGlobalBrands] = useState([]);
@@ -63,9 +66,25 @@ export default function HomePage() {
   const [brandsLoading, setBrandsLoading] = useState(true);
   const { ref: featuresRef, inView: featuresInView } = useInView({ triggerOnce: true, threshold: 0.1 });
 
+  const mergeUniqueProducts = (...lists) => {
+    const seen = new Set();
+    const merged = [];
+    lists.forEach((list) => {
+      if (!Array.isArray(list)) return;
+      list.forEach((product) => {
+        const key = String(product?.id || product?.slug || product?.name || '');
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        merged.push(product);
+      });
+    });
+    return merged;
+  };
+
   useEffect(() => {
     const fetchData = async () => {
-      // Fetch products
+      let catalog = [];
+
       try {
         setProductsLoading(true);
         const res = await productsAPI.getAll({ page: 1, limit: 100 });
@@ -75,10 +94,14 @@ export default function HomePage() {
           res.data?.items ||
           (Array.isArray(res.data) ? res.data : []);
 
-        let merged = [];
         if (Array.isArray(raw) && raw.length > 0) {
-          merged = raw.map(mapProduct);
+          catalog = raw.map(mapProduct);
         }
+
+        const catalogIds = new Set(
+          catalog.map((product) => String(product.id || '')).filter(Boolean)
+        );
+        sanitizeFeaturedLocalStorage(catalogIds);
 
         const adminFeatured = localStorage.getItem('brandhive_featured_products');
         if (adminFeatured) {
@@ -87,7 +110,7 @@ export default function HomePage() {
             if (Array.isArray(parsed) && parsed.length > 0) {
               const adminMapped = parsed.map(mapProduct);
               const seen = new Set();
-              merged = [...adminMapped, ...merged].filter((product) => {
+              catalog = [...adminMapped, ...catalog].filter((product) => {
                 const key = product.id || product.slug || product.name;
                 if (!key || seen.has(key)) return false;
                 seen.add(key);
@@ -97,14 +120,82 @@ export default function HomePage() {
           } catch { /* ignore stale cache */ }
         }
 
-        setFeaturedProducts(merged);
+        catalog = filterHomepageQualityProducts(catalog);
       } catch {
-        setFeaturedProducts([]);
-      } finally {
-        setProductsLoading(false);
+        catalog = [];
       }
 
-      // Fetch brands
+      const pickProducts = (response) => {
+        const raw =
+          response?.data?.data ||
+          response?.data?.products ||
+          response?.data?.items ||
+          (Array.isArray(response?.data) ? response.data : []);
+        return Array.isArray(raw) ? raw.map(mapProduct) : [];
+      };
+
+      let trending = [];
+      let topRated = [];
+      let newArrivals = [];
+
+      try {
+        trending = pickProducts(await aiAPI.getTrending()).slice(0, 8);
+      } catch {
+        trending = [];
+      }
+
+      try {
+        topRated = pickProducts(await productsAPI.getTopRated()).slice(0, 8);
+      } catch {
+        topRated = [];
+      }
+
+      try {
+        newArrivals = pickProducts(await productsAPI.getNewArrivals()).slice(0, 8);
+      } catch {
+        newArrivals = [];
+      }
+
+      catalog = hydrateProductImages(catalog, catalog);
+      trending = hydrateProductImages(trending, catalog);
+      topRated = hydrateProductImages(topRated, catalog);
+      newArrivals = hydrateProductImages(newArrivals, catalog);
+
+      const missingImageIds = [...catalog, ...trending, ...topRated, ...newArrivals]
+        .filter((product) => !product.image && product.id)
+        .map((product) => product.id);
+
+      if (missingImageIds.length > 0) {
+        await loadLocalProductImages([...new Set(missingImageIds)]);
+        catalog = enrichProductsWithLocalImages(catalog);
+        trending = enrichProductsWithLocalImages(trending);
+        topRated = enrichProductsWithLocalImages(topRated);
+        newArrivals = enrichProductsWithLocalImages(newArrivals);
+      }
+
+      catalog = filterHomepageQualityProducts(catalog);
+      trending = filterHomepageQualityProducts(trending);
+      topRated = filterHomepageQualityProducts(topRated, {
+        minCount: 8,
+        fallbackPool: [...catalog].sort((a, b) => (b.rating || 0) - (a.rating || 0)),
+        limit: 8,
+      });
+      newArrivals = filterHomepageQualityProducts(newArrivals, {
+        minCount: 8,
+        fallbackPool: [...catalog].sort(
+          (a, b) =>
+            new Date(b.createdAt || 0).getTime() -
+            new Date(a.createdAt || 0).getTime()
+        ),
+        limit: 8,
+      });
+
+      setFeaturedProducts(catalog);
+      setTrendingProducts(trending);
+      setTopRatedProducts(topRated);
+      setNewArrivalProducts(newArrivals);
+      setProductsLoading(false);
+
       try {
         setBrandsLoading(true);
         const res = await brandsAPI.getAll(1, 50);
@@ -127,7 +218,6 @@ export default function HomePage() {
         setBrandsLoading(false);
       }
 
-      // Fetch categories
       try {
         const res = await categoriesAPI.getAll();
         const raw = res.data?.data || res.data?.categories || res.data || [];
@@ -138,36 +228,41 @@ export default function HomePage() {
       } catch {
         setCategories([]);
       }
-
-      try {
-        const trendRes = await productsAPI.getTrending();
-        const trendData = trendRes.data?.data ||
-          trendRes.data?.products ||
-          trendRes.data || [];
-        setTrendingProducts(
-          Array.isArray(trendData)
-            ? trendData.slice(0, 8).map(mapProduct)
-            : []
-        );
-      } catch {
-        setTrendingProducts([]);
-      }
-
     };
     fetchData();
   }, []);
 
-  const tabProducts = {
-    Popular: featuredProducts
-      .sort((a,b) => b.rating - a.rating)
-      .slice(0, 8),
-    New: featuredProducts.slice(0, 8),
-    Featured: (featuredProducts.filter(p => p.isOnSale).length > 0
-      ? featuredProducts.filter(p => p.isOnSale)
-      : featuredProducts).slice(0, 8),
-  };
+  const tabProducts = useMemo(() => ({
+    Popular: mergeUniqueProducts(
+      topRatedProducts,
+      [...featuredProducts].sort((a, b) => (b.rating || 0) - (a.rating || 0))
+    ).slice(0, 8),
+    New: mergeUniqueProducts(
+      newArrivalProducts,
+      [...featuredProducts].sort(
+        (a, b) =>
+          new Date(b.createdAt || 0).getTime() -
+          new Date(a.createdAt || 0).getTime()
+      )
+    ).slice(0, 8),
+    Featured: mergeUniqueProducts(
+      featuredProducts.filter((p) => p.isOnSale),
+      featuredProducts
+    ).slice(0, 8),
+  }), [featuredProducts, topRatedProducts, newArrivalProducts]);
 
   const filteredProducts = tabProducts[activeTab] || [];
+
+  const displayTrendingProducts = useMemo(
+    () =>
+      buildTrendingDisplayList({
+        trending: trendingProducts,
+        catalog: featuredProducts,
+        excludeIds: filteredProducts.map((product) => product.id),
+        limit: 8,
+      }),
+    [trendingProducts, featuredProducts, filteredProducts]
+  );
 
   const stats = [
     { value: '12K+', label: t('home.hero.stats.brands'), icon: '🏪' },
@@ -458,7 +553,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {trendingProducts.length > 0 && (
+      {displayTrendingProducts.length > 0 && (
         <section className="py-16 bg-white dark:bg-dark-surface">
           <div className="page-container">
             <div className={`flex items-center justify-between mb-8 ${isRTL ? 'flex-row-reverse' : ''}`}>
@@ -472,13 +567,18 @@ export default function HomePage() {
                 <h2 className="text-3xl font-display font-bold text-gray-900 dark:text-dark-text">
                   {isRTL ? 'الأكثر رواجاً الآن' : 'Trending Now'}
                 </h2>
+                <p className="text-sm text-gray-500 dark:text-dark-muted mt-1">
+                  {isRTL
+                    ? 'حسب المشاهدات والمبيعات الأخيرة — مختلف عن المنتجات المميزة أعلاه'
+                    : 'Based on recent views & sales — distinct from featured picks above'}
+                </p>
               </div>
               <Link to="/products" className="text-brand-gold hover:underline text-sm font-medium">
                 {isRTL ? 'عرض الكل ←' : 'View All →'}
               </Link>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {trendingProducts.map(product => (
+              {displayTrendingProducts.map(product => (
                 <ProductCard
                   key={product.id}
                   product={product}

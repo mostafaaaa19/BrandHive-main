@@ -4,11 +4,47 @@ import { motion } from 'framer-motion';
 import { Clock, CheckCircle2, Mail, Home, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { brandsAPI, rememberSellerBrand, rememberSellerBrandName } from '../../services/api';
+import {
+  authAPI,
+  brandsAPI,
+  sellerAPI,
+  fetchMyBrandRequest,
+  getResponseArray,
+  rememberSellerBrand,
+  rememberSellerBrandName,
+  linkBrandFromFacets,
+} from '../../services/api';
 import toast from 'react-hot-toast';
 
+const isBrandApproved = (brand) =>
+  Boolean(
+    brand?.isVerified ||
+    brand?.isApproved ||
+    brand?.status === 'approved' ||
+    brand?.status === 'active'
+  );
+
+const brandMatchesUser = (brand, user, brandName) => {
+  const userId = user?.id || user?._id;
+  const nameMatch =
+    brandName &&
+    brand?.name?.toLowerCase() === String(brandName).toLowerCase();
+  const ownerId =
+    brand?.owner?._id ||
+    brand?.owner?.id ||
+    brand?.owner ||
+    brand?.userId ||
+    brand?.user?._id ||
+    brand?.user?.id ||
+    brand?.requestedBy?._id ||
+    brand?.requestedBy?.id ||
+    brand?.requestedBy;
+  const ownerMatch = userId && ownerId && String(ownerId) === String(userId);
+  return nameMatch || ownerMatch;
+};
+
 export default function SellerPendingPage() {
-  const { user, upgradeToSeller } = useAuth();
+  const { user, upgradeToSeller, refreshSession } = useAuth();
   const { isRTL } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
@@ -23,35 +59,91 @@ export default function SellerPendingPage() {
   useEffect(() => {
     if (approvedRef.current) return;
 
+    const applyApproval = async (serverUser, brand) => {
+      if (approvedRef.current) return;
+      approvedRef.current = true;
+      setBrandStatus('approved');
+
+      const refreshed = serverUser?.role
+        ? upgradeToSeller(serverUser)
+        : upgradeToSeller(await refreshSession());
+
+      const userId = refreshed?.id || refreshed?._id || user?.id || user?._id;
+      if (brand && userId) {
+        rememberSellerBrand(userId, brand);
+        rememberSellerBrandName(userId, brand.name || brandName, refreshed?.email || user?.email);
+      } else if (userId) {
+        await linkBrandFromFacets(refreshed || user);
+      }
+
+      toast.success(
+        isRTL ? 'تمت الموافقة على ماركتك! 🎉' : 'Your brand has been approved! 🎉',
+        { style: { borderRadius: '12px' }, duration: 4000 }
+      );
+      setTimeout(() => navigate('/seller/dashboard'), 2500);
+    };
+
     const checkStatus = async () => {
       try {
-        const res = await brandsAPI.getAll({ limit: 50 });
-        const brands = res.data?.data || res.data || [];
-        if (!Array.isArray(brands)) return;
+        const meRes = await authAPI.getMe();
+        const payload = meRes.data?.data || meRes.data;
+        const me = payload?.user || payload;
+        if (me?.role === 'seller' || me?.role === 'admin') {
+          let brand = null;
+          try {
+            const dashRes = await sellerAPI.getDashboard();
+            brand = dashRes.data?.data?.brand || dashRes.data?.brand || null;
+          } catch {
+            // dashboard optional during approval
+          }
+          await applyApproval(me, brand);
+          return;
+        }
+      } catch {
+        // continue with other checks
+      }
 
-        const brand = brands.find(b => {
-          const nameMatch = brandName && b.name?.toLowerCase() === brandName.toLowerCase();
-          const ownerMatch = user?._id && (
-            b.owner?._id === user._id ||
-            b.requestedBy === user._id ||
-            b.requestedBy?._id === user._id
-          );
-          return nameMatch || ownerMatch;
-        });
+      try {
+        const dashRes = await sellerAPI.getDashboard();
+        const brand = dashRes.data?.data?.brand || dashRes.data?.brand;
+        if (brand?._id || brand?.id) {
+          const refreshed = await refreshSession();
+          await applyApproval(refreshed, brand);
+          return;
+        }
+      } catch {
+        // not approved yet
+      }
 
-        if (brand?.isVerified || brand?.status === 'approved') {
-          if (approvedRef.current) return;
-          approvedRef.current = true;
-          setBrandStatus('approved');
-          upgradeToSeller();
-          const userId = user?.id || user?._id || 'default';
-          rememberSellerBrand(userId, brand);
-          rememberSellerBrandName(userId, brand.name, user?.email);
-          toast.success(
-            isRTL ? 'تمت الموافقة على ماركتك! 🎉' : 'Your brand has been approved! 🎉',
-            { style: { borderRadius: '12px' }, duration: 4000 }
-          );
-          setTimeout(() => navigate('/seller/dashboard'), 3000);
+      try {
+        const myRequest = await fetchMyBrandRequest(user);
+        const requestStatus = myRequest?.status || myRequest?.requestStatus;
+        if (myRequest && requestStatus === 'approved') {
+          const brand =
+            myRequest.brand ||
+            myRequest.approvedBrand || {
+              _id: myRequest.brandId || myRequest._id || myRequest.id,
+              id: myRequest.brandId || myRequest._id || myRequest.id,
+              name: myRequest.name || myRequest.brandName || brandName,
+              slug: myRequest.slug,
+            };
+          const refreshed = await refreshSession();
+          await applyApproval(refreshed, brand);
+          return;
+        }
+      } catch {
+        // requests endpoint may be admin-only on some backends
+      }
+
+      try {
+        const res = await brandsAPI.getAll({ limit: 100 });
+        const brands = getResponseArray(res);
+        const brand = brands.find(
+          (entry) => brandMatchesUser(entry, user, brandName) && isBrandApproved(entry)
+        );
+        if (brand) {
+          const refreshed = await refreshSession();
+          await applyApproval(refreshed, brand);
         }
       } catch {
         // silent fail on poll — user stays on pending screen
@@ -61,7 +153,7 @@ export default function SellerPendingPage() {
     checkStatus();
     const interval = setInterval(checkStatus, 15000);
     return () => clearInterval(interval);
-  }, [brandName, user, upgradeToSeller, navigate, isRTL]);
+  }, [brandName, user, upgradeToSeller, refreshSession, navigate, isRTL]);
 
   const steps = [
     {

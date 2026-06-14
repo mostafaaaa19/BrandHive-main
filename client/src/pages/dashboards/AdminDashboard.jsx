@@ -18,7 +18,9 @@ import {
   updateWithdrawalStatus,
   logAdminAction,
   fetchAdminAuditLogs,
+  finalizeBrandRequestApproval,
 } from '../../services/api';
+import { isHomepageQualityProduct } from '../../utils/productQuality';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../../context/LanguageContext';
 import toast from 'react-hot-toast';
@@ -1006,14 +1008,22 @@ function AdminFeaturedSlotsTab({ isRTL, productsAPI }) {
         toast.error(isRTL ? `الحد الأقصى ${MAX_SLOTS} منتجات` : `Maximum ${MAX_SLOTS} products`);
         return;
       }
+      if (!isHomepageQualityProduct(product)) {
+        toast.error(
+          isRTL
+            ? 'لا يمكن تمييز منتج بدون صورة أو باسم تجريبي'
+            : 'Cannot feature a product without an image or with a test name'
+        );
+        return;
+      }
       updated = [...featuredIds, id];
       toast.success(isRTL ? 'تم إضافة المنتج للمميزة ⭐' : 'Added to featured ⭐');
     }
     setFeaturedIds(updated);
-    const featuredProducts = allProducts.filter(p =>
-      updated.includes(p._id || p.id)
+    const featuredProducts = allProducts.filter(
+      (p) => updated.includes(p._id || p.id) && isHomepageQualityProduct(p)
     );
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(featuredProducts.map((p) => p._id || p.id)));
     localStorage.setItem('brandhive_featured_products', JSON.stringify(featuredProducts));
   };
 
@@ -1845,17 +1855,17 @@ export default function AdminDashboard() {
 
   const approveSeller = async (id) => {
     try {
-      await adminAPI.approveBrandRequest(id);
       const brand = brands.find((b) => b._id === id || b.id === id);
+      const { brandId } = await finalizeBrandRequestApproval(id, brand);
       await logAdminAction(user, {
         action: 'seller.approved',
         targetType: 'brand',
-        targetId: id,
+        targetId: brandId || id,
         targetLabel: brand?.name,
       });
       setBrands(prev => prev.map(b =>
         (b._id === id || b.id === id)
-          ? { ...b, isVerified: true, isApproved: true, isActive: true, status: 'approved' }
+          ? { ...b, isVerified: true, isApproved: true, isActive: true, status: 'approved', brandId: brandId || b.brandId }
           : b
       ));
       toast.success(
@@ -2296,11 +2306,7 @@ export default function AdminDashboard() {
                               <td className="py-3 px-2">
                                 <div className={`flex gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
                                   <button
-                                    onClick={() => {
-                                      adminAPI.approveBrandRequest(brand._id || brand.id);
-                                      setBrands(prev => prev.map(b => (b._id === brand._id || b.id === brand.id) ? { ...b, isVerified: true, isApproved: true, isActive: true, status: 'approved' } : b));
-                                      toast.success(isRTL ? 'تم قبول البائع!' : 'Seller approved!');
-                                    }}
+                                    onClick={() => approveSeller(brand._id || brand.id)}
                                     className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/20 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1"
                                   >
                                     <CheckCircle size={12} /> {isRTL ? 'قبول' : 'Approve'}

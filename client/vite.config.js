@@ -5,7 +5,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const apiTarget =
     env.VITE_API_PROXY || 'https://brandhive-apis-production.up.railway.app'
-  const chatTarget = env.VITE_CHAT_PROXY || 'http://localhost:3000'
+  const chatTarget = env.VITE_CHAT_PROXY || 'http://localhost:5000'
 
   return {
     plugins: [react()],

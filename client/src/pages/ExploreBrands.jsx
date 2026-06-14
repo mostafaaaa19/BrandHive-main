@@ -3,7 +3,7 @@ import { Search, Grid3X3, List, X } from 'lucide-react';
 import BrandCard from '../components/BrandCard';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
-import { brandsAPI } from '../services/api';
+import { brandsAPI, getResponseArray } from '../services/api';
 import { mapBrand } from '../utils/mappers';
 
 export default function ExploreBrands() {
@@ -38,10 +38,8 @@ export default function ExploreBrands() {
   useEffect(() => {
     const fetchBrands = async () => {
       try {
-        const res = await brandsAPI.getAll(1, 50);
-        const raw = res.data?.data || 
-                    res.data?.brands || 
-                    res.data || [];
+        const res = await brandsAPI.getAll({ page: 1, limit: 100 });
+        const raw = getResponseArray(res);
         setBrands(
           Array.isArray(raw) ? raw.map(mapBrand) : []
         );

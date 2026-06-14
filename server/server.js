@@ -23,6 +23,7 @@ app.use(cors({
     'http://localhost:5174',
     'http://localhost:5175',
     'http://localhost:3000',
+    'https://brandhive-main.vercel.app',
     'https://brand-hivee.vercel.app',
     'https://brandhive.vercel.app',
     /\.vercel\.app$/,
@@ -171,20 +172,30 @@ app.use((err, req, res, next) => {
 // DB Connection + Server Start
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/brandhive';
+const HOST = process.env.HOST || '0.0.0.0';
+
+const startServer = () => {
+  const server = app.listen(PORT, HOST, () => {
+    console.log(`🚀 BrandHive mirror server on http://${HOST}:${PORT}`);
+  });
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`❌ Port ${PORT} is already in use. Stop the other process or set PORT in server/.env`);
+      process.exit(1);
+    }
+    throw err;
+  });
+};
 
 mongoose.connect(MONGO_URI)
   .then(() => {
     console.log('✅ MongoDB connected');
-    app.listen(PORT, () => {
-      console.log(`🚀 BrandHive API running on http://localhost:${PORT}`);
-    });
+    startServer();
   })
   .catch(err => {
     console.error('❌ MongoDB connection error:', err.message);
-    console.log('⚠️  Starting server without database...');
-    app.listen(PORT, () => {
-      console.log(`🚀 BrandHive API running on http://localhost:${PORT} (no DB)`);
-    });
+    console.log('⚠️  Starting server without database (mirror routes will return 503)...');
+    startServer();
   });
 
 module.exports = app;

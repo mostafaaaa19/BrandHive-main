@@ -15,8 +15,11 @@ import {
   fetchSafeRecommendations,
   fetchMySupportTickets,
   cleanSupportMessageText,
+  reorderOrderToCart,
+  hydrateMyReviews,
 } from '../../services/api';
 import { mapProduct } from '../../utils/mappers';
+import { showOrderInvoice } from '../../utils/invoice';
 import { useAuth } from '../../context/AuthContext';
 import { useWishlist, useCart } from '../../context/CartContext';
 import { useTranslation } from 'react-i18next';
@@ -46,6 +49,32 @@ const STATUS_COLORS = {
   cancelled: 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400',
   CANCELLED: 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400',
   Cancelled: 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400',
+};
+
+const formatOrderProductLabel = (order, items, isRTL) => {
+  const rows = Array.isArray(items) && items.length > 0
+    ? items
+    : order?.items || order?.products || [];
+
+  if (rows.length === 0) {
+    return order?.product || (isRTL ? 'عدة منتجات' : 'Multiple items');
+  }
+
+  const first = rows[0];
+  const name =
+    first?.product?.name ||
+    first?.productName ||
+    first?.name ||
+    order?.product ||
+    (isRTL ? 'منتج' : 'Product');
+  const qty = Math.max(1, Number(first?.quantity) || 1);
+  const extraLines = rows.length - 1;
+
+  let label = qty > 1 ? `${name} × ${qty}` : name;
+  if (extraLines > 0) {
+    label += isRTL ? ` +${extraLines} أخرى` : ` +${extraLines} more`;
+  }
+  return label;
 };
 
 function NavItem({ icon: Icon, label, tab, activeTab, setActiveTab, badge, isRTL }) {
@@ -141,8 +170,8 @@ export default function UserDashboard() {
   const { t } = useTranslation();
   const { isRTL } = useLanguage();
   const { user, logout, updateUser, hasSellerApiAccess } = useAuth();
-  const { items: wishlistItems, toggleWishlist, moveToCart } = useWishlist();
-  const { addToCart } = useCart();
+  const { items: wishlistItems, toggleWishlist, moveToCart, moveAllToCart, fetchWishlist } = useWishlist();
+  const { addToCart, fetchCart } = useCart();
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'dashboard');
   const navigate = useNavigate();
@@ -158,6 +187,7 @@ export default function UserDashboard() {
     .slice(0, 2);
 
   const [orders, setOrders] = useState([]);
+  const [orderCount, setOrderCount] = useState(0);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState(null);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -173,6 +203,9 @@ export default function UserDashboard() {
   // Addresses state
   const [addresses, setAddresses] = useState([]);
   const [addressLoading, setAddressLoading] = useState(false);
+  const [defaultAddressId, setDefaultAddressId] = useState(null);
+  const [moveAllLoading, setMoveAllLoading] = useState(false);
+  const [invoiceLoading, setInvoiceLoading] = useState(null);
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [addressForm, setAddressForm] = useState({
     fullName: '', phone: '', street: '', city: '', governorate: 'Cairo',
@@ -222,7 +255,8 @@ export default function UserDashboard() {
       try {
         const res = await reviewsAPI.getMyReviews();
         const data = res.data?.data || res.data?.reviews || res.data || [];
-        setMyReviews(Array.isArray(data) ? data : []);
+        const list = Array.isArray(data) ? data : [];
+        setMyReviews(await hydrateMyReviews(list, { orders }));
       } catch {
         // 403 = admin account; 404 = no reviews yet — both show empty state silently
         setMyReviews([]);
@@ -231,7 +265,7 @@ export default function UserDashboard() {
       }
     };
     fetchMyReviews();
-  }, [activeTab, hasSellerApiAccess]);
+  }, [activeTab, hasSellerApiAccess, orders]);
 
   useEffect(() => {
     const fetchUnreadCount = async () => {
@@ -390,10 +424,28 @@ export default function UserDashboard() {
     setOrdersLoading(true);
     setOrdersError(null);
     try {
-      const res = await ordersAPI.getAll();
-      const data = res.data;
-      const list = Array.isArray(data) ? data : data?.data || data?.orders || [];
-      setOrders(list);
+      const [ordersRes, countRes] = await Promise.allSettled([
+        ordersAPI.getAll(),
+        ordersAPI.getCount(),
+      ]);
+      if (ordersRes.status === 'fulfilled') {
+        const data = ordersRes.value.data;
+        const list = Array.isArray(data) ? data : data?.data || data?.orders || [];
+        setOrders(list);
+        if (countRes.status !== 'fulfilled') {
+          setOrderCount(list.length);
+        }
+      } else {
+        setOrders([]);
+      }
+      if (countRes.status === 'fulfilled') {
+        const countData = countRes.value.data;
+        const count =
+          typeof countData === 'number'
+            ? countData
+            : countData?.count ?? countData?.data?.count ?? countData?.data ?? 0;
+        setOrderCount(Number(count) || 0);
+      }
     } catch (err) {
       // 401 / 403 = auth issue (admin accounts hit 403 on customer endpoints)
       // silently show empty state; only surface real errors
@@ -438,24 +490,27 @@ export default function UserDashboard() {
     }
   };
 
-  const handleReorder = async (orderId) => {
+  const handleReorder = async (orderId, orderFallback = null) => {
     if (!orderId) {
       toast.error(isRTL ? 'معرّف الطلب غير صالح' : 'Invalid order ID');
       return;
     }
     setReorderLoading(orderId);
     try {
-      await ordersAPI.reorder(orderId);
+      const result = await reorderOrderToCart(orderId, orderFallback);
+      await fetchCart();
       toast.success(
-        isRTL ? 'تم إعادة الطلب بنجاح! 🛍️' : 'Order placed again successfully! 🛍️',
+        isRTL
+          ? `تمت إضافة ${result.lineItems} منتج(ات) إلى السلة 🛒`
+          : `${result.lineItems} item(s) added to your cart 🛒`,
         { style: { borderRadius: '12px', fontFamily: isRTL ? 'Cairo' : 'Inter' } }
       );
-      const res = await ordersAPI.getAll();
-      const data = res.data?.data || res.data?.orders || [];
-      setOrders(Array.isArray(data) ? data : []);
+      navigate('/cart');
     } catch (err) {
       toast.error(
-        err.response?.data?.message || (isRTL ? 'فشل إعادة الطلب' : 'Failed to reorder'),
+        err.response?.data?.message ||
+          err.message ||
+          (isRTL ? 'فشل إعادة الطلب' : 'Failed to reorder'),
         { style: { borderRadius: '12px' } }
       );
     } finally {
@@ -495,11 +550,80 @@ export default function UserDashboard() {
     }
   };
 
+  const handleDownloadInvoice = async (orderId, orderFallback = null) => {
+    if (!orderId) return;
+    setInvoiceLoading(orderId);
+    try {
+      const result = await showOrderInvoice({
+        orderId,
+        orderFallback,
+        fetchOrder: ordersAPI.getMyOrder,
+        isRTL,
+        customerEmail: user?.email || '',
+        onBlocked: () => {
+          toast.error(
+            isRTL
+              ? 'اسمح بالنوافذ المنبثقة (Pop-ups) ثم حاول مجدداً'
+              : 'Allow pop-ups for this site, then try again'
+          );
+        },
+      });
+
+      if (result.type === 'local') {
+        toast.success(
+          isRTL
+            ? 'تم فتح الفاتورة — يمكنك طباعتها أو حفظها PDF 📄'
+            : 'Invoice opened — print or save as PDF 📄',
+          { style: { borderRadius: '12px' } }
+        );
+      } else {
+        toast.error(isRTL ? 'تعذر عرض الفاتورة' : 'Could not display invoice');
+      }
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || (isRTL ? 'فشل تحميل الفاتورة' : 'Failed to load invoice')
+      );
+    } finally {
+      setInvoiceLoading(null);
+    }
+  };
+
+  const setDefaultAddress = async (id) => {
+    try {
+      await addressesAPI.setDefault(id);
+      setDefaultAddressId(id);
+      toast.success(isRTL ? 'تم تعيين العنوان الافتراضي ✅' : 'Default address updated ✅');
+      fetchAddresses();
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || (isRTL ? 'فشل تعيين العنوان' : 'Failed to set default address')
+      );
+    }
+  };
+
+  const handleMoveAllToCart = async () => {
+    setMoveAllLoading(true);
+    try {
+      await moveAllToCart(addToCart);
+      await fetchWishlist();
+      toast.success(isRTL ? 'تم نقل كل المفضلة إلى السلة ✅' : 'All wishlist items moved to cart ✅');
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || (isRTL ? 'فشل النقل' : 'Failed to move items')
+      );
+    } finally {
+      setMoveAllLoading(false);
+    }
+  };
+
   const fetchAddresses = async () => {
     try {
       const res = await addressesAPI.getAll();
       const list = res.data?.data || res.data || [];
-      setAddresses(Array.isArray(list) ? list : []);
+      const normalized = Array.isArray(list) ? list : [];
+      setAddresses(normalized);
+      const defaultAddr = normalized.find((addr) => addr.isDefault || addr.default);
+      if (defaultAddr?._id) setDefaultAddressId(defaultAddr._id);
     } catch {
       setAddresses([]);
     }
@@ -532,7 +656,7 @@ export default function UserDashboard() {
 
   const TABS = [
     { icon: LayoutDashboard, label: isRTL ? 'لوحة التحكم' : 'Dashboard', tab: 'dashboard' },
-    { icon: Package, label: isRTL ? 'طلباتي' : 'My Orders', tab: 'orders', badge: orders.length || 0 },
+    { icon: Package, label: isRTL ? 'طلباتي' : 'My Orders', tab: 'orders', badge: orderCount || orders.length || 0 },
     { icon: Heart, label: isRTL ? 'المفضلة' : 'Wishlist', tab: 'wishlist', badge: wishlistItems.length || 0 },
     { icon: Star, label: isRTL ? 'تقييماتي' : 'Reviews', tab: 'reviews', badge: myReviews.length || 0 },
     { icon: Settings, label: isRTL ? 'الإعدادات' : 'Settings', tab: 'settings' },
@@ -650,7 +774,7 @@ export default function UserDashboard() {
                 {/* Stats */}
                 <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 ${isRTL ? 'flex-row-reverse' : ''}`}>
                   {[
-                    { icon: Package, label: isRTL ? 'إجمالي الطلبات' : 'Total Orders', value: orders.length, color: 'bg-blue-100 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' },
+                    { icon: Package, label: isRTL ? 'إجمالي الطلبات' : 'Total Orders', value: orderCount || orders.length, color: 'bg-blue-100 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' },
                     { icon: Heart, label: isRTL ? 'المنتجات المفضلة' : 'Wishlist Items', value: wishlistItems.length, color: 'bg-rose-100 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400' },
                     { icon: Star, label: isRTL ? 'التقييمات المكتوبة' : 'Reviews Written', value: user?.reviewsCount || 0, color: 'bg-amber-100 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400' },
                     { icon: TrendingUp, label: isRTL ? 'ج.م تم توفيرها' : 'EGP Saved', value: (user?.savedAmount || 0).toLocaleString(), color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' },
@@ -738,7 +862,7 @@ export default function UserDashboard() {
                           const amount = Number(order.totalAmount || order.total || order.amount || 0);
                           const status = order.status || order.orderStatus || 'Pending';
                           const items = order.items || order.products || [];
-                          const productName = items[0]?.product?.name || items[0]?.name || order.product || 'Multiple items';
+                          const productName = formatOrderProductLabel(order, items, isRTL);
                           const brandName = items[0]?.product?.brand?.name || items[0]?.brandName || order.brand || '-';
 
                           return (
@@ -806,7 +930,7 @@ export default function UserDashboard() {
                           const amount = Number(order.totalAmount || order.total || order.amount || 0);
                           const status = order.status || order.orderStatus || 'Pending';
                           const items = order.items || order.products || [];
-                          const productName = items[0]?.product?.name || items[0]?.name || order.product || (isRTL ? 'عدة منتجات' : 'Multiple items');
+                          const productName = formatOrderProductLabel(order, items, isRTL);
                           const brandName = items[0]?.product?.brand?.name || items[0]?.brandName || order.brand || '-';
 
                           return (
@@ -838,10 +962,20 @@ export default function UserDashboard() {
                                 >
                                   {isRTL ? 'تتبع' : 'Track'}
                                 </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadInvoice(orderId, order)}
+                                  disabled={invoiceLoading === orderId}
+                                  className="text-xs text-gray-600 dark:text-dark-muted hover:underline disabled:opacity-50"
+                                >
+                                  {invoiceLoading === orderId
+                                    ? (isRTL ? '…' : '…')
+                                    : (isRTL ? 'فاتورة' : 'Invoice')}
+                                </button>
                                 {canReorder(status) && (
                                   <button
                                     type="button"
-                                    onClick={() => handleReorder(orderId)}
+                                    onClick={() => handleReorder(orderId, order)}
                                     disabled={reorderLoading === orderId}
                                     className="text-xs px-3 py-1.5 bg-brand-gold/10 text-brand-gold hover:bg-brand-gold/20 rounded-lg font-semibold transition-colors disabled:opacity-50"
                                   >
@@ -888,7 +1022,7 @@ export default function UserDashboard() {
                               const amount = Number(order.totalAmount || order.total || order.amount || 0);
                               const status = order.status || order.orderStatus || 'Pending';
                               const items = order.items || order.products || [];
-                              const productName = items[0]?.product?.name || items[0]?.name || order.product || 'Multiple items';
+                              const productName = formatOrderProductLabel(order, items, isRTL);
                               const brandName = items[0]?.product?.brand?.name || items[0]?.brandName || order.brand || '-';
 
                               return (
@@ -915,10 +1049,20 @@ export default function UserDashboard() {
                                       >
                                         {isRTL ? 'تتبع' : 'Track'}
                                       </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDownloadInvoice(orderId, order)}
+                                        disabled={invoiceLoading === orderId}
+                                        className="text-xs text-gray-600 dark:text-dark-muted hover:underline disabled:opacity-50"
+                                      >
+                                        {invoiceLoading === orderId
+                                          ? '…'
+                                          : (isRTL ? 'فاتورة' : 'Invoice')}
+                                      </button>
                                       {canReorder(status) && (
                                         <button
                                           type="button"
-                                          onClick={() => handleReorder(orderId)}
+                                          onClick={() => handleReorder(orderId, order)}
                                           disabled={reorderLoading === orderId}
                                           className="text-xs px-3 py-1.5 bg-brand-gold/10 text-brand-gold hover:bg-brand-gold/20 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-1"
                                         >
@@ -960,9 +1104,23 @@ export default function UserDashboard() {
             {/* Wishlist Tab */}
             {activeTab === 'wishlist' && (
               <div>
-                <h1 className="text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6">
-                  {isRTL ? 'قائمة المفضلة' : 'My Wishlist'}
-                </h1>
+                <div className={`flex items-center justify-between gap-3 mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <h1 className="text-2xl font-display font-bold text-gray-900 dark:text-dark-text">
+                    {isRTL ? 'قائمة المفضلة' : 'My Wishlist'}
+                  </h1>
+                  {wishlistItems.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleMoveAllToCart}
+                      disabled={moveAllLoading}
+                      className="btn-primary text-sm py-2 px-4 disabled:opacity-50"
+                    >
+                      {moveAllLoading
+                        ? (isRTL ? 'جاري النقل…' : 'Moving…')
+                        : (isRTL ? 'نقل الكل للسلة' : 'Move All to Cart')}
+                    </button>
+                  )}
+                </div>
                 {wishlistItems.length === 0 ? (
                   <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-12 text-center">
                     <Heart className="mx-auto text-gray-300 dark:text-dark-muted mb-4" size={48} />
@@ -1051,7 +1209,14 @@ export default function UserDashboard() {
                         <div className={`flex items-start justify-between gap-3 mb-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
                           <div>
                             <p className="font-semibold text-gray-900 dark:text-dark-text text-sm">
-                              {review.product?.name || (isRTL ? 'منتج محذوف' : 'Deleted product')}
+                              {review.product?.name && (
+                                <Link
+                                  to={`/product/${review.product.slug || review.product.id}`}
+                                  className="hover:text-brand-gold transition-colors"
+                                >
+                                  {review.product.name}
+                                </Link>
+                              )}
                             </p>
                             <p className="text-xs text-gray-400 dark:text-dark-muted mt-0.5">
                               {review.createdAt ? new Date(review.createdAt).toLocaleDateString(isRTL ? 'ar-EG' : 'en-US') : ''}
@@ -1308,9 +1473,25 @@ export default function UserDashboard() {
                       {addresses.map((addr, i) => (
                         <div key={addr._id || i} className={`flex items-start justify-between p-4 bg-brand-cream dark:bg-dark-bg rounded-xl ${isRTL ? 'flex-row-reverse' : ''}`}>
                           <div className={isRTL ? 'text-right' : ''}>
-                            <p className="font-semibold text-sm text-gray-900 dark:text-dark-text">{addr.fullName}</p>
+                            <div className={`flex items-center gap-2 mb-1 ${isRTL ? 'flex-row-reverse justify-end' : ''}`}>
+                              <p className="font-semibold text-sm text-gray-900 dark:text-dark-text">{addr.fullName}</p>
+                              {(addr.isDefault || addr.default || defaultAddressId === addr._id) && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-gold/15 text-brand-gold">
+                                  {isRTL ? 'افتراضي' : 'Default'}
+                                </span>
+                              )}
+                            </div>
                             <p className="text-xs text-gray-500 dark:text-dark-muted mt-1">{addr.street}, {addr.city}, {addr.governorate}</p>
                             <p className="text-xs text-gray-400 dark:text-dark-muted">{addr.phone}</p>
+                            {!(addr.isDefault || addr.default || defaultAddressId === addr._id) && (
+                              <button
+                                type="button"
+                                onClick={() => setDefaultAddress(addr._id)}
+                                className="text-xs text-brand-navy dark:text-brand-gold hover:underline mt-2"
+                              >
+                                {isRTL ? 'تعيين كافتراضي' : 'Set as default'}
+                              </button>
+                            )}
                           </div>
                           <button onClick={() => deleteAddress(addr._id)} className="text-red-400 hover:text-red-600 transition-colors p-1 flex-shrink-0">
                             <Trash2 size={16} />
@@ -1704,9 +1885,32 @@ export default function UserDashboard() {
 
                     {/* Actions */}
                     <div className={`border-t border-gray-100 dark:border-dark-border pt-4 flex gap-2 flex-wrap ${isRTL ? 'justify-start flex-row-reverse' : 'justify-end'}`}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleDownloadInvoice(
+                            orderDetail._id || orderDetail.id || orderDetail.orderId,
+                            orderDetail
+                          )
+                        }
+                        disabled={
+                          invoiceLoading ===
+                          (orderDetail._id || orderDetail.id || orderDetail.orderId)
+                        }
+                        className="text-xs px-3 py-1.5 bg-gray-100 dark:bg-dark-bg text-gray-700 dark:text-dark-text hover:bg-gray-200 dark:hover:bg-dark-border rounded-lg font-semibold transition-colors disabled:opacity-50"
+                      >
+                        {invoiceLoading === (orderDetail._id || orderDetail.id || orderDetail.orderId)
+                          ? '…'
+                          : (isRTL ? '📄 الفاتورة' : '📄 Invoice')}
+                      </button>
                       {canReorder(orderDetail.status || orderDetail.orderStatus) && (
                         <button
-                          onClick={() => handleReorder(orderDetail._id || orderDetail.id || orderDetail.orderId)}
+                          onClick={() =>
+                            handleReorder(
+                              orderDetail._id || orderDetail.id || orderDetail.orderId,
+                              orderDetail
+                            )
+                          }
                           disabled={reorderLoading === (orderDetail._id || orderDetail.id || orderDetail.orderId)}
                           className="text-xs px-3 py-1.5 bg-brand-gold/10 text-brand-gold hover:bg-brand-gold/20 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-1"
                         >

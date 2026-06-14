@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard, Store, Package, ShoppingBag, DollarSign, Target, Star, Megaphone,
   Settings, MessageSquare, CreditCard, LogOut, Users,
-  Plus, BarChart3, Bell, Edit, XCircle
+  Plus, BarChart3, Bell, Edit, XCircle, Boxes
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../../context/AuthContext';
@@ -13,13 +13,20 @@ import {
   productsAPI,
   inventoryAPI,
   fetchSellerProducts,
+  fetchSellerInventoryProducts,
+  adjustSellerStock,
   fetchSellerOrders,
+  fetchSellerReviews,
   readCachedSellerProducts,
   getCachedSellerProductCount,
   fetchSellerPayoutSummary,
   saveSellerPayoutProfile,
   requestSellerWithdrawal,
   resolveSellerBrand,
+  resolveSellerBazaarSource,
+  rememberSellerBrand,
+  readCachedSellerBrandForUser,
+  ensureSellerBrandLinked,
 } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../../context/LanguageContext';
@@ -801,15 +808,15 @@ function SellerRevenueTab({ dashboard, analytics, analyticsLoading, orderStats, 
   );
 }
 
-function SellerReviewsTab({ isRTL, sellerAPI }) {
+function SellerReviewsTab({ isRTL, user }) {
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchReviews = async () => {
+      setLoading(true);
       try {
-        const res = await sellerAPI.getReviews();
-        const reviewData = res.data?.data || res.data?.reviews || res.data || [];
+        const reviewData = await fetchSellerReviews(user);
         setReviews(Array.isArray(reviewData) ? reviewData : []);
       } catch {
         setReviews([]);
@@ -818,7 +825,7 @@ function SellerReviewsTab({ isRTL, sellerAPI }) {
       }
     };
     fetchReviews();
-  }, []);
+  }, [user]);
 
   return (
     <div>
@@ -879,6 +886,11 @@ function SellerReviewsTab({ isRTL, sellerAPI }) {
                   dark:text-dark-muted">
                   {review.comment || '-'}
                 </p>
+                {(review.productName || review.product?.name) && (
+                  <p className="text-xs text-brand-gold mt-1">
+                    {review.productName || review.product?.name}
+                  </p>
+                )}
                 <p className="text-xs text-gray-400 
                   dark:text-dark-muted mt-1">
                   {review.createdAt 
@@ -947,43 +959,33 @@ function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats
   };
 
   const loadBazaar = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await sellerAPI.getBazaar();
-      const apiBazaar = res.data?.data || res.data;
-      if (apiBazaar && (apiBazaar._id || apiBazaar.id || apiBazaar.name)) {
-        setBazaar(mergeBazaarProfile(apiBazaar));
-        setLoading(false);
-        return;
-      }
-    } catch {
-      // fall through to brand fallback
+    const localProfile = readLocalBazaarProfile();
+    const cachedBrand = readCachedSellerBrandForUser(user);
+    if (cachedBrand) {
+      setBazaar(buildBazaarFromBrand(cachedBrand, localProfile));
+      setLoading(false);
+    } else {
+      setLoading(true);
     }
 
     try {
-      const brand = await resolveSellerBrand(user);
-      if (brand) {
-        let fullBrand = brand;
-        const id = brand._id || brand.id || brandId;
-        if (id) {
-          try {
-            const brandRes = await brandsAPI.getOne(id);
-            fullBrand = brandRes.data?.data || brandRes.data?.brand || brandRes.data || brand;
-          } catch {
-            fullBrand = brand;
-          }
-        }
-        setBazaar(buildBazaarFromBrand(fullBrand, readLocalBazaarProfile()));
-        setLoading(false);
+      await ensureSellerBrandLinked(user);
+      const source = await resolveSellerBazaarSource(user, { brandId, products });
+      if (source?.kind === 'bazaar') {
+        setBazaar(mergeBazaarProfile(source.payload));
         return;
       }
+      if (source?.kind === 'brand' && source.payload) {
+        setBazaar(buildBazaarFromBrand(source.payload, localProfile));
+        return;
+      }
+      if (!cachedBrand) setBazaar(null);
     } catch {
-      // ignore brand resolution errors
+      if (!cachedBrand) setBazaar(null);
+    } finally {
+      setLoading(false);
     }
-
-    setBazaar(null);
-    setLoading(false);
-  }, [user, products, brandId, orderStats?.totalCount, sellerAPI]);
+  }, [user, products, brandId, orderStats?.totalCount]);
 
   useEffect(() => {
     loadBazaar();
@@ -1259,14 +1261,21 @@ function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats
             {isRTL ? 'لا يوجد بازار بعد' : 'No Bazaar Yet'}
           </h3>
           <p className="text-gray-500 dark:text-dark-muted">
-            {products.length > 0
+            {products.length > 0 || brandId
               ? (isRTL
-                ? 'تعذر ربط البازار بماركتك. جرّب تحديث الصفحة أو تواصل مع الدعم.'
-                : 'Could not link your bazaar to your brand. Try refreshing or contact support.')
+                ? 'تعذر ربط البازار بماركتك. حدّث الصفحة — أو من Products تأكد أن المنتجات مربوطة بماركتك.'
+                : 'Could not link your bazaar yet. Refresh the page — or check Products are tied to your brand.')
               : (isRTL
-                ? 'سيتم إنشاء بازارك بعد موافقة الإدارة وإضافة منتجاتك'
-                : 'Your bazaar will appear after admin approval and once you add products')}
+                ? 'سيتم إنشاء بازارك بعد موافقة الإدارة. إذا وافق الأدمن بالفعل، سجّل خروج ثم ادخل من جديد.'
+                : 'Your bazaar appears after admin approval. If already approved, log out and sign in again.')}
           </p>
+          <button
+            type="button"
+            onClick={() => loadBazaar()}
+            className="btn-primary text-sm mt-4"
+          >
+            {isRTL ? 'إعادة المحاولة' : 'Retry'}
+          </button>
         </div>
       )}
     </div>
@@ -1400,7 +1409,7 @@ function SellerInventoryTab({ isRTL, t }) {
       try {
         const [logsRes, productsList] = await Promise.allSettled([
           inventoryAPI.getLogs({ limit: 20 }),
-          fetchSellerProducts(user),
+          fetchSellerInventoryProducts(user),
         ]);
         if (logsRes.status === 'fulfilled') {
           const data = logsRes.value.data?.data || logsRes.value.data || [];
@@ -1425,18 +1434,30 @@ function SellerInventoryTab({ isRTL, t }) {
     }
     setAdjustLoading(true);
     try {
-      await inventoryAPI.adjust({
-        productId: adjustForm.productId,
+      const selected = products.find(
+        (p) => String(p._id || p.id) === String(adjustForm.productId)
+      );
+      await adjustSellerStock(adjustForm.productId, {
         quantity: Number(adjustForm.quantity),
         reason: adjustForm.reason,
         notes: adjustForm.notes,
+        currentStock: selected?.stock,
+        catalogFallback: Boolean(selected?._catalogFallback || !selected?._sellerOwned),
       });
       toast.success(isRTL ? 'تم تعديل المخزون ✅' : 'Stock adjusted ✅');
       setAdjustModal(false);
       setAdjustForm({ productId: '', quantity: '', reason: 'restock', notes: '' });
-      const res = await inventoryAPI.getLogs({ limit: 20 });
-      const data = res.data?.data || res.data || [];
-      setLogs(Array.isArray(data) ? data : []);
+      const [logsRes, productsList] = await Promise.allSettled([
+        inventoryAPI.getLogs({ limit: 20 }),
+        fetchSellerInventoryProducts(user),
+      ]);
+      if (logsRes.status === 'fulfilled') {
+        const data = logsRes.value.data?.data || logsRes.value.data || [];
+        setLogs(Array.isArray(data) ? data : []);
+      }
+      if (productsList.status === 'fulfilled') {
+        setProducts(Array.isArray(productsList.value) ? productsList.value : []);
+      }
     } catch (err) {
       toast.error(
         err.response?.data?.message ||
@@ -1473,12 +1494,23 @@ function SellerInventoryTab({ isRTL, t }) {
         </h1>
         <button
           onClick={() => setAdjustModal(true)}
-          className="btn-primary text-sm flex items-center justify-center gap-2 w-full sm:w-auto shrink-0"
+          disabled={!logsLoading && products.length === 0}
+          className="btn-primary text-sm flex items-center justify-center gap-2 w-full sm:w-auto shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus size={14} />
           {isRTL ? 'تعديل مخزون' : 'Adjust Stock'}
         </button>
       </div>
+
+      {!logsLoading && products.length === 0 && (
+        <div className={`mb-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 ${isRTL ? 'text-right' : ''}`}>
+          <p className="text-sm text-amber-800 dark:text-amber-300">
+            {isRTL
+              ? 'لم نجد منتجات بعد. أضف منتجاً من تبويب Products ثم حدّث الصفحة — إذا أضفت منتجاً للتو ولم يظهر، جرّب تسجيل الخروج والدخول مرة أخرى.'
+              : 'No products found yet. Add one from the Products tab and refresh — if you just added a product, try logging out and back in.'}
+          </p>
+        </div>
+      )}
 
       {lowStockProducts.length > 0 && (
         <div className={`mb-6 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-2xl p-4 ${isRTL ? 'text-right' : ''}`}>
@@ -1924,12 +1956,22 @@ export default function SellerDashboard() {
         sellerAPI.getAnalytics(),
         loadSellerOrders(),
         loadSellerProducts(),
+        ensureSellerBrandLinked(user),
       ]);
 
       if (dashResult.status === 'fulfilled') {
         const dashData =
           dashResult.value.data?.data || dashResult.value.data || {};
         setDashboard(dashData);
+        const dashBrand = dashData.brand;
+        const dashBrandId = dashBrand?._id || dashBrand?.id;
+        if (dashBrandId) {
+          setMyBrandId(String(dashBrandId));
+          const userId = user?.id || user?._id;
+          if (userId && dashBrand) {
+            rememberSellerBrand(userId, dashBrand);
+          }
+        }
       } else {
         setDashboard(null);
       }
@@ -1951,7 +1993,7 @@ export default function SellerDashboard() {
   }, [user, loadSellerProducts, loadSellerOrders]);
 
   useEffect(() => {
-    if (activeTab === 'products') {
+    if (activeTab === 'products' || activeTab === 'inventory' || activeTab === 'bazaar') {
       loadSellerProducts();
     }
     if (activeTab === 'orders' || activeTab === 'dashboard') {
@@ -1971,6 +2013,7 @@ export default function SellerDashboard() {
     { icon: Store, label: isRTL ? 'البازار' : 'Bazaar', tab: 'bazaar' },
     { icon: Package, label: isRTL ? 'الطلبات' : 'Orders', tab: 'orders' },
     { icon: ShoppingBag, label: isRTL ? 'المنتجات' : 'Products', tab: 'products' },
+    { icon: Boxes, label: isRTL ? 'المخزون' : 'Inventory', tab: 'inventory' },
     { icon: DollarSign, label: isRTL ? 'الأرباح' : 'Revenue', tab: 'revenue' },
     { icon: Star, label: isRTL ? 'التقييمات' : 'Reviews', tab: 'reviews' },
     { icon: Settings, label: isRTL ? 'الإعدادات' : 'Settings', tab: 'settings' },
@@ -1984,6 +2027,7 @@ export default function SellerDashboard() {
         { icon: Store, label: isRTL ? 'البازار الخاص بي' : 'My Bazaar', tab: 'bazaar' },
         { icon: Package, label: isRTL ? 'الطلبات' : 'Orders', tab: 'orders' },
         { icon: ShoppingBag, label: isRTL ? 'المنتجات' : 'Products', tab: 'products' },
+        { icon: Boxes, label: isRTL ? 'المخزون' : 'Inventory', tab: 'inventory' },
         { icon: DollarSign, label: isRTL ? 'الأرباح' : 'Revenue', tab: 'revenue' },
       ],
     },
@@ -2321,7 +2365,7 @@ export default function SellerDashboard() {
             {activeTab === 'reviews' && (
               <SellerReviewsTab 
                 isRTL={isRTL}
-                sellerAPI={sellerAPI}
+                user={user}
               />
             )}
 

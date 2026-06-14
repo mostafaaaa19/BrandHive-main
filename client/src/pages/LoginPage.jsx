@@ -37,8 +37,9 @@ export default function LoginPage() {
         style: { borderRadius: '12px', fontFamily: isRTL ? 'Cairo' : 'Inter' },
       });
 
-      if (userData.role === 'admin') navigate('/admin/dashboard');
-      else if (userData.role === 'seller') navigate('/seller/dashboard');
+      if (userData.serverRole === 'admin' || userData.role === 'admin') navigate('/admin/dashboard');
+      else if (userData.serverRole === 'seller' || userData.role === 'seller') navigate('/seller/dashboard');
+      else if (location.state?.from) navigate(location.state.from);
       else navigate('/account');
     } catch {
       // error is already set in AuthContext

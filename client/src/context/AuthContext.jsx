@@ -183,19 +183,78 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('brandhive_user', JSON.stringify(updated));
   };
 
-  // ── upgradeToSeller (called after successful brand creation) ──────────────
-  const upgradeToSeller = () => {
+  // ── upgradeToSeller (after admin approval or local UI access) ─────────────
+  const upgradeToSeller = (serverUser = null) => {
+    const merged = { ...user, ...(serverUser || {}) };
+    const roleFromServer =
+      serverUser?.role || merged.serverRole || merged.role || 'customer';
+    const isServerSeller =
+      roleFromServer === 'seller' || roleFromServer === 'admin';
+
     const updated = {
-      ...user,
-      role: 'seller',
-      serverRole: user?.serverRole || user?.role || 'customer',
+      ...merged,
+      id: merged.id || merged._id,
+      _id: merged._id || merged.id,
+      role: isServerSeller ? roleFromServer : 'seller',
+      serverRole: isServerSeller ? roleFromServer : (merged.serverRole || merged.role || 'customer'),
+      token: merged.token || merged.accessToken,
+      accessToken: merged.accessToken || merged.token,
     };
+
+    if (isServerSeller) {
+      localStorage.removeItem('brandhive_role_override');
+    } else {
+      localStorage.setItem('brandhive_role_override', 'seller');
+    }
+
     setUser(updated);
-    localStorage.setItem(
-      'brandhive_user', 
-      JSON.stringify(updated)
-    );
-    localStorage.setItem('brandhive_role_override', 'seller');
+    localStorage.setItem('brandhive_user', JSON.stringify(updated));
+    return updated;
+  };
+
+  // ── refreshSession — sync role/brand from GET /auth/me ────────────────────
+  const refreshSession = async () => {
+    try {
+      const res = await authAPI.getMe();
+      const payload = res.data?.data || res.data;
+      const serverUser = payload?.user || payload;
+      if (!serverUser?.email && !(serverUser?.id || serverUser?._id)) {
+        return user;
+      }
+
+      const token = user?.token || user?.accessToken || serverUser.token;
+      const serverRole = serverUser.role || user?.serverRole || 'customer';
+      const updated = {
+        ...user,
+        ...serverUser,
+        id: serverUser.id || serverUser._id || user?.id || user?._id,
+        _id: serverUser._id || serverUser.id || user?._id || user?.id,
+        serverRole,
+        role: serverRole,
+        token,
+        accessToken: token,
+        refreshToken: user?.refreshToken || serverUser.refreshToken,
+      };
+
+      const roleOverride = localStorage.getItem('brandhive_role_override');
+      if (
+        roleOverride &&
+        serverRole !== 'seller' &&
+        serverRole !== 'admin'
+      ) {
+        updated.role = roleOverride;
+      } else if (serverRole === 'seller' || serverRole === 'admin') {
+        localStorage.removeItem('brandhive_role_override');
+        updated.role = serverRole;
+      }
+
+      syncSellerBrandNameForUser(updated);
+      setUser(updated);
+      localStorage.setItem('brandhive_user', JSON.stringify(updated));
+      return updated;
+    } catch {
+      return user;
+    }
   };
 
   const serverRole = user?.serverRole || user?.role || 'customer';
@@ -218,6 +277,7 @@ export const AuthProvider = ({ children }) => {
         logout,
         updateUser,
         upgradeToSeller,
+        refreshSession,
         isAuthenticated,
         isAdmin,
         isSeller,

@@ -38,6 +38,31 @@ export const mapProduct = (p) => ({
   createdAt: p.createdAt || null,
 });
 
+export const hydrateProductImages = (products, catalog = []) => {
+  if (!Array.isArray(products) || products.length === 0) return products;
+
+  const byId = new Map();
+  (Array.isArray(catalog) ? catalog : []).forEach((entry) => {
+    const id = String(entry?.id || entry?._id || '');
+    if (id) byId.set(id, entry);
+  });
+
+  return products.map((product) => {
+    const id = String(product?.id || product?._id || '');
+    const source = byId.get(id);
+    if (!source) return product;
+
+    return {
+      ...product,
+      image: product.image || source.image || null,
+      images:
+        product.images?.length > 0 ? product.images : source.images || [],
+      brandName: product.brandName || source.brandName || '',
+      brandLogo: product.brandLogo || source.brandLogo || null,
+    };
+  });
+};
+
 export const deduplicateProducts = (products) => {
   const seen = new Set();
   return products.filter(p => {

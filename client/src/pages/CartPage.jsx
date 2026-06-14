@@ -5,7 +5,7 @@ import {
   CreditCard, Smartphone, Banknote, Building2, CheckCircle, Shield
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
-import { ordersAPI, cartAPI, addressesAPI, aiAPI, mirrorSellerOrder, lookupProductBrand } from '../services/api';
+import { ordersAPI, cartAPI, addressesAPI, fetchSafeCrossSell, mirrorSellerOrder, lookupProductBrand } from '../services/api';
 import { mapProduct } from '../utils/mappers';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -94,14 +94,12 @@ export default function CartPage() {
 
     if (realIds.length === 0) return;
 
-    aiAPI.getCrossSell({ cart_product_ids: realIds })
-      .then(res => {
-        const data = res.data?.data ||
-          res.data?.products || [];
+    const categories = [...new Set(items.map((i) => i.category).filter(Boolean))];
+
+    fetchSafeCrossSell({ productIds: realIds, categories, limit: 4 })
+      .then((data) => {
         setCrossSell(
-          Array.isArray(data)
-            ? data.slice(0, 4).map(mapProduct)
-            : []
+          Array.isArray(data) ? data.slice(0, 4).map(mapProduct) : []
         );
       })
       .catch(() => setCrossSell([]));

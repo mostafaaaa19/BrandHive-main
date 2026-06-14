@@ -1284,6 +1284,15 @@ function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats
   );
 }
 
+const getProductImageSrc = (product) => {
+  const first = product?.images?.[0];
+  if (typeof first === 'string') return first;
+  if (first?.url) return first.url;
+  if (typeof product?.mainImage === 'string') return product.mainImage;
+  if (product?.mainImage?.url) return product.mainImage.url;
+  return product?.image || null;
+};
+
 function SellerProductsTab({ products, isRTL, navigate, t }) {
   return (
     <div>
@@ -1334,9 +1343,9 @@ function SellerProductsTab({ products, isRTL, navigate, t }) {
               <div className="h-40 bg-gray-100 
                 dark:bg-dark-bg flex items-center 
                 justify-center overflow-hidden">
-                {product.images?.[0] || product.mainImage ? (
+                {getProductImageSrc(product) ? (
                   <img 
-                    src={product.images?.[0] || product.mainImage}
+                    src={getProductImageSrc(product)}
                     alt={product.name}
                     className="w-full h-full object-cover"
                   />

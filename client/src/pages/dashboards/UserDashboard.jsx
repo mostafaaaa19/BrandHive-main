@@ -12,7 +12,7 @@ import {
   usersAPI,
   reviewsAPI,
   notificationsAPI,
-  aiAPI,
+  fetchSafeRecommendations,
   fetchMySupportTickets,
   cleanSupportMessageText,
 } from '../../services/api';
@@ -282,22 +282,16 @@ export default function UserDashboard() {
     const fetchRecommendations = async () => {
       try {
         const cats = wishlistItems
-          .map(i => i.category)
+          .map((i) => i.category)
           .filter(Boolean);
         const uniqueCats = [...new Set(cats)];
-
-        if (uniqueCats.length > 0) {
-          const res = await aiAPI.getRecommendations({
-            categories: uniqueCats,
-          });
-          const data = res.data?.data ||
-            res.data?.products || [];
-          setRecommendations(
-            Array.isArray(data)
-              ? data.slice(0, 8).map(mapProduct)
-              : []
-          );
-        }
+        const data = await fetchSafeRecommendations({
+          categories: uniqueCats,
+          limit: 8,
+        });
+        setRecommendations(
+          Array.isArray(data) ? data.slice(0, 8).map(mapProduct) : []
+        );
       } catch {
         setRecommendations([]);
       }

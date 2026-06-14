@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { MapPin, Star, CheckCircle2, MessageSquare, Heart, Share2, ArrowLeft, Truck, RotateCcw } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
-import { productsAPI, brandsAPI } from '../services/api';
+import { productsAPI, brandsAPI, loadLocalProductImages, enrichProductsWithLocalImages } from '../services/api';
 import { mapProduct, mapBrand } from '../utils/mappers';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
@@ -75,6 +75,9 @@ export default function BrandPage() {
             products = [];
           }
         }
+
+        await loadLocalProductImages(products.map((product) => product._id || product.id));
+        products = enrichProductsWithLocalImages(products);
 
         const mappedProducts = products.map(mapProduct);
         setBrandProducts(mappedProducts);

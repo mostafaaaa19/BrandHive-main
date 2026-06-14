@@ -11,6 +11,11 @@ const api = axios.create({
   withCredentials: false,
 });
 
+// Railway rejects ?limit>100 on /search/products and /product
+const MAX_PRODUCT_PAGE_SIZE = 100;
+const clampPageLimit = (limit) =>
+  Math.min(Math.max(Number(limit) || MAX_PRODUCT_PAGE_SIZE, 1), MAX_PRODUCT_PAGE_SIZE);
+
 // Local dev server mirrors support tickets so users can read admin replies
 // (Railway GET /support is admin-only for regular accounts).
 const localSupport = import.meta.env.DEV
@@ -37,6 +42,24 @@ const localSellerPayouts = import.meta.env.DEV
     })
   : null;
 
+const localProductImages = import.meta.env.DEV
+  ? axios.create({
+      baseURL: '/product-images-local',
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+      withCredentials: false,
+    })
+  : null;
+
+const localAuditLog = import.meta.env.DEV
+  ? axios.create({
+      baseURL: '/audit-local',
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+      withCredentials: false,
+    })
+  : null;
+
+const productImageMirrorCache = new Map();
+
 export const lookupProductBrand = async (productId) => {
   if (!productId) return null;
 
@@ -55,7 +78,7 @@ export const lookupProductBrand = async (productId) => {
   }
 
   try {
-    const searchRes = await api.get('/search/products', { params: { limit: 200 } });
+    const searchRes = await getPublicProducts({ limit: MAX_PRODUCT_PAGE_SIZE });
     const found = getResponseArray(searchRes).find(
       (product) => String(product.id || product._id) === String(productId)
     );
@@ -82,7 +105,7 @@ const getResponseArray = (response) =>
 const getPublicProducts = (params = {}) => api.get('/search/products', {
   params: {
     page: params.page || 1,
-    limit: params.limit || 100,
+    limit: clampPageLimit(params.limit),
     ...(params.search ? { search: params.search } : {}),
     ...(params.category ? { category: params.category } : {}),
     ...(params.brand ? { brand: params.brand } : {}),
@@ -96,6 +119,129 @@ const getPublicProducts = (params = {}) => api.get('/search/products', {
       : {}),
   },
 });
+
+const pickResponseProducts = (response) => getResponseArray(response);
+
+const verifyCatalogProduct = async (productId) => {
+  if (!productId) return null;
+
+  try {
+    const res = await api.get(`/product/${encodeURIComponent(productId)}`);
+    const raw = res.data?.data || res.data?.product || res.data;
+    if (raw?.name && (raw.id || raw._id)) return raw;
+  } catch {
+    // fall through to public search
+  }
+
+  try {
+    const searchRes = await getPublicProducts({ search: String(productId), limit: 20 });
+    const found = getResponseArray(searchRes).find(
+      (product) => String(product.id || product._id) === String(productId)
+    );
+    if (found?.name) return found;
+  } catch {
+    // ignore
+  }
+
+  return null;
+};
+
+const filterToRealProducts = async (products, limit = 8) => {
+  const validated = [];
+  for (const product of products) {
+    if (validated.length >= limit) break;
+    const id = product?.id || product?._id;
+    if (!id) continue;
+    const real = await verifyCatalogProduct(id);
+    if (real) validated.push(real);
+  }
+  return validated;
+};
+
+export const fetchCatalogRecommendations = async ({
+  categories = [],
+  excludeIds = [],
+  limit = 8,
+} = {}) => {
+  const exclude = new Set(excludeIds.map(String));
+  let pool = [];
+
+  try {
+    const catalogRes = await getMergedProductCatalog({ limit: MAX_PRODUCT_PAGE_SIZE });
+    pool.push(...getResponseArray(catalogRes));
+  } catch {
+    // ignore
+  }
+
+  const uniqueCats = [...new Set(categories.filter(Boolean))];
+  if (uniqueCats.length > 0) {
+    const normalizedCats = uniqueCats.map((c) => c.toLowerCase());
+    pool = pool.filter((product) => {
+      const name = (product.category?.name || product.category || '').toLowerCase();
+      const slug = (product.category?.slug || product.categorySlug || '').toLowerCase();
+      return normalizedCats.some(
+        (cat) => name.includes(cat) || slug.includes(cat) || cat.includes(name)
+      );
+    });
+  }
+
+  const seen = new Set();
+  const results = [];
+  for (const product of pool) {
+    const id = String(product.id || product._id || '');
+    if (!id || exclude.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    results.push(product);
+    if (results.length >= limit) break;
+  }
+  return results;
+};
+
+export const fetchSafeRecommendations = async ({
+  categories = [],
+  excludeIds = [],
+  limit = 8,
+} = {}) => {
+  if (categories.length > 0) {
+    try {
+      const aiRes = await api.post('/product/recommendations', { categories });
+      const aiProducts = pickResponseProducts(aiRes);
+      if (aiProducts.length > 0) {
+        const validated = await filterToRealProducts(aiProducts, limit);
+        if (validated.length > 0) return validated;
+      }
+    } catch {
+      // fall through to catalog
+    }
+  }
+
+  return fetchCatalogRecommendations({ categories, excludeIds, limit });
+};
+
+export const fetchSafeCrossSell = async ({
+  productIds = [],
+  categories = [],
+  limit = 4,
+} = {}) => {
+  const excludeIds = productIds.map(String);
+
+  if (productIds.length > 0) {
+    try {
+      const res = await api.post('/product/cart/cross-sell', {
+        cart_product_ids: productIds,
+      });
+      const aiProducts = pickResponseProducts(res);
+      if (aiProducts.length > 0) {
+        const validated = await filterToRealProducts(aiProducts, limit);
+        if (validated.length > 0) return validated;
+      }
+    } catch {
+      // fall through to catalog
+    }
+  }
+
+  return fetchCatalogRecommendations({ categories, excludeIds, limit });
+};
 
 const isAuthError = (err) => {
   const status = err?.response?.status;
@@ -195,7 +341,7 @@ const withAuthFallbackUnlessEmpty = async (authedRequest, fallbackRequest) => {
 };
 
 const mergePaginatedProducts = async (fetchPage, params = {}) => {
-  const limit = params.limit || 100;
+  const limit = clampPageLimit(params.limit);
   let page = params.page || 1;
   let totalPages = 1;
   const allProducts = [];
@@ -256,6 +402,88 @@ const getAllAuthedProducts = (params = {}) =>
     (page, limit) => api.get('/product', { params: { ...params, page, limit } }),
     params
   );
+
+const mergeProductLists = (...lists) => {
+  const byId = new Map();
+  lists.forEach((list) => {
+    if (!Array.isArray(list)) return;
+    list.forEach((product) => {
+      const id = product?.id || product?._id;
+      if (!id) return;
+      const key = String(id);
+      byId.set(key, {
+        ...byId.get(key),
+        ...product,
+        id: product.id || product._id,
+        _id: product._id || product.id,
+      });
+    });
+  });
+  return Array.from(byId.values());
+};
+
+const normalizeMergedProductResponse = (products, params = {}, catalogTotal = null) => ({
+  data: {
+    data: products,
+    products,
+    meta: {
+      total: catalogTotal ?? products.length,
+      page: 1,
+      limit: clampPageLimit(params.limit),
+      totalPages: 1,
+    },
+  },
+});
+
+const getMergedProductCatalog = async (params = {}) => {
+  let catalogTotal = null;
+
+  const trackTotal = (response) => {
+    const total = response?.data?.meta?.total;
+    if (typeof total === 'number' && total > 0) catalogTotal = total;
+    return response;
+  };
+
+  const settled = await Promise.allSettled([
+    getAllPublicProducts(params).then(trackTotal),
+    api.get('/product/trending'),
+    api.get('/product/new-arrivals'),
+    ...(hasAuthToken() ? [getAllAuthedProducts(params).then(trackTotal)] : []),
+  ]);
+
+  const lists = settled
+    .filter((result) => result.status === 'fulfilled')
+    .map((result) => getResponseArray(result.value));
+
+  const merged = mergeProductLists(...lists);
+  if (merged.length > 0) cacheProducts(merged);
+  return normalizeMergedProductResponse(merged, params, catalogTotal);
+};
+
+const getMergedBrandProducts = async (brandId) => {
+  const settled = await Promise.allSettled([
+    hasAuthToken()
+      ? api.get(`/product/by-brand/${brandId}`)
+      : Promise.reject(new Error('no auth')),
+    getPublicProducts({ brand: brandId, limit: 100 }),
+    api.get('/product/trending'),
+  ]);
+
+  const lists = settled
+    .filter((result) => result.status === 'fulfilled')
+    .map((result) => getResponseArray(result.value))
+    .map((list) =>
+      list.filter((product) => {
+        const productBrandId =
+          product.brand?._id || product.brand?.id || product.brandId;
+        return !productBrandId || String(productBrandId) === String(brandId);
+      })
+    );
+
+  const merged = mergeProductLists(...lists);
+  if (merged.length > 0) cacheProducts(merged);
+  return normalizeMergedProductResponse(merged);
+};
 
 const getPublicCategories = async () => {
   const response = await getAllPublicProducts({ page: 1, limit: 100 });
@@ -361,6 +589,8 @@ const AUTH_SILENT_PATHS = [
   '/auth/forget-password',
   '/auth/verify-reset-code',
   '/auth/reset-password',
+  '/auth/refresh',
+  '/auth/change-password',
 ];
 
 const isAuthSilentRequest = (url = '') =>
@@ -620,7 +850,11 @@ export const authAPI = {
 
   // GET — requires Authorization header
   // Response: { success, user }
-  getMe: () => api.get('/auth/me'),
+  // Not in official spec — kept for optional session refresh if backend adds it
+  getMe: () => api.get('/auth/me').catch(() => {
+    const parsed = getStoredAuth();
+    return { data: { data: parsed, user: parsed } };
+  }),
 
   // POST { email, otp }
   // Response: { success, ... }
@@ -683,6 +917,7 @@ export const brandsAPI = {
     }
   },
   getOne: (id) => api.get(`/brand/${id}`),
+  create: (data, config = {}) => api.post('/brand', data, config),
   getByCategory: (categoryId) =>
     api.get(`/brand/by-category/${categoryId}`),
   update: (id, data) => api.put(`/brand/${id}`, data),
@@ -698,29 +933,25 @@ export const brandsAPI = {
 export const productsAPI = {
   getAll: (params = {}) => {
     if (params.brand) {
-      return withAuthFallbackUnlessEmpty(
-        () => api.get(`/product/by-brand/${params.brand}`),
-        () => getPublicProducts({
-          brand: params.brand,
-          page: params.page,
-          limit: params.limit || 100,
-        })
-      );
+      return getMergedBrandProducts(params.brand);
     }
     if (params.category) {
       return withAuthFallback(
-        () => api.get(`/product/by-category/${params.category}`),
-        () => getPublicProducts({
-          category: params.category,
-          page: params.page,
-          limit: params.limit || 100,
-        })
+        async () => {
+          const [categoryRes, mergedRes] = await Promise.all([
+            api.get(`/product/by-category/${params.category}`),
+            getMergedProductCatalog(params),
+          ]);
+          const products = mergeProductLists(
+            getResponseArray(categoryRes),
+            getResponseArray(mergedRes)
+          );
+          return normalizeMergedProductResponse(products, params);
+        },
+        () => getMergedProductCatalog(params)
       );
     }
-    return withAuthFallback(
-      () => getAllAuthedProducts(params),
-      () => getAllPublicProducts(params)
-    );
+    return getMergedProductCatalog(params);
   },
 
   getOne: async (slug) => {
@@ -753,11 +984,7 @@ export const productsAPI = {
   getTrending: () => api.get('/product/trending'),
   getNewArrivals: () => api.get('/product/new-arrivals'),
 
-  getByBrand: (brandId) =>
-    withAuthFallbackUnlessEmpty(
-      () => api.get(`/product/by-brand/${brandId}`),
-      () => getPublicProducts({ brand: brandId, limit: 100 })
-    ),
+  getByBrand: (brandId) => getMergedBrandProducts(brandId),
 
   getByCategory: (categoryId) =>
     withAuthFallback(
@@ -780,7 +1007,7 @@ export const sellerAPI = {
   getOrders: () => api.get('/seller/orders'),
   getProducts: () => api.get('/seller/products'),
   getProduct: (id) => api.get(`/seller/products/${id}`),
-  createProduct: (data) => api.post('/seller/products', data),
+  createProduct: (data, config = {}) => api.post('/seller/products', data, config),
   updateProduct: (id, data) => api.put(`/seller/products/${id}`, data),
   deleteProduct: (id) => api.delete(`/seller/products/${id}`),
   updateOrderStatus: (id, status) => api.patch(`/seller/orders/${id}/status`, { status }),
@@ -789,9 +1016,13 @@ export const sellerAPI = {
   getBazaar: () => api.get('/seller/bazaar'),
   searchBazaar: (query) => api.get(`/seller/bazaar/search?search=${encodeURIComponent(query)}`),
   updateBazaar: (data) => api.put('/seller/bazaar', data),
-  notifyFollowers: (data) => 
+  notifyFollowers: (data) =>
     api.post('/seller/bazaar/notify', data),
-  getOrderDetails: (id) => 
+  getAllBazaarsAdmin: (params = {}) =>
+    api.get('/seller/bazaar/admin/all', { params }),
+  toggleBazaarAdmin: (id) =>
+    api.patch(`/seller/bazaar/admin/${id}/toggle`),
+  getOrderDetails: (id) =>
     api.get(`/seller/orders/${id}`),
   filterOrders: (status) => 
     api.get(`/seller/orders?status=${status}`),
@@ -804,7 +1035,7 @@ const sanitizeProductPayload = (payload = {}) => {
   const clean = {};
   Object.entries(payload).forEach(([key, value]) => {
     if (value == null || value === '') return;
-    if (key === 'images') return;
+    if (key === 'images' || key === 'imageFiles') return;
     if (typeof value === 'number' && Number.isNaN(value)) return;
     if (key === 'tags' && Array.isArray(value)) {
       if (value.length > 0) clean.tags = value;
@@ -815,25 +1046,187 @@ const sanitizeProductPayload = (payload = {}) => {
   return clean;
 };
 
-export const createSellerProduct = async (payload) => {
-  const clean = sanitizeProductPayload(payload);
+const fileToDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 
-  const postToSeller = () => sellerAPI.createProduct(clean);
-  const postToProduct = () => productsAPI.create(clean);
+const buildProductFormData = (payload, mainImage, additionalImages = []) => {
+  const formData = new FormData();
+  Object.entries(sanitizeProductPayload(payload)).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      value.forEach((entry) => formData.append(`${key}[]`, entry));
+      return;
+    }
+    formData.append(key, value);
+  });
+
+  if (mainImage) {
+    formData.append('images', mainImage);
+    formData.append('mainImage', mainImage);
+  }
+  additionalImages.forEach((file) => {
+    if (file) formData.append('images', file);
+  });
+
+  return formData;
+};
+
+const extractCreatedProduct = (response) =>
+  response?.data?.data ||
+  response?.data?.product ||
+  response?.data ||
+  null;
+
+const mirrorProductImages = async (productId, mainImage, additionalImages = []) => {
+  if (!localProductImages || !productId) return null;
+
+  const dataUrls = [];
+  if (mainImage) {
+    dataUrls.push(await fileToDataUrl(mainImage));
+  }
+  for (const file of additionalImages) {
+    if (file) dataUrls.push(await fileToDataUrl(file));
+  }
+  if (dataUrls.length === 0) return null;
+
+  const res = await localProductImages.post('/', {
+    productId: String(productId),
+    mainImage: dataUrls[0],
+    images: dataUrls,
+  });
+
+  const entry = res.data?.data || null;
+  if (entry) {
+    productImageMirrorCache.set(String(productId), entry);
+  }
+  return entry;
+};
+
+export const loadLocalProductImages = async (productIds = []) => {
+  if (!localProductImages) return;
+
+  const ids = [...new Set(productIds.map(String).filter(Boolean))];
+  if (ids.length === 0) return;
 
   try {
-    return await postToSeller();
+    const res = await localProductImages.get('/', {
+      params: { productIds: ids.join(','), _t: Date.now() },
+    });
+    const entries = getResponseArray(res);
+    entries.forEach((entry) => {
+      if (entry?.productId) {
+        productImageMirrorCache.set(String(entry.productId), entry);
+      }
+    });
+  } catch (err) {
+    console.warn('[loadLocalProductImages]', err.response?.data || err.message);
+  }
+};
+
+export const enrichProductWithLocalImages = (product) => {
+  if (!product) return product;
+
+  const id = String(product._id || product.id || '');
+  const mirror = productImageMirrorCache.get(id);
+  if (!mirror) return product;
+
+  const hasApiImage =
+    product.mainImage ||
+    (Array.isArray(product.images) && product.images.length > 0);
+  if (hasApiImage) return product;
+
+  const main = mirror.mainImage || mirror.images?.[0];
+  const images = (mirror.images || []).map((url) =>
+    typeof url === 'string' ? { url } : url
+  );
+
+  return {
+    ...product,
+    mainImage: main,
+    images: images.length > 0 ? images : main ? [{ url: main }] : [],
+  };
+};
+
+export const enrichProductsWithLocalImages = (products = []) => {
+  if (!Array.isArray(products)) return [];
+  return products.map(enrichProductWithLocalImages);
+};
+
+const createSellerProductWithFormData = async (payload, mainImage, additionalImages) => {
+  const formData = buildProductFormData(payload, mainImage, additionalImages);
+  const config = { headers: { 'Content-Type': 'multipart/form-data' } };
+
+  try {
+    return await sellerAPI.createProduct(formData, config);
   } catch (err) {
     const status = err.response?.status;
     if (status === 500 || status === 502 || status === 503) {
-      try {
-        return await postToProduct();
-      } catch (fallbackErr) {
-        throw fallbackErr;
-      }
+      return api.post('/product', formData, config);
     }
     throw err;
   }
+};
+
+export const createSellerProduct = async (payload, imageFiles = {}) => {
+  const { mainImage = null, additionalImages = [] } = imageFiles;
+  const hasImages = Boolean(mainImage || additionalImages.length > 0);
+  const clean = sanitizeProductPayload(payload);
+
+  let createRes = null;
+
+  if (hasImages) {
+    try {
+      createRes = await createSellerProductWithFormData(
+        payload,
+        mainImage,
+        additionalImages
+      );
+      const created = extractCreatedProduct(createRes);
+      const productId = created?._id || created?.id;
+      if (productId) {
+        await mirrorProductImages(productId, mainImage, additionalImages);
+      }
+      return createRes;
+    } catch (err) {
+      const message = String(err.response?.data?.message || err.message || '');
+      const validationRejectedImages =
+        message.includes('images') || err.response?.status === 400;
+      if (!validationRejectedImages) {
+        throw err;
+      }
+    }
+  }
+
+  try {
+    createRes = await sellerAPI.createProduct(clean);
+  } catch (err) {
+    const status = err.response?.status;
+    if (status === 500 || status === 502 || status === 503) {
+      createRes = await productsAPI.create(clean);
+    } else {
+      throw err;
+    }
+  }
+
+  const created = extractCreatedProduct(createRes);
+  const productId = created?._id || created?.id;
+
+  if (hasImages && productId) {
+    await mirrorProductImages(productId, mainImage, additionalImages);
+    const mirror = productImageMirrorCache.get(String(productId));
+    if (mirror && createRes?.data) {
+      const enriched = enrichProductWithLocalImages(created);
+      if (createRes.data.data) createRes.data.data = enriched;
+      else if (createRes.data.product) createRes.data.product = enriched;
+      else createRes.data = enriched;
+    }
+  }
+
+  return createRes;
 };
 
 const sellerBrandStorageKey = (userId) =>
@@ -1502,8 +1895,11 @@ export const fetchSellerProducts = async (user) => {
   );
 
   if (products.length > 0) {
-    cacheSellerProducts(userId, products);
-    cacheProducts(products);
+    await loadLocalProductImages(products.map((product) => product._id || product.id));
+    const enriched = enrichProductsWithLocalImages(products);
+    cacheSellerProducts(userId, enriched);
+    cacheProducts(enriched);
+    return enriched;
   }
 
   return products;
@@ -1719,6 +2115,38 @@ export const updateWithdrawalStatus = async (id, status, adminNote = '') => {
   return res.data?.data || null;
 };
 
+export const logAdminAction = async (actor, entry = {}) => {
+  if (!localAuditLog || !entry?.action) return null;
+
+  try {
+    const res = await localAuditLog.post('/', {
+      adminUserId: actor?.id || actor?._id,
+      adminEmail: actor?.email,
+      adminName: actor?.name || 'Admin',
+      status: 'success',
+      ...entry,
+    });
+    return res.data?.data || null;
+  } catch (err) {
+    console.warn('[logAdminAction]', err.response?.data || err.message);
+    return null;
+  }
+};
+
+export const fetchAdminAuditLogs = async (params = {}) => {
+  if (!localAuditLog) return [];
+
+  try {
+    const res = await localAuditLog.get('/', {
+      params: { limit: params.limit || 100, action: params.action, _t: Date.now() },
+    });
+    return getResponseArray(res);
+  } catch (err) {
+    console.warn('[fetchAdminAuditLogs]', err.response?.data || err.message);
+    return [];
+  }
+};
+
 // ─── Admin ───────────────────────────────────────────────────────────────────
 export const adminAPI = {
   getDashboard: () => api.get('/admin/dashboard'),
@@ -1740,8 +2168,15 @@ export const adminAPI = {
   approveBrandRequest: (id) => 
     api.patch(`/brand/requests/${id}/approve`),
   rejectBrandRequest: (id, reason) =>
-    api.patch(`/brand/requests/${id}/reject`, { rejectionReason: reason }),
-  getBrandRequests: (page = 1) => api.get(`/brand/requests?page=${page}`),
+    api.patch(`/brand/requests/${id}/reject`, {
+      rejectionReason: reason,
+      reason,
+    }),
+  getBrandRequests: (params = {}) => {
+    const query =
+      typeof params === 'number' ? { page: params } : params;
+    return api.get('/brand/requests', { params: query });
+  },
   deleteProduct: (id) => api.delete(`/product/${id}`),
   activateProduct: (id) => api.patch(`/product/${id}/activate`),
   deactivateProduct: (id) => api.patch(`/product/${id}/deactivate`),
@@ -1811,7 +2246,11 @@ export const ordersAPI = {
 
 // ─── Users ───────────────────────────────────────────────────────────────────
 export const usersAPI = {
-  getProfile: () => api.get('/users/profile'),
+  getProfile: () =>
+    api.get('/users/profile').catch(() => {
+      const parsed = getStoredAuth();
+      return { data: { data: parsed, user: parsed } };
+    }),
   updateProfile: (data) =>
     api.put('/users/profile', data).catch(() =>
       Promise.resolve({ data: { success: true } })

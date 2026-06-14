@@ -281,16 +281,10 @@ export default function AddProductPage() {
         payload.tags = tagList;
       }
 
-      await createSellerProduct(payload);
-
-      if (mainImage || additionalImages.length > 0) {
-        toast(
-          isRTL
-            ? 'تم إنشاء المنتج. رفع الصور غير مدعوم حالياً من السيرفر — يمكنك تعديل المنتج لاحقاً.'
-            : 'Product created. Image upload is not supported on create yet — you can edit the product later.',
-          { icon: 'ℹ️', duration: 5000 }
-        );
-      }
+      await createSellerProduct(payload, {
+        mainImage,
+        additionalImages: additionalImages.map((entry) => entry.file).filter(Boolean),
+      });
 
       const userId = user?.id || user?._id;
       rememberSellerBrand(userId, myBrand || { _id: formData.brand });

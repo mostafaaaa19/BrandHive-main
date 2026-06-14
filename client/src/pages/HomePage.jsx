@@ -68,40 +68,36 @@ export default function HomePage() {
       // Fetch products
       try {
         setProductsLoading(true);
-        let loadedFromStorage = false;
+        const res = await productsAPI.getAll({ page: 1, limit: 100 });
+        const raw =
+          res.data?.data ||
+          res.data?.products ||
+          res.data?.items ||
+          (Array.isArray(res.data) ? res.data : []);
+
+        let merged = [];
+        if (Array.isArray(raw) && raw.length > 0) {
+          merged = raw.map(mapProduct);
+        }
+
         const adminFeatured = localStorage.getItem('brandhive_featured_products');
         if (adminFeatured) {
           try {
             const parsed = JSON.parse(adminFeatured);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              setFeaturedProducts(parsed.map(mapProduct));
-              loadedFromStorage = true;
+              const adminMapped = parsed.map(mapProduct);
+              const seen = new Set();
+              merged = [...adminMapped, ...merged].filter((product) => {
+                const key = product.id || product.slug || product.name;
+                if (!key || seen.has(key)) return false;
+                seen.add(key);
+                return true;
+              });
             }
-          } catch { /* fall through to API */ }
+          } catch { /* ignore stale cache */ }
         }
 
-        if (!loadedFromStorage) {
-          const res = await productsAPI.getAll({ page: 1, limit: 50 });
-          const raw =
-            res.data?.data ||
-            res.data?.products ||
-            res.data?.items ||
-            (Array.isArray(res.data) ? res.data : []);
-          console.log('[HomePage] raw products count:', Array.isArray(raw) ? raw.length : raw);
-          if (Array.isArray(raw) && raw.length > 0) {
-            const mapped = raw.map(mapProduct);
-            const seen = new Set();
-            const unique = mapped.filter(p => {
-              const key = p.id || p.slug || p.name;
-              if (seen.has(key)) return false;
-              seen.add(key);
-              return true;
-            });
-            setFeaturedProducts(unique);
-          } else {
-            setFeaturedProducts([]);
-          }
-        }
+        setFeaturedProducts(merged);
       } catch {
         setFeaturedProducts([]);
       } finally {

@@ -16,6 +16,8 @@ import {
   syncLocalSupportReply,
   fetchAdminWithdrawals,
   updateWithdrawalStatus,
+  logAdminAction,
+  fetchAdminAuditLogs,
 } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../../context/LanguageContext';
@@ -106,6 +108,7 @@ function SidebarItem({ icon: Icon, label, tab, activeTab, setActiveTab, badge, i
 }
 
 function AdminUsersTab({ adminAPI, isRTL, toast }) {
+  const { user } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -131,6 +134,14 @@ function AdminUsersTab({ adminAPI, isRTL, toast }) {
   const handleToggle = async (userId) => {
     try {
       await adminAPI.toggleUser(userId);
+      const target = users.find((u) => u._id === userId || u.id === userId);
+      await logAdminAction(user, {
+        action: 'user.toggled',
+        targetType: 'user',
+        targetId: userId,
+        targetLabel: target?.name || target?.email,
+        details: { isActive: !target?.isActive },
+      });
       setUsers(prev => prev.map(u =>
         (u._id === userId || u.id === userId)
           ? { ...u, isActive: !u.isActive }
@@ -157,6 +168,12 @@ function AdminUsersTab({ adminAPI, isRTL, toast }) {
 
     try {
       await adminAPI.deleteUser(userId);
+      await logAdminAction(user, {
+        action: 'user.deleted',
+        targetType: 'user',
+        targetId: userId,
+        targetLabel: userName,
+      });
       setUsers(prev => prev.filter(u => u._id !== userId && u.id !== userId));
       toast.success(
         isRTL ? 'تم حذف المستخدم ✅' : 'User deleted ✅',
@@ -311,6 +328,7 @@ function AdminUsersTab({ adminAPI, isRTL, toast }) {
 }
 
 function AdminOrdersTab({ adminAPI, isRTL }) {
+  const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -444,6 +462,13 @@ function AdminOrdersTab({ adminAPI, isRTL }) {
                             order._id,
                             e.target.value
                           );
+                          await logAdminAction(user, {
+                            action: 'order.status_updated',
+                            targetType: 'order',
+                            targetId: order._id || order.id,
+                            targetLabel: `#${String(order._id || order.id).slice(-6)}`,
+                            details: { status: e.target.value },
+                          });
                           toast.success(isRTL
                             ? 'تم تحديث الحالة ✅'
                             : 'Status updated ✅'
@@ -479,6 +504,7 @@ function AdminOrdersTab({ adminAPI, isRTL }) {
 }
 
 function AdminProductsTab({ adminAPI, isRTL }) {
+  const { user } = useAuth();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
@@ -504,6 +530,12 @@ function AdminProductsTab({ adminAPI, isRTL }) {
     setActionLoading(id + '_delete');
     try {
       await adminAPI.deleteProduct(id);
+      await logAdminAction(user, {
+        action: 'product.deleted',
+        targetType: 'product',
+        targetId: id,
+        targetLabel: name,
+      });
       setProducts(prev => prev.filter(p => p._id !== id && p.id !== id));
       toast.success(isRTL ? 'تم حذف المنتج' : 'Product deleted');
     } catch (err) {
@@ -523,6 +555,13 @@ function AdminProductsTab({ adminAPI, isRTL }) {
       } else {
         await adminAPI.activateProduct(id);
       }
+      await logAdminAction(user, {
+        action: isActive ? 'product.deactivated' : 'product.activated',
+        targetType: 'product',
+        targetId: id,
+        targetLabel: product.name,
+        details: { isActive: !isActive },
+      });
       setProducts(prev => prev.map(p =>
         (p._id === id || p.id === id) ? { ...p, isActive: !isActive } : p
       ));
@@ -1106,7 +1145,161 @@ function AdminFeaturedSlotsTab({ isRTL, productsAPI }) {
 
 const MIN_SUPPORT_REPLY_LENGTH = 10;
 
+const getAuditActionLabel = (action, isRTL) => {
+  const labels = {
+    'seller.approved': { en: 'Seller approved', ar: 'موافقة على بائع' },
+    'seller.rejected': { en: 'Seller rejected', ar: 'رفض بائع' },
+    'user.toggled': { en: 'User status changed', ar: 'تغيير حالة مستخدم' },
+    'user.deleted': { en: 'User deleted', ar: 'حذف مستخدم' },
+    'product.deleted': { en: 'Product deleted', ar: 'حذف منتج' },
+    'product.activated': { en: 'Product activated', ar: 'تفعيل منتج' },
+    'product.deactivated': { en: 'Product deactivated', ar: 'إخفاء منتج' },
+    'order.status_updated': { en: 'Order status updated', ar: 'تحديث حالة طلب' },
+    'withdrawal.updated': { en: 'Withdrawal updated', ar: 'تحديث طلب سحب' },
+    'support.replied': { en: 'Support reply sent', ar: 'رد على دعم' },
+  };
+  const entry = labels[action] || { en: action, ar: action };
+  return isRTL ? entry.ar : entry.en;
+};
+
+function AdminAuditTab({ isRTL }) {
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all');
+
+  const loadLogs = async () => {
+    setLoading(true);
+    try {
+      let data = await fetchAdminAuditLogs({ limit: 100 });
+      if (filter === 'seller') {
+        data = data.filter((entry) => entry.action?.startsWith('seller.'));
+      } else if (filter !== 'all') {
+        data = data.filter((entry) => entry.action === filter);
+      }
+      setEntries(Array.isArray(data) ? data : []);
+    } catch {
+      setEntries([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadLogs();
+  }, [filter]);
+
+  const filters = [
+    { value: 'all', labelEn: 'All', labelAr: 'الكل' },
+    { value: 'seller', labelEn: 'Sellers', labelAr: 'البائعين' },
+    { value: 'user.deleted', labelEn: 'Users', labelAr: 'المستخدمين' },
+    { value: 'product.deleted', labelEn: 'Products', labelAr: 'المنتجات' },
+    { value: 'order.status_updated', labelEn: 'Orders', labelAr: 'الطلبات' },
+    { value: 'withdrawal.updated', labelEn: 'Payouts', labelAr: 'السحب' },
+  ];
+
+  if (!import.meta.env.DEV) {
+    return (
+      <div>
+        <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
+          {isRTL ? 'سجل العمليات' : 'Audit Log'}
+        </h1>
+        <p className="text-sm text-gray-400">
+          {isRTL ? 'سجل العمليات متاح في وضع التطوير مع السيرفر المحلي.' : 'Audit log requires local dev mode with npm run server.'}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+        <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text ${isRTL ? 'text-right' : ''}`}>
+          {isRTL ? 'سجل العمليات' : 'Audit Log'}
+        </h1>
+        <button type="button" onClick={loadLogs} className="btn-outline text-sm">
+          {isRTL ? 'تحديث' : 'Refresh'}
+        </button>
+      </div>
+
+      <div className={`flex gap-2 mb-4 flex-wrap ${isRTL ? 'flex-row-reverse' : ''}`}>
+        {filters.map((item) => (
+          <button
+            key={item.value}
+            type="button"
+            onClick={() => setFilter(item.value)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              filter === item.value
+                ? 'bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy'
+                : 'bg-white dark:bg-dark-surface text-gray-600 dark:text-dark-muted border border-gray-200 dark:border-dark-border'
+            }`}
+          >
+            {isRTL ? item.labelAr : item.labelEn}
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center">
+            <div className="w-6 h-6 border-2 border-brand-gold border-t-transparent rounded-full animate-spin mx-auto" />
+          </div>
+        ) : entries.length === 0 ? (
+          <div className="p-8 text-center text-sm text-gray-400">
+            {isRTL ? 'لا توجد عمليات مسجّلة بعد' : 'No admin actions logged yet'}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className={`w-full text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
+              <thead className="bg-gray-50 dark:bg-dark-bg">
+                <tr>
+                  {[
+                    isRTL ? 'التاريخ' : 'Date',
+                    isRTL ? 'المشرف' : 'Admin',
+                    isRTL ? 'العملية' : 'Action',
+                    isRTL ? 'الهدف' : 'Target',
+                    isRTL ? 'التفاصيل' : 'Details',
+                  ].map((header) => (
+                    <th key={header} className="px-4 py-3 text-xs font-bold text-gray-400 uppercase">{header}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
+                {entries.map((entry) => (
+                  <tr key={entry._id}>
+                    <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                      {entry.createdAt ? new Date(entry.createdAt).toLocaleString() : '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-gray-900 dark:text-dark-text">{entry.adminName || 'Admin'}</div>
+                      <div className="text-xs text-gray-400">{entry.adminEmail}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
+                        {getAuditActionLabel(entry.action, isRTL)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-dark-muted max-w-[140px] truncate">
+                      {entry.targetLabel || entry.targetId || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate">
+                      {entry.details?.reason ||
+                        entry.details?.status ||
+                        entry.details?.note ||
+                        '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AdminPayoutsTab({ isRTL, toast }) {
+  const { user } = useAuth();
   const [withdrawals, setWithdrawals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState(null);
@@ -1127,10 +1320,17 @@ function AdminPayoutsTab({ isRTL, toast }) {
     loadWithdrawals();
   }, []);
 
-  const handleStatus = async (id, status) => {
+  const handleStatus = async (id, status, entry) => {
     setUpdatingId(id);
     try {
       await updateWithdrawalStatus(id, status);
+      await logAdminAction(user, {
+        action: 'withdrawal.updated',
+        targetType: 'withdrawal',
+        targetId: id,
+        targetLabel: entry?.sellerName || entry?.sellerEmail,
+        details: { status, amount: entry?.amount },
+      });
       toast.success(isRTL ? 'تم تحديث الحالة' : 'Status updated');
       await loadWithdrawals();
     } catch (err) {
@@ -1229,7 +1429,7 @@ function AdminPayoutsTab({ isRTL, toast }) {
                               <button
                                 type="button"
                                 disabled={updatingId === entry._id}
-                                onClick={() => handleStatus(entry._id, 'approved')}
+                                onClick={() => handleStatus(entry._id, 'approved', entry)}
                                 className="text-[10px] px-2 py-1 rounded-lg bg-blue-50 text-blue-700 font-semibold"
                               >
                                 {isRTL ? 'موافقة' : 'Approve'}
@@ -1238,7 +1438,7 @@ function AdminPayoutsTab({ isRTL, toast }) {
                             <button
                               type="button"
                               disabled={updatingId === entry._id}
-                              onClick={() => handleStatus(entry._id, 'paid')}
+                              onClick={() => handleStatus(entry._id, 'paid', entry)}
                               className="text-[10px] px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-semibold"
                             >
                               {isRTL ? 'تم الدفع' : 'Mark paid'}
@@ -1246,7 +1446,7 @@ function AdminPayoutsTab({ isRTL, toast }) {
                             <button
                               type="button"
                               disabled={updatingId === entry._id}
-                              onClick={() => handleStatus(entry._id, 'rejected')}
+                              onClick={() => handleStatus(entry._id, 'rejected', entry)}
                               className="text-[10px] px-2 py-1 rounded-lg bg-red-50 text-red-700 font-semibold"
                             >
                               {isRTL ? 'رفض' : 'Reject'}
@@ -1269,6 +1469,7 @@ function AdminPayoutsTab({ isRTL, toast }) {
 }
 
 function AdminSupportTab({ isRTL, toast }) {
+  const { user } = useAuth();
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
@@ -1311,6 +1512,13 @@ function AdminSupportTab({ isRTL, toast }) {
         email: selected.email,
         fullName: selected.fullName,
         message: selected.message,
+      });
+      await logAdminAction(user, {
+        action: 'support.replied',
+        targetType: 'support',
+        targetId: messageId,
+        targetLabel: selected.fullName || selected.email,
+        details: { status: 'resolved' },
       });
       toast.success(isRTL ? 'تم إرسال الرد ✅' : 'Reply sent ✅');
       setReply('');
@@ -1460,7 +1668,7 @@ function AdminSupportTab({ isRTL, toast }) {
 export default function AdminDashboard() {
   const { t } = useTranslation();
   const { isRTL } = useLanguage();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   const [dashboard, setDashboard] = useState(null);
@@ -1638,6 +1846,13 @@ export default function AdminDashboard() {
   const approveSeller = async (id) => {
     try {
       await adminAPI.approveBrandRequest(id);
+      const brand = brands.find((b) => b._id === id || b.id === id);
+      await logAdminAction(user, {
+        action: 'seller.approved',
+        targetType: 'brand',
+        targetId: id,
+        targetLabel: brand?.name,
+      });
       setBrands(prev => prev.map(b =>
         (b._id === id || b.id === id)
           ? { ...b, isVerified: true, isApproved: true, isActive: true, status: 'approved' }
@@ -1667,6 +1882,13 @@ export default function AdminDashboard() {
     }
     try {
       await adminAPI.rejectBrandRequest(rejectModal.brandId, rejectReason.trim());
+      await logAdminAction(user, {
+        action: 'seller.rejected',
+        targetType: 'brand',
+        targetId: rejectModal.brandId,
+        targetLabel: rejectModal.brandName,
+        details: { reason: rejectReason.trim() },
+      });
       setBrands(prev => prev.filter(b => b._id !== rejectModal.brandId && b.id !== rejectModal.brandId));
       setRejectModal({ open: false, brandId: null, brandName: '' });
       setRejectReason('');
@@ -2492,24 +2714,7 @@ export default function AdminDashboard() {
             )}
 
             {activeTab === 'audit' && (
-              <div>
-                <h2 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
-                  {isRTL ? 'سجل العمليات' : 'Audit Log'}
-                </h2>
-                <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
-                  <div className="text-center py-8">
-                    <FileText className="mx-auto text-gray-300 dark:text-dark-muted mb-4" size={40} />
-                    <p className="font-semibold text-gray-700 dark:text-dark-text mb-2">
-                      {isRTL ? 'سجل العمليات' : 'Audit Log'}
-                    </p>
-                    <p className="text-sm text-gray-400 dark:text-dark-muted">
-                      {isRTL
-                        ? 'سيتم تسجيل جميع العمليات الإدارية هنا — موافقة البائعين، حذف المنتجات، تعديل المستخدمين'
-                        : 'All admin actions will be logged here — seller approvals, product deletions, user modifications'}
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <AdminAuditTab isRTL={isRTL} />
             )}
           </div>
         </div>

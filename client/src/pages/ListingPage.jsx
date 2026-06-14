@@ -87,7 +87,6 @@ export default function ListingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [totalPages, setTotalPages] = useState(1);
-  const [catalogTotal, setCatalogTotal] = useState(null);
 
   const fetchProducts = async () => {
     setLoading(true);
@@ -109,7 +108,6 @@ export default function ListingPage() {
         setProducts(deduplicateProducts(mapped));
         setError(null);
         const meta = res.data?.meta || {};
-        setCatalogTotal(meta.total ?? mapped.length);
         setTotalPages(meta.pages || meta.totalPages || 1);
       } else {
         // API returned empty — show empty state
@@ -306,20 +304,7 @@ export default function ListingPage() {
     [categories, products]
   );
 
-  const hasClientFilters = Boolean(
-    searchParam ||
-    activeCategory ||
-    priceMin ||
-    priceMax ||
-    minRating > 0 ||
-    filters.freeShipping ||
-    filters.onSale ||
-    selectedGovs.length
-  );
-
-  const resultCount = hasClientFilters
-    ? filteredProducts.length
-    : (catalogTotal ?? filteredProducts.length);
+  const resultCount = filteredProducts.length;
 
   const govCounts = {};
   products.forEach(p => { 
@@ -519,6 +504,18 @@ export default function ListingPage() {
                 >
                   <SlidersHorizontal size={15} />
                   {isRTL ? 'الفلاتر' : 'Filters'}
+                </button>
+
+                {/* Refresh catalog */}
+                <button
+                  type="button"
+                  onClick={fetchProducts}
+                  disabled={loading}
+                  className={`flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface text-sm font-medium hover:border-brand-navy dark:hover:border-brand-gold transition-colors text-gray-700 dark:text-dark-text disabled:opacity-50 ${isRTL ? 'flex-row-reverse' : ''}`}
+                  title={isRTL ? 'تحديث المنتجات' : 'Refresh products'}
+                >
+                  <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+                  <span className="hidden sm:inline">{isRTL ? 'تحديث' : 'Refresh'}</span>
                 </button>
 
                 {/* Sort */}

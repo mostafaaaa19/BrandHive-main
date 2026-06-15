@@ -117,12 +117,13 @@ const createPaymobCheckout = async ({
   const authToken = auth.token;
   if (!authToken) throw new Error('Paymob authentication failed');
 
+  const merchantOrderRef = uniqueMerchantOrderId(merchantOrderId);
   const order = await paymobRequest('/ecommerce/orders', {
     auth_token: authToken,
     delivery_needed: false,
     amount_cents: amountCents,
     currency: 'EGP',
-    merchant_order_id: uniqueMerchantOrderId(merchantOrderId),
+    merchant_order_id: merchantOrderRef,
     items: [],
   });
 
@@ -155,6 +156,7 @@ const createPaymobCheckout = async ({
     paymobOrderId,
     amountCents,
     paymentToken,
+    merchantOrderRef,
   };
 };
 

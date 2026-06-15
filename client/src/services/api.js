@@ -64,62 +64,31 @@ export const subscribeNewsletter = async (email) => {
     return res.data?.data || res.data;
   }
 
-  const list = JSON.parse(localStorage.getItem(NEWSLETTER_LOCAL_KEY) || '[]');
-  if (!list.includes(normalized)) {
-    list.push(normalized);
-    localStorage.setItem(NEWSLETTER_LOCAL_KEY, JSON.stringify(list.slice(-500)));
-  }
-
-  return { email: normalized, subscribed: true, localOnly: true };
+  throw mirrorServiceUnavailable();
 };
 
 export const fetchFeaturedSlotIds = async () => {
-  if (localPlatform) {
-    try {
-      const res = await localPlatform.get('/featured-slots');
-      const ids = res.data?.data?.productIds;
-      if (Array.isArray(ids)) {
-        localStorage.setItem(FEATURED_SLOTS_STORAGE_KEY, JSON.stringify(ids));
-        return ids.map(String);
-      }
-    } catch (err) {
-      console.warn('[fetchFeaturedSlotIds]', err.response?.data || err.message);
-    }
-  }
+  if (!localPlatform) throw mirrorServiceUnavailable();
 
-  try {
-    const stored = JSON.parse(localStorage.getItem(FEATURED_SLOTS_STORAGE_KEY) || '[]');
-    return Array.isArray(stored) ? stored.map(String) : [];
-  } catch {
-    return [];
-  }
+  const res = await localPlatform.get('/featured-slots');
+  const ids = res.data?.data?.productIds;
+  if (!Array.isArray(ids)) return [];
+  return ids.map(String);
 };
 
 export const saveFeaturedSlotIds = async (productIds = []) => {
+  if (!localPlatform) throw mirrorServiceUnavailable();
+
   const ids = productIds.slice(0, 4).map(String);
-  localStorage.setItem(FEATURED_SLOTS_STORAGE_KEY, JSON.stringify(ids));
-
-  if (localPlatform) {
-    try {
-      await localPlatform.put('/featured-slots', { productIds: ids });
-    } catch (err) {
-      console.warn('[saveFeaturedSlotIds]', err.response?.data || err.message);
-    }
-  }
-
+  await localPlatform.put('/featured-slots', { productIds: ids });
   return ids;
 };
 
 export const submitAdInquiry = async (payload = {}) => {
-  if (localPlatform) {
-    const res = await localPlatform.post('/ad-inquiries', payload);
-    return res.data?.data || res.data;
-  }
+  if (!localPlatform) throw mirrorServiceUnavailable();
 
-  const list = JSON.parse(localStorage.getItem(AD_INQUIRIES_LOCAL_KEY) || '[]');
-  list.unshift({ ...payload, createdAt: new Date().toISOString() });
-  localStorage.setItem(AD_INQUIRIES_LOCAL_KEY, JSON.stringify(list.slice(0, 50)));
-  return { submitted: true, localOnly: true };
+  const res = await localPlatform.post('/ad-inquiries', payload);
+  return res.data?.data || res.data;
 };
 
 const mirrorServiceUnavailable = () =>
@@ -2711,11 +2680,12 @@ export const fetchSellerOrders = async (user) => {
   }
 
   if (railwayOrders.length > 0) {
-    return railwayOrders.sort(
+    const sorted = railwayOrders.sort(
       (a, b) =>
         new Date(b.createdAt || 0).getTime() -
         new Date(a.createdAt || 0).getTime()
     );
+    return hydrateOrdersWithPaymobPaymentStatus(sorted, { reconcile: true });
   }
 
   const brandIds = await collectSellerBrandIds(user);
@@ -2746,11 +2716,12 @@ export const fetchSellerOrders = async (user) => {
       })
     );
 
-    return mirrored.sort(
+    const sorted = mirrored.sort(
       (a, b) =>
         new Date(b.createdAt || 0).getTime() -
         new Date(a.createdAt || 0).getTime()
     );
+    return hydrateOrdersWithPaymobPaymentStatus(sorted, { reconcile: true });
   } catch (err) {
     console.warn('[fetchSellerOrders/mirror]', err.response?.data || err.message);
     return [];
@@ -3617,85 +3588,42 @@ export const couponsAPI = {
   validate: (data) => api.post('/coupons/validate', data),
 };
 
-const sellerCouponsStorageKey = (userId) =>
-  `brandhive_seller_coupons_${userId || 'default'}`;
+const brandOffersCache = new Map();
 
-const sellerPromosStorageKey = (userId) =>
-  `brandhive_seller_promos_${userId || 'default'}`;
-
-const brandPublicCouponsKey = (brandId) =>
-  `brandhive_brand_coupons_${brandId || 'default'}`;
-
-const brandPublicPromosKey = (brandId) =>
-  `brandhive_brand_promos_${brandId || 'default'}`;
-
-const readBrandPublicCoupons = (brandId) => {
-  if (!brandId) return [];
-  try {
-    return JSON.parse(
-      localStorage.getItem(brandPublicCouponsKey(brandId)) || '[]'
-    );
-  } catch {
-    return [];
+const cacheBrandOffers = (brandId, offers) => {
+  if (brandId) {
+    brandOffersCache.set(String(brandId), {
+      promos: Array.isArray(offers?.promos) ? offers.promos : [],
+      coupons: Array.isArray(offers?.coupons) ? offers.coupons : [],
+    });
   }
 };
 
-const writeBrandPublicCoupons = (brandId, coupons) => {
-  if (!brandId) return;
-  localStorage.setItem(
-    brandPublicCouponsKey(brandId),
-    JSON.stringify(coupons.slice(0, 20))
-  );
-};
+const getCachedBrandPromos = (brandId) =>
+  brandOffersCache.get(String(brandId))?.promos || [];
 
-const readBrandPublicPromos = (brandId) => {
-  if (!brandId) return [];
-  try {
-    return JSON.parse(
-      localStorage.getItem(brandPublicPromosKey(brandId)) || '[]'
-    );
-  } catch {
-    return [];
-  }
-};
+const getCachedBrandCoupons = (brandId) =>
+  brandOffersCache.get(String(brandId))?.coupons || [];
 
-const writeBrandPublicPromos = (brandId, promos) => {
-  if (!brandId) return;
-  localStorage.setItem(
-    brandPublicPromosKey(brandId),
-    JSON.stringify(promos.slice(0, 10))
-  );
-};
-
-export const fetchBrandPublicOffers = (brandId) => {
+export const fetchBrandPublicOffers = async (brandId) => {
   if (!brandId) return { promos: [], coupons: [] };
 
-  const promos = readBrandPublicPromos(brandId).filter((entry) => entry?.label);
-  const now = Date.now();
-  const coupons = readBrandPublicCoupons(brandId).filter((coupon) => {
-    if (!coupon?.code) return false;
-    if (!coupon.expiresAt) return true;
-    return new Date(coupon.expiresAt).getTime() >= now;
-  });
+  if (!localPlatform) throw mirrorServiceUnavailable();
 
-  return { promos, coupons };
+  const res = await localPlatform.get(
+    `/brands/${encodeURIComponent(String(brandId))}/offers`
+  );
+  const data = res.data?.data || res.data || {};
+  const offers = {
+    promos: Array.isArray(data.promos) ? data.promos : [],
+    coupons: Array.isArray(data.coupons) ? data.coupons : [],
+  };
+  cacheBrandOffers(brandId, offers);
+  return offers;
 };
 
-export const syncBrandPublicOffers = (userId, brandId) => {
-  if (!userId || !brandId) return;
-
-  try {
-    const coupons = JSON.parse(
-      localStorage.getItem(sellerCouponsStorageKey(userId)) || '[]'
-    );
-    const promos = JSON.parse(
-      localStorage.getItem(sellerPromosStorageKey(userId)) || '[]'
-    );
-    writeBrandPublicCoupons(brandId, coupons);
-    writeBrandPublicPromos(brandId, promos);
-  } catch {
-    // ignore sync errors
-  }
+export const syncBrandPublicOffers = () => {
+  // Offers are stored on the server when sellers create coupons/promos.
 };
 
 const getCartBrandIds = (items = []) =>
@@ -3707,30 +3635,34 @@ const getCartBrandIds = (items = []) =>
     ),
   ];
 
-const listBrandIdsFromCouponStorage = () => {
-  if (typeof localStorage === 'undefined') return [];
-  const ids = [];
-  for (let i = 0; i < localStorage.length; i += 1) {
-    const key = localStorage.key(i);
-    if (key?.startsWith('brandhive_brand_coupons_')) {
-      ids.push(key.replace('brandhive_brand_coupons_', ''));
-    }
-  }
-  return ids;
+export const prefetchCartBrandOffers = async (items = []) => {
+  const brandIds = getCartBrandIds(items);
+  await Promise.allSettled(
+    brandIds.map((brandId) => fetchBrandPublicOffers(brandId))
+  );
 };
 
-const findBrandCouponInStorage = (code, preferredBrandIds = []) => {
+const findBrandCouponOnServer = async (code, preferredBrandIds = []) => {
   const normalized = String(code || '').toUpperCase().trim();
   if (!normalized) return null;
 
   const now = Date.now();
   const brandIds =
     preferredBrandIds.length > 0
-      ? preferredBrandIds
-      : listBrandIdsFromCouponStorage();
+      ? preferredBrandIds.map(String)
+      : [...brandOffersCache.keys()];
 
   for (const brandId of brandIds) {
-    const coupons = readBrandPublicCoupons(brandId);
+    let coupons = getCachedBrandCoupons(brandId);
+    if (coupons.length === 0) {
+      try {
+        const offers = await fetchBrandPublicOffers(brandId);
+        coupons = offers.coupons;
+      } catch {
+        continue;
+      }
+    }
+
     const match = coupons.find(
       (coupon) => coupon.code?.toUpperCase() === normalized
     );
@@ -3779,7 +3711,7 @@ export const computeCartPromoAdjustments = (
 
   let qualifyingSubtotal = 0;
   brandIds.forEach((brandId) => {
-    const freeShip = readBrandPublicPromos(brandId).find(
+    const freeShip = getCachedBrandPromos(brandId).find(
       (entry) => entry.type === 'free_shipping'
     );
     if (!freeShip) return;
@@ -3808,7 +3740,7 @@ export const computeCartPromoAdjustments = (
   }
 
   brandIds.forEach((brandId) => {
-    const bundle = readBrandPublicPromos(brandId).find(
+    const bundle = getCachedBrandPromos(brandId).find(
       (entry) => entry.type === 'buy_x_get_y'
     );
     if (!bundle) return;
@@ -3904,7 +3836,7 @@ export const applyCartCouponCode = async ({ code, items = [], subtotal = 0 }) =>
   }
 
   const brandIds = getCartBrandIds(items);
-  const found = findBrandCouponInStorage(normalized, brandIds);
+  const found = await findBrandCouponOnServer(normalized, brandIds);
   if (!found) throw new Error('invalid');
 
   const discount = computeBrandCouponDiscount(
@@ -4231,6 +4163,94 @@ export const confirmPaymobReturn = async (orderId, paymobParams = {}) => {
   return { success: true, status: 'paid', localOnly: true };
 };
 
+const isMirrorPaymobOrder = (order) => {
+  const payment = String(order?.paymentMethod || order?.payment?.method || '').toLowerCase();
+  return (
+    payment.includes('paymob') ||
+    payment.includes('fawry') ||
+    payment === 'card' ||
+    payment === 'visa'
+  );
+};
+
+export const fetchPaidOrderIdsFromMirror = async () => {
+  if (!localPayment) return new Set();
+
+  try {
+    const res = await localPayment.get('/paymob/paid-orders');
+    const ids = res.data?.data?.orderIds || res.data?.orderIds || [];
+    return new Set(ids.map(String));
+  } catch {
+    return new Set();
+  }
+};
+
+export const hydrateOrdersWithPaymobPaymentStatus = async (
+  orders = [],
+  { reconcile = true } = {}
+) => {
+  if (!Array.isArray(orders) || orders.length === 0) return orders;
+
+  const withLocal = applyPaidOrderOverlay(orders).map((order) => {
+    const status = String(order.status || order.orderStatus || '').toLowerCase();
+    if (status === 'paid' && isMirrorPaymobOrder(order)) {
+      return { ...order, status: 'confirmed' };
+    }
+    return order;
+  });
+
+  const paidIds = await fetchPaidOrderIdsFromMirror();
+  const updated = [...withLocal];
+
+  await Promise.allSettled(
+    updated.map(async (order, index) => {
+      const id = String(order._id || order.id || order.orderId || '');
+      const status = String(order.status || order.orderStatus || '').toLowerCase();
+      if (!id || status !== 'pending' || !isMirrorPaymobOrder(order)) return;
+      if (!paidIds.has(id)) return;
+
+      if (reconcile && localPayment) {
+        try {
+          await localPayment.post(`/paymob/reconcile/${encodeURIComponent(id)}`);
+        } catch {
+          // overlay status even if reconcile fails
+        }
+      }
+
+      updated[index] = { ...order, status: 'confirmed' };
+    })
+  );
+
+  return updated;
+};
+
+export const syncAdminOrdersAfterPaymob = async (orders = []) => {
+  const paidIds = await fetchPaidOrderIdsFromMirror();
+  const hydrated = await hydrateOrdersWithPaymobPaymentStatus(orders, {
+    reconcile: true,
+  });
+  const updated = [...hydrated];
+
+  await Promise.allSettled(
+    updated.map(async (order, index) => {
+      const id = String(order._id || order.id || '');
+      const status = String(order.status || order.orderStatus || '').toLowerCase();
+      if (!id || status !== 'pending' || !isMirrorPaymobOrder(order) || !paidIds.has(id)) {
+        return;
+      }
+
+      try {
+        await adminAPI.markOrderPaid(id);
+        updated[index] = { ...order, status: 'confirmed' };
+      } catch {
+        updated[index] = { ...order, status: 'confirmed', _paymentVerifiedLocally: true };
+      }
+    })
+  );
+
+  return updated;
+};
+
 export const fetchPaymobStatus = async () => {
   if (!localPayment) {
     return { configured: false, fawryConfigured: false, available: false };
@@ -4247,28 +4267,22 @@ export const fetchPaymobStatus = async () => {
   }
 };
 
-export const fetchSellerCoupons = async (userId) => {
-  const local = JSON.parse(
-    localStorage.getItem(sellerCouponsStorageKey(userId)) || '[]'
-  );
+export const fetchSellerCoupons = async (userId, brandId) => {
+  if (!userId) return [];
+
+  if (localPlatform) {
+    const res = await localPlatform.get(
+      `/sellers/${encodeURIComponent(String(userId))}/coupons`,
+      { params: brandId ? { brandId: String(brandId) } : {} }
+    );
+    return getResponseArray(res);
+  }
 
   try {
     const res = await couponsAPI.getAll({ page: 1, limit: 50 });
-    const remote = getResponseArray(res);
-    if (remote.length === 0) return local;
-
-    const merged = new Map();
-    local.forEach((coupon) => {
-      const id = coupon._id || coupon.id || coupon.code;
-      if (id) merged.set(String(id), coupon);
-    });
-    remote.forEach((coupon) => {
-      const id = coupon._id || coupon.id || coupon.code;
-      if (id) merged.set(String(id), coupon);
-    });
-    return [...merged.values()];
+    return getResponseArray(res);
   } catch {
-    return local;
+    return [];
   }
 };
 
@@ -4280,6 +4294,18 @@ export const createSellerCoupon = async (userId, brandId, payload) => {
     expiresAt: payload.expiresAt,
     ...(brandId ? { brandId: String(brandId) } : {}),
   };
+
+  if (localPlatform) {
+    const res = await localPlatform.post(
+      `/sellers/${encodeURIComponent(String(userId))}/coupons`,
+      body
+    );
+    const entry = res.data?.data || res.data || body;
+    if (brandId) {
+      brandOffersCache.delete(String(brandId));
+    }
+    return entry;
+  }
 
   let created = null;
   try {
@@ -4297,94 +4323,136 @@ export const createSellerCoupon = async (userId, brandId, payload) => {
     created = res.data?.data || res.data || body;
   }
 
-  const entry = {
+  return {
     ...created,
     code: created.code || body.code,
     brandId: brandId ? String(brandId) : undefined,
     createdAt: created.createdAt || new Date().toISOString(),
   };
-
-  const list = JSON.parse(
-    localStorage.getItem(sellerCouponsStorageKey(userId)) || '[]'
-  );
-  localStorage.setItem(
-    sellerCouponsStorageKey(userId),
-    JSON.stringify([entry, ...list.filter((c) => c.code !== entry.code)].slice(0, 30))
-  );
-
-  if (brandId) {
-    const publicCoupons = readBrandPublicCoupons(brandId);
-    writeBrandPublicCoupons(brandId, [
-      entry,
-      ...publicCoupons.filter((c) => c.code !== entry.code),
-    ]);
-  }
-
-  return entry;
 };
 
 export const deleteSellerCoupon = async (userId, couponId, code, brandId) => {
+  if (localPlatform) {
+    const couponKey = couponId ? String(couponId) : 'by-code';
+    await localPlatform.delete(
+      `/sellers/${encodeURIComponent(String(userId))}/coupons/${encodeURIComponent(couponKey)}`,
+      { params: { code, brandId: brandId ? String(brandId) : undefined } }
+    );
+    if (brandId) brandOffersCache.delete(String(brandId));
+    return [];
+  }
+
   try {
     if (couponId) await couponsAPI.delete(couponId);
   } catch {
-    // keep local removal even if API delete fails
+    // ignore remote delete failures
   }
 
-  const list = JSON.parse(
-    localStorage.getItem(sellerCouponsStorageKey(userId)) || '[]'
-  );
-  const next = list.filter(
-    (coupon) =>
-      String(coupon._id || coupon.id || '') !== String(couponId || '') &&
-      coupon.code !== code
-  );
-  localStorage.setItem(sellerCouponsStorageKey(userId), JSON.stringify(next));
-
-  if (brandId) {
-    writeBrandPublicCoupons(
-      brandId,
-      readBrandPublicCoupons(brandId).filter(
-        (coupon) =>
-          String(coupon._id || coupon.id || '') !== String(couponId || '') &&
-          coupon.code !== code
-      )
-    );
-  }
-
-  return next;
+  return [];
 };
 
-export const fetchSellerPromotions = (userId) => {
-  try {
-    return JSON.parse(
-      localStorage.getItem(sellerPromosStorageKey(userId)) || '[]'
-    );
-  } catch {
-    return [];
-  }
+export const fetchSellerPromotions = async (userId, brandId) => {
+  if (!userId) return [];
+
+  if (!localPlatform) throw mirrorServiceUnavailable();
+
+  const res = await localPlatform.get(
+    `/sellers/${encodeURIComponent(String(userId))}/promos`,
+    { params: brandId ? { brandId: String(brandId) } : {} }
+  );
+  return getResponseArray(res);
 };
 
-export const saveSellerPromotion = (userId, brandId, promotion) => {
-  const list = fetchSellerPromotions(userId).filter(
-    (entry) => entry.type !== promotion.type
-  );
-  const entry = {
-    ...promotion,
-    brandId: brandId ? String(brandId) : undefined,
-    id: promotion.id || `${promotion.type}-${Date.now()}`,
-    updatedAt: new Date().toISOString(),
-  };
-  const next = [entry, ...list];
-  localStorage.setItem(sellerPromosStorageKey(userId), JSON.stringify(next));
-
-  if (brandId) {
-    const publicPromos = readBrandPublicPromos(brandId).filter(
-      (item) => item.type !== promotion.type
-    );
-    writeBrandPublicPromos(brandId, [entry, ...publicPromos]);
+export const saveSellerPromotion = async (userId, brandId, promotion) => {
+  if (!userId || !promotion?.type) {
+    throw new Error('Invalid promotion');
   }
 
-  return next;
+  if (!localPlatform) throw mirrorServiceUnavailable();
+
+  const res = await localPlatform.post(
+    `/sellers/${encodeURIComponent(String(userId))}/promos`,
+    {
+      ...promotion,
+      brandId: brandId ? String(brandId) : undefined,
+    }
+  );
+  const entry = res.data?.data || res.data;
+  if (brandId) brandOffersCache.delete(String(brandId));
+  return entry;
+};
+
+export const fetchSavedCards = async (userId) => {
+  if (!userId) return [];
+  if (!localPlatform) throw mirrorServiceUnavailable();
+
+  const res = await localPlatform.get(
+    `/users/${encodeURIComponent(String(userId))}/saved-cards`
+  );
+  return getResponseArray(res);
+};
+
+export const addSavedCard = async (userId, card = {}) => {
+  if (!userId) throw new Error('User required');
+  if (!localPlatform) throw mirrorServiceUnavailable();
+
+  const res = await localPlatform.post(
+    `/users/${encodeURIComponent(String(userId))}/saved-cards`,
+    card
+  );
+  return res.data?.data || res.data;
+};
+
+export const removeSavedCard = async (userId, cardId) => {
+  if (!userId || !cardId) return;
+  if (!localPlatform) throw mirrorServiceUnavailable();
+
+  await localPlatform.delete(
+    `/users/${encodeURIComponent(String(userId))}/saved-cards/${encodeURIComponent(String(cardId))}`
+  );
+};
+
+export const setDefaultSavedCard = async (userId, cardId) => {
+  if (!userId || !cardId) return null;
+  if (!localPlatform) throw mirrorServiceUnavailable();
+
+  const res = await localPlatform.patch(
+    `/users/${encodeURIComponent(String(userId))}/saved-cards/${encodeURIComponent(String(cardId))}/default`
+  );
+  return res.data?.data || res.data;
+};
+
+export const fetchSellerStoreSettings = async (userId, brandId) => {
+  if (!userId) return { bazaar: {}, shop: {} };
+  if (!localPlatform) throw mirrorServiceUnavailable();
+
+  const res = await localPlatform.get(
+    `/users/${encodeURIComponent(String(userId))}/store-settings`,
+    { params: brandId ? { brandId: String(brandId) } : {} }
+  );
+  return res.data?.data || res.data || { bazaar: {}, shop: {} };
+};
+
+export const saveSellerBazaarProfile = async (userId, brandId, bazaar = {}) => {
+  if (!userId) throw new Error('User required');
+  if (!localPlatform) throw mirrorServiceUnavailable();
+
+  const res = await localPlatform.put(
+    `/users/${encodeURIComponent(String(userId))}/store-settings`,
+    { brandId: brandId ? String(brandId) : undefined, bazaar }
+  );
+  return res.data?.data || res.data;
+};
+
+export const saveSellerShopSettings = async (userId, brandId, shop = {}) => {
+  if (!userId) throw new Error('User required');
+  if (!localPlatform) throw mirrorServiceUnavailable();
+
+  const res = await localPlatform.put(
+    `/users/${encodeURIComponent(String(userId))}/store-settings`,
+    { brandId: brandId ? String(brandId) : undefined, shop }
+  );
+  return res.data?.data || res.data;
 };
 
 export const applySellerFlashSale = async (productId, discountPercent) => {
@@ -4439,79 +4507,35 @@ export const fetchBrandProductReviews = async (products = []) => {
   );
 };
 
-const followingStorageKey = (userId) => `brandhive_following_${userId || 'default'}`;
-
-export const readLocalFollowing = (userId) => {
-  try {
-    return JSON.parse(localStorage.getItem(followingStorageKey(userId)) || '[]');
-  } catch {
-    return [];
-  }
-};
-
-export const writeLocalFollowing = (userId, brandIds) => {
-  localStorage.setItem(
-    followingStorageKey(userId),
-    JSON.stringify([...new Set(brandIds.map(String))])
-  );
-};
-
 export const fetchBrandFollowState = async (userId, brandId) => {
   if (!userId || !brandId) {
-    return { isFollowing: false, followingIds: readLocalFollowing(userId) };
+    return { isFollowing: false, followingIds: [] };
   }
 
-  try {
-    const res = await brandsAPI.getMyFollowing();
-    const following = getResponseArray(res);
-    const followingIds = following
-      .map((brand) => brand._id || brand.id)
-      .filter(Boolean)
-      .map(String);
-    writeLocalFollowing(userId, followingIds);
-    return {
-      isFollowing: followingIds.includes(String(brandId)),
-      followingIds,
-      followersCount: null,
-    };
-  } catch {
-    const followingIds = readLocalFollowing(userId);
-    return {
-      isFollowing: followingIds.includes(String(brandId)),
-      followingIds,
-    };
-  }
+  const res = await brandsAPI.getMyFollowing();
+  const following = getResponseArray(res);
+  const followingIds = following
+    .map((brand) => brand._id || brand.id)
+    .filter(Boolean)
+    .map(String);
+
+  return {
+    isFollowing: followingIds.includes(String(brandId)),
+    followingIds,
+    followersCount: null,
+  };
 };
 
 export const toggleBrandFollow = async (userId, brandId, isCurrentlyFollowing) => {
   const id = String(brandId);
-  const localIds = readLocalFollowing(userId);
 
-  try {
-    if (isCurrentlyFollowing) {
-      await brandsAPI.unfollow(id);
-      writeLocalFollowing(
-        userId,
-        localIds.filter((entry) => entry !== id)
-      );
-      return false;
-    }
-
-    await brandsAPI.follow(id);
-    writeLocalFollowing(userId, [...localIds, id]);
-    return true;
-  } catch (err) {
-    const nextFollowing = !isCurrentlyFollowing;
-    if (nextFollowing) {
-      writeLocalFollowing(userId, [...localIds, id]);
-    } else {
-      writeLocalFollowing(
-        userId,
-        localIds.filter((entry) => entry !== id)
-      );
-    }
-    throw err;
+  if (isCurrentlyFollowing) {
+    await brandsAPI.unfollow(id);
+    return false;
   }
+
+  await brandsAPI.follow(id);
+  return true;
 };
 
 const fetchSimilarProducts = async (productId) => {

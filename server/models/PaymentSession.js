@@ -4,6 +4,8 @@ const paymentSessionSchema = new mongoose.Schema(
   {
     brandhiveOrderId: { type: String, required: true, index: true },
     paymobOrderId: { type: Number },
+    paymobMerchantOrderId: { type: String },
+    paymobTransactionId: { type: String },
     amountCents: { type: Number, required: true },
     currency: { type: String, default: 'EGP' },
     paymentMethod: { type: String, default: 'paymob' },

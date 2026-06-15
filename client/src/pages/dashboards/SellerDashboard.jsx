@@ -35,7 +35,9 @@ import {
   fetchSellerPromotions,
   saveSellerPromotion,
   applySellerFlashSale,
-  syncBrandPublicOffers,
+  fetchSellerStoreSettings,
+  saveSellerBazaarProfile,
+  saveSellerShopSettings,
   submitAdInquiry,
 } from '../../services/api';
 import { useTranslation } from 'react-i18next';
@@ -845,10 +847,9 @@ function SellerPromotionsTab({ isRTL, user, brandId, products, onProductsChange 
     if (!userId) return;
     setLoading(true);
     try {
-      if (brandId) syncBrandPublicOffers(userId, brandId);
       const [couponData, promoData] = await Promise.all([
-        fetchSellerCoupons(userId),
-        Promise.resolve(fetchSellerPromotions(userId)),
+        fetchSellerCoupons(userId, brandId),
+        fetchSellerPromotions(userId, brandId),
       ]);
       setCoupons(Array.isArray(couponData) ? couponData : []);
       setPromos(Array.isArray(promoData) ? promoData : []);
@@ -920,15 +921,26 @@ function SellerPromotionsTab({ isRTL, user, brandId, products, onProductsChange 
       toast.error(isRTL ? 'أدخل حد أدنى صحيح' : 'Enter a valid minimum order');
       return;
     }
-    saveSellerPromotion(userId, brandId, {
-      type: 'free_shipping',
-      minOrder,
-      label: isRTL
-        ? `شحن مجاني للطلبات فوق ${minOrder} ج.م`
-        : `Free shipping on orders above ${minOrder} EGP`,
-    });
-    await loadPromotions();
-    toast.success(isRTL ? 'تم حفظ عرض الشحن المجاني ✅' : 'Free shipping offer saved ✅');
+    setSaving(true);
+    try {
+      await saveSellerPromotion(userId, brandId, {
+        type: 'free_shipping',
+        minOrder,
+        label: isRTL
+          ? `شحن مجاني للطلبات فوق ${minOrder} ج.م`
+          : `Free shipping on orders above ${minOrder} EGP`,
+      });
+      await loadPromotions();
+      toast.success(isRTL ? 'تم حفظ عرض الشحن المجاني ✅' : 'Free shipping offer saved ✅');
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message ||
+          err.message ||
+          (isRTL ? 'فشل حفظ العرض' : 'Failed to save offer')
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleBundlePromo = async () => {
@@ -938,16 +950,27 @@ function SellerPromotionsTab({ isRTL, user, brandId, products, onProductsChange 
       toast.error(isRTL ? 'أدخل قيم صحيحة' : 'Enter valid values');
       return;
     }
-    saveSellerPromotion(userId, brandId, {
-      type: 'buy_x_get_y',
-      buyQty,
-      discount,
-      label: isRTL
-        ? `اشترِ ${buyQty} واحصل على خصم ${discount}% على القطعة الإضافية`
-        : `Buy ${buyQty} items and get ${discount}% off the extra item`,
-    });
-    await loadPromotions();
-    toast.success(isRTL ? 'تم حفظ العرض ✅' : 'Bundle offer saved ✅');
+    setSaving(true);
+    try {
+      await saveSellerPromotion(userId, brandId, {
+        type: 'buy_x_get_y',
+        buyQty,
+        discount,
+        label: isRTL
+          ? `اشترِ ${buyQty} واحصل على خصم ${discount}% على القطعة الإضافية`
+          : `Buy ${buyQty} items and get ${discount}% off the extra item`,
+      });
+      await loadPromotions();
+      toast.success(isRTL ? 'تم حفظ العرض ✅' : 'Bundle offer saved ✅');
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message ||
+          err.message ||
+          (isRTL ? 'فشل حفظ العرض' : 'Failed to save offer')
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   const tools = [
@@ -1447,25 +1470,26 @@ function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats
     facebookLink: '',
   });
 
-  const bazaarProfileKey = `brandhive_seller_bazaar_${user?.id || user?._id || 'default'}`;
+  const userId = user?.id || user?._id;
 
-  const readLocalBazaarProfile = () => {
+  const readServerBazaarProfile = async () => {
+    if (!userId) return {};
     try {
-      const raw = localStorage.getItem(bazaarProfileKey);
-      return raw ? JSON.parse(raw) : {};
+      const settings = await fetchSellerStoreSettings(userId, brandId);
+      return settings?.bazaar || {};
     } catch {
       return {};
     }
   };
 
-  const buildBazaarFromBrand = (brand, localProfile = {}) => ({
+  const buildBazaarFromBrand = (brand, serverProfile = {}) => ({
     _id: brand._id || brand.id,
     name: brand.name || 'My Bazaar',
     slug: brand.slug,
-    description: localProfile.description || brand.description || '',
-    whatsappLink: localProfile.whatsappLink || brand.whatsappLink || brand.whatsapp || '',
-    instagramLink: localProfile.instagramLink || brand.instagramLink || brand.instagram || '',
-    facebookLink: localProfile.facebookLink || brand.facebookLink || brand.facebook || '',
+    description: serverProfile.description || brand.description || '',
+    whatsappLink: serverProfile.whatsappLink || brand.whatsappLink || brand.whatsapp || '',
+    instagramLink: serverProfile.instagramLink || brand.instagramLink || brand.instagram || '',
+    facebookLink: serverProfile.facebookLink || brand.facebookLink || brand.facebook || '',
     followersCount: brand.followers || brand.followersCount || 0,
     viewsCount: brand.views || brand.viewsCount || 0,
     averageRating: brand.rating || brand.averageRating || 0,
@@ -1474,22 +1498,19 @@ function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats
     _fromBrand: true,
   });
 
-  const mergeBazaarProfile = (base) => {
-    const localProfile = readLocalBazaarProfile();
-    return {
-      ...base,
-      description: localProfile.description || base.description || '',
-      whatsappLink: localProfile.whatsappLink || base.whatsappLink || '',
-      instagramLink: localProfile.instagramLink || base.instagramLink || '',
-      facebookLink: localProfile.facebookLink || base.facebookLink || '',
-    };
-  };
+  const mergeBazaarProfile = (base, serverProfile = {}) => ({
+    ...base,
+    description: serverProfile.description || base.description || '',
+    whatsappLink: serverProfile.whatsappLink || base.whatsappLink || '',
+    instagramLink: serverProfile.instagramLink || base.instagramLink || '',
+    facebookLink: serverProfile.facebookLink || base.facebookLink || '',
+  });
 
   const loadBazaar = useCallback(async () => {
-    const localProfile = readLocalBazaarProfile();
+    const serverProfile = await readServerBazaarProfile();
     const cachedBrand = readCachedSellerBrandForUser(user);
     if (cachedBrand) {
-      setBazaar(buildBazaarFromBrand(cachedBrand, localProfile));
+      setBazaar(buildBazaarFromBrand(cachedBrand, serverProfile));
       setLoading(false);
     } else {
       setLoading(true);
@@ -1499,11 +1520,11 @@ function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats
       await ensureSellerBrandLinked(user);
       const source = await resolveSellerBazaarSource(user, { brandId, products });
       if (source?.kind === 'bazaar') {
-        setBazaar(mergeBazaarProfile(source.payload));
+        setBazaar(mergeBazaarProfile(source.payload, serverProfile));
         return;
       }
       if (source?.kind === 'brand' && source.payload) {
-        setBazaar(buildBazaarFromBrand(source.payload, localProfile));
+        setBazaar(buildBazaarFromBrand(source.payload, serverProfile));
         return;
       }
       if (!cachedBrand) setBazaar(null);
@@ -1532,22 +1553,33 @@ function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats
   const handleSave = async () => {
     setSaving(true);
     try {
-      localStorage.setItem(bazaarProfileKey, JSON.stringify(editForm));
+      const userId = user?.id || user?._id;
+      await saveSellerBazaarProfile(userId, brandId, editForm);
       const updated = { ...bazaar, ...editForm };
       setBazaar(updated);
       setEditing(false);
 
       if (!bazaar?._fromBrand) {
         const res = await sellerAPI.updateBazaar(editForm);
-        setBazaar(mergeBazaarProfile(res.data?.data || res.data || updated));
+        const serverProfile = (await fetchSellerStoreSettings(userId, brandId))?.bazaar || editForm;
+        setBazaar(mergeBazaarProfile(res.data?.data || res.data || updated, serverProfile));
       }
 
       toast.success(isRTL ? 'تم تحديث البازار ✅' : 'Bazaar updated ✅');
     } catch (err) {
       if (bazaar?._fromBrand) {
-        setBazaar({ ...bazaar, ...editForm });
-        setEditing(false);
-        toast.success(isRTL ? 'تم حفظ التغييرات محلياً ✅' : 'Changes saved locally ✅');
+        try {
+          const userId = user?.id || user?._id;
+          await saveSellerBazaarProfile(userId, brandId, editForm);
+          setBazaar({ ...bazaar, ...editForm });
+          setEditing(false);
+          toast.success(isRTL ? 'تم حفظ التغييرات ✅' : 'Changes saved ✅');
+        } catch (saveErr) {
+          toast.error(
+            saveErr.response?.data?.message ||
+            (isRTL ? 'فشل التحديث' : 'Update failed')
+          );
+        }
       } else {
         toast.error(
           err.response?.data?.message ||
@@ -2223,7 +2255,8 @@ function SellerInventoryTab({ isRTL, t }) {
   );
 }
 
-function SellerShopSettingsTab({ isRTL, t, dashboard, user }) {
+function SellerShopSettingsTab({ isRTL, t, dashboard, user, brandId }) {
+  const userId = user?.id || user?._id;
   const [form, setForm] = useState({
     storeName: dashboard?.brand?.name || user?.brandName || '',
     storeDescription: dashboard?.brand?.description || '',
@@ -2237,20 +2270,31 @@ function SellerShopSettingsTab({ isRTL, t, dashboard, user }) {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('brandhive_shop_settings'));
-      if (saved) setForm(prev => ({ ...prev, ...saved }));
-    } catch {
-      // keep defaults
-    }
-  }, []);
+    if (!userId) return;
+    const loadSettings = async () => {
+      try {
+        const settings = await fetchSellerStoreSettings(userId, brandId);
+        if (settings?.shop) {
+          setForm((prev) => ({ ...prev, ...settings.shop }));
+        }
+      } catch {
+        // keep defaults
+      }
+    };
+    loadSettings();
+  }, [userId, brandId]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      localStorage.setItem('brandhive_shop_settings', JSON.stringify(form));
-      await new Promise(r => setTimeout(r, 600));
+      await saveSellerShopSettings(userId, brandId, form);
       toast.success(isRTL ? 'تم حفظ الإعدادات ✅' : 'Settings saved ✅');
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message ||
+          err.message ||
+          (isRTL ? 'فشل حفظ الإعدادات' : 'Failed to save settings')
+      );
     } finally {
       setSaving(false);
     }
@@ -2609,6 +2653,8 @@ export default function SellerDashboard() {
       'Shipped': 'تم الشحن',
       'Delivered': 'تم التوصيل',
       'Pending': 'قيد الانتظار',
+      'Confirmed': 'مؤكد',
+      'confirmed': 'مؤكد',
       'Processing': 'جاري المعالجة'
     };
     return map[status] || status;
@@ -2955,6 +3001,7 @@ export default function SellerDashboard() {
                 t={t}
                 dashboard={dashboard}
                 user={user}
+                brandId={myBrandId}
               />
             )}
 

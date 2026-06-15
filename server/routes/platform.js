@@ -3,6 +3,10 @@ const mongoose = require('mongoose');
 const NewsletterSubscriber = require('../models/NewsletterSubscriber');
 const SiteSettings = require('../models/SiteSettings');
 const AdInquiry = require('../models/AdInquiry');
+const BrandCoupon = require('../models/BrandCoupon');
+const BrandPromo = require('../models/BrandPromo');
+const SavedCard = require('../models/SavedCard');
+const SellerStoreSettings = require('../models/SellerStoreSettings');
 
 const router = express.Router();
 const FEATURED_SLOTS_KEY = 'featured_product_ids';
@@ -96,6 +100,404 @@ router.post('/ad-inquiries', async (req, res) => {
     return res.status(201).json({ data: entry });
   } catch (err) {
     return res.status(500).json({ message: err.message || 'Failed to submit ad inquiry' });
+  }
+});
+
+const toCouponDto = (doc) => ({
+  _id: String(doc._id),
+  id: String(doc._id),
+  code: doc.code,
+  type: doc.type,
+  value: doc.value,
+  expiresAt: doc.expiresAt,
+  brandId: doc.brandId,
+  sellerId: doc.sellerId,
+  createdAt: doc.createdAt,
+  updatedAt: doc.updatedAt,
+});
+
+const toPromoDto = (doc) => ({
+  _id: String(doc._id),
+  id: String(doc._id),
+  type: doc.type,
+  label: doc.label || '',
+  minOrder: doc.minOrder || 0,
+  buyQty: doc.buyQty,
+  buyX: doc.buyX,
+  discount: doc.discount,
+  getY: doc.getY,
+  brandId: doc.brandId,
+  sellerId: doc.sellerId,
+  active: doc.active !== false,
+  createdAt: doc.createdAt,
+  updatedAt: doc.updatedAt,
+});
+
+const toCardDto = (doc) => ({
+  _id: String(doc._id),
+  id: String(doc._id),
+  label: doc.label || '',
+  brand: doc.brand || 'Card',
+  type: doc.brand || 'Card',
+  last4: doc.last4,
+  expMonth: doc.expMonth || '',
+  expYear: doc.expYear || '',
+  expiry: doc.expMonth && doc.expYear ? `${doc.expMonth}/${doc.expYear}` : '',
+  name: doc.holderName || '',
+  holderName: doc.holderName || '',
+  isDefault: Boolean(doc.isDefault),
+  createdAt: doc.createdAt,
+});
+
+router.get('/brands/:brandId/offers', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Brand offers unavailable (database offline)' });
+  }
+
+  const brandId = String(req.params.brandId || '');
+  if (!brandId) return res.status(400).json({ message: 'brandId is required' });
+
+  try {
+    const now = new Date();
+    const [coupons, promos] = await Promise.all([
+      BrandCoupon.find({
+        brandId,
+        active: { $ne: false },
+        $or: [{ expiresAt: null }, { expiresAt: { $exists: false } }, { expiresAt: { $gte: now } }],
+      })
+        .sort({ createdAt: -1 })
+        .limit(30)
+        .lean(),
+      BrandPromo.find({ brandId, active: { $ne: false } })
+        .sort({ updatedAt: -1 })
+        .limit(10)
+        .lean(),
+    ]);
+
+    return res.json({
+      data: {
+        coupons: coupons.map(toCouponDto),
+        promos: promos.map(toPromoDto).filter((entry) => entry.label),
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to load brand offers' });
+  }
+});
+
+router.get('/sellers/:userId/coupons', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Coupons unavailable (database offline)' });
+  }
+
+  const sellerId = String(req.params.userId || '');
+  const { brandId } = req.query;
+  const filter = { sellerId };
+  if (brandId) filter.brandId = String(brandId);
+
+  try {
+    const coupons = await BrandCoupon.find(filter).sort({ createdAt: -1 }).limit(50).lean();
+    return res.json({ data: coupons.map(toCouponDto) });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to load coupons' });
+  }
+});
+
+router.post('/sellers/:userId/coupons', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Coupons unavailable (database offline)' });
+  }
+
+  const sellerId = String(req.params.userId || '');
+  const { brandId, code, type, value, expiresAt } = req.body || {};
+  const normalizedCode = String(code || '').toUpperCase().trim();
+
+  if (!sellerId || !normalizedCode || !value) {
+    return res.status(400).json({ message: 'code and value are required' });
+  }
+
+  try {
+    const entry = await BrandCoupon.findOneAndUpdate(
+      { brandId: brandId ? String(brandId) : undefined, code: normalizedCode },
+      {
+        sellerId,
+        brandId: brandId ? String(brandId) : undefined,
+        code: normalizedCode,
+        type: type === 'fixed' ? 'fixed' : 'percentage',
+        value: Number(value),
+        expiresAt: expiresAt ? new Date(expiresAt) : undefined,
+        active: true,
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    return res.status(201).json({ data: toCouponDto(entry) });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to save coupon' });
+  }
+});
+
+router.delete('/sellers/:userId/coupons/:couponId', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Coupons unavailable (database offline)' });
+  }
+
+  const sellerId = String(req.params.userId || '');
+  const { couponId } = req.params;
+  const { code, brandId } = req.query;
+
+  try {
+    const filter = { sellerId };
+    if (couponId && couponId !== 'by-code') {
+      filter._id = couponId;
+    } else if (code) {
+      filter.code = String(code).toUpperCase().trim();
+      if (brandId) filter.brandId = String(brandId);
+    } else {
+      return res.status(400).json({ message: 'couponId or code is required' });
+    }
+
+    await BrandCoupon.deleteOne(filter);
+    return res.json({ data: { deleted: true } });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to delete coupon' });
+  }
+});
+
+router.get('/sellers/:userId/promos', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Promotions unavailable (database offline)' });
+  }
+
+  const sellerId = String(req.params.userId || '');
+  const { brandId } = req.query;
+  const filter = { sellerId };
+  if (brandId) filter.brandId = String(brandId);
+
+  try {
+    const promos = await BrandPromo.find(filter).sort({ updatedAt: -1 }).limit(20).lean();
+    return res.json({ data: promos.map(toPromoDto) });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to load promotions' });
+  }
+});
+
+router.post('/sellers/:userId/promos', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Promotions unavailable (database offline)' });
+  }
+
+  const sellerId = String(req.params.userId || '');
+  const { brandId, type, label, minOrder, buyQty, buyX, discount, getY } = req.body || {};
+
+  if (!sellerId || !type) {
+    return res.status(400).json({ message: 'type is required' });
+  }
+
+  try {
+    const filter = { sellerId, type: String(type) };
+    if (brandId) filter.brandId = String(brandId);
+
+    const entry = await BrandPromo.findOneAndUpdate(
+      filter,
+      {
+        sellerId,
+        brandId: brandId ? String(brandId) : undefined,
+        type: String(type),
+        label: label || '',
+        minOrder: Number(minOrder) || 0,
+        buyQty: buyQty != null ? Number(buyQty) : undefined,
+        buyX: buyX != null ? Number(buyX) : buyQty != null ? Number(buyQty) : undefined,
+        discount: discount != null ? Number(discount) : undefined,
+        getY: getY != null ? Number(getY) : undefined,
+        active: true,
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    return res.status(201).json({ data: toPromoDto(entry) });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to save promotion' });
+  }
+});
+
+router.delete('/sellers/:userId/promos/:promoId', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Promotions unavailable (database offline)' });
+  }
+
+  try {
+    await BrandPromo.deleteOne({
+      _id: req.params.promoId,
+      sellerId: String(req.params.userId || ''),
+    });
+    return res.json({ data: { deleted: true } });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to delete promotion' });
+  }
+});
+
+router.get('/users/:userId/saved-cards', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Saved cards unavailable (database offline)' });
+  }
+
+  const userId = String(req.params.userId || '');
+  if (!userId) return res.status(400).json({ message: 'userId is required' });
+
+  try {
+    const cards = await SavedCard.find({ userId }).sort({ isDefault: -1, createdAt: -1 }).lean();
+    return res.json({ data: cards.map(toCardDto) });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to load saved cards' });
+  }
+});
+
+router.post('/users/:userId/saved-cards', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Saved cards unavailable (database offline)' });
+  }
+
+  const userId = String(req.params.userId || '');
+  const { last4, brand, type, expMonth, expYear, expiry, name, holderName, isDefault } = req.body || {};
+  const digits = String(last4 || '').replace(/\D/g, '').slice(-4);
+
+  if (!userId || digits.length !== 4) {
+    return res.status(400).json({ message: 'last4 is required' });
+  }
+
+  let month = String(expMonth || '').padStart(2, '0');
+  let year = String(expYear || '');
+  if (expiry && expiry.includes('/')) {
+    const [m, y] = String(expiry).split('/');
+    month = String(m || '').padStart(2, '0');
+    year = String(y || '');
+  }
+
+  try {
+    const count = await SavedCard.countDocuments({ userId });
+    const makeDefault = Boolean(isDefault) || count === 0;
+
+    if (makeDefault) {
+      await SavedCard.updateMany({ userId }, { $set: { isDefault: false } });
+    }
+
+    const card = await SavedCard.create({
+      userId,
+      last4: digits,
+      brand: brand || type || 'Card',
+      expMonth: month,
+      expYear: year,
+      holderName: holderName || name || '',
+      isDefault: makeDefault,
+    });
+
+    return res.status(201).json({ data: toCardDto(card) });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to save card' });
+  }
+});
+
+router.delete('/users/:userId/saved-cards/:cardId', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Saved cards unavailable (database offline)' });
+  }
+
+  const userId = String(req.params.userId || '');
+  const { cardId } = req.params;
+
+  try {
+    const removed = await SavedCard.findOneAndDelete({ _id: cardId, userId }).lean();
+    if (!removed) {
+      return res.status(404).json({ message: 'Card not found' });
+    }
+
+    const nextDefault = await SavedCard.findOne({ userId }).sort({ createdAt: -1 });
+    if (nextDefault && removed.isDefault) {
+      await SavedCard.updateOne({ _id: nextDefault._id }, { $set: { isDefault: true } });
+    }
+
+    return res.json({ data: { deleted: true } });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to delete card' });
+  }
+});
+
+router.patch('/users/:userId/saved-cards/:cardId/default', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Saved cards unavailable (database offline)' });
+  }
+
+  const userId = String(req.params.userId || '');
+  const { cardId } = req.params;
+
+  try {
+    await SavedCard.updateMany({ userId }, { $set: { isDefault: false } });
+    const card = await SavedCard.findOneAndUpdate(
+      { _id: cardId, userId },
+      { $set: { isDefault: true } },
+      { new: true }
+    ).lean();
+
+    if (!card) return res.status(404).json({ message: 'Card not found' });
+    return res.json({ data: toCardDto(card) });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to update default card' });
+  }
+});
+
+router.get('/users/:userId/store-settings', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Store settings unavailable (database offline)' });
+  }
+
+  const userId = String(req.params.userId || '');
+  if (!userId) return res.status(400).json({ message: 'userId is required' });
+
+  try {
+    const doc = await SellerStoreSettings.findOne({ userId }).lean();
+    return res.json({
+      data: {
+        bazaar: doc?.bazaar || {},
+        shop: doc?.shop || {},
+        brandId: doc?.brandId || req.query.brandId || null,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to load store settings' });
+  }
+});
+
+router.put('/users/:userId/store-settings', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Store settings unavailable (database offline)' });
+  }
+
+  const userId = String(req.params.userId || '');
+  const { brandId, bazaar, shop } = req.body || {};
+
+  if (!userId) return res.status(400).json({ message: 'userId is required' });
+
+  try {
+    const update = {};
+    if (bazaar && typeof bazaar === 'object') update.bazaar = bazaar;
+    if (shop && typeof shop === 'object') update.shop = shop;
+    if (brandId) update.brandId = String(brandId);
+
+    const doc = await SellerStoreSettings.findOneAndUpdate(
+      { userId },
+      { $set: update },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    ).lean();
+
+    return res.json({
+      data: {
+        bazaar: doc.bazaar || {},
+        shop: doc.shop || {},
+        brandId: doc.brandId || null,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to save store settings' });
   }
 });
 

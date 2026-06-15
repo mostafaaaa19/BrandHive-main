@@ -21,10 +21,13 @@ import {
   initiateOrderPayment,
   applyPaidOrderOverlay,
   hydratePaidOrdersFromMirror,
+  fetchSavedCards,
+  addSavedCard,
+  removeSavedCard,
+  setDefaultSavedCard,
 } from '../../services/api';
 import { mapProduct } from '../../utils/mappers';
 import { showOrderInvoice } from '../../utils/invoice';
-import { loadSavedCards, saveSavedCards } from '../../utils/savedCards';
 import { useAuth } from '../../context/AuthContext';
 import { useWishlist, useCart } from '../../context/CartContext';
 import { useTranslation } from 'react-i18next';
@@ -231,7 +234,7 @@ export default function UserDashboard() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [recommendations, setRecommendations] = useState([]);
 
-  const [savedCards, setSavedCards] = useState(() => loadSavedCards());
+  const [savedCards, setSavedCards] = useState([]);
   const [showAddCard, setShowAddCard] = useState(false);
   const [cardForm, setCardForm] = useState({ number: '', name: '', expiry: '', cvv: '' });
   const [cardErrors, setCardErrors] = useState({});
@@ -376,7 +379,22 @@ export default function UserDashboard() {
     return clean.length >= 3 ? clean.slice(0, 2) + '/' + clean.slice(2) : clean;
   };
 
-  const handleAddCard = () => {
+  useEffect(() => {
+    const userId = user?.id || user?._id;
+    if (!userId || activeTab !== 'payment') return;
+
+    const loadCards = async () => {
+      try {
+        const cards = await fetchSavedCards(userId);
+        setSavedCards(cards);
+      } catch {
+        setSavedCards([]);
+      }
+    };
+    loadCards();
+  }, [user?.id, user?._id, activeTab]);
+
+  const handleAddCard = async () => {
     const errors = {};
     const num = cardForm.number.replace(/\s/g, '');
     if (num.length < 16) errors.number = isRTL ? 'رقم الكارت غير صحيح' : 'Invalid card number';
@@ -386,35 +404,71 @@ export default function UserDashboard() {
     setCardErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
-    const newCard = {
-      id: Date.now().toString(),
-      last4: num.slice(-4),
-      type: detectCardType(num),
-      expiry: cardForm.expiry,
-      name: cardForm.name,
-      isDefault: savedCards.length === 0,
-    };
-    const updated = [...savedCards, newCard];
-    setSavedCards(updated);
-    saveSavedCards(updated);
-    setCardForm({ number: '', name: '', expiry: '', cvv: '' });
-    setCardErrors({});
-    setShowAddCard(false);
-    toast.success(isRTL ? 'تم إضافة الكارت ✅' : 'Card added ✅');
+    const userId = user?.id || user?._id;
+    if (!userId) {
+      toast.error(isRTL ? 'يرجى تسجيل الدخول' : 'Please log in');
+      return;
+    }
+
+    try {
+      const created = await addSavedCard(userId, {
+        last4: num.slice(-4),
+        type: detectCardType(num),
+        brand: detectCardType(num),
+        expiry: cardForm.expiry,
+        name: cardForm.name,
+        isDefault: savedCards.length === 0,
+      });
+      setSavedCards((prev) => [...prev, created]);
+      setCardForm({ number: '', name: '', expiry: '', cvv: '' });
+      setCardErrors({});
+      setShowAddCard(false);
+      toast.success(isRTL ? 'تم إضافة الكارت ✅' : 'Card added ✅');
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message ||
+          err.message ||
+          (isRTL ? 'فشل إضافة الكارت' : 'Failed to add card')
+      );
+    }
   };
 
-  const handleDeleteCard = (id) => {
-    const updated = savedCards.filter(c => c.id !== id);
-    if (updated.length > 0 && !updated.some(c => c.isDefault)) updated[0].isDefault = true;
-    setSavedCards(updated);
-    saveSavedCards(updated);
-    toast.success(isRTL ? 'تم حذف الكارت' : 'Card removed');
+  const handleDeleteCard = async (id) => {
+    const userId = user?.id || user?._id;
+    if (!userId) return;
+
+    try {
+      await removeSavedCard(userId, id);
+      setSavedCards((prev) => prev.filter((card) => (card.id || card._id) !== id));
+      toast.success(isRTL ? 'تم حذف الكارت' : 'Card removed');
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message ||
+          err.message ||
+          (isRTL ? 'فشل حذف الكارت' : 'Failed to remove card')
+      );
+    }
   };
 
-  const handleSetDefault = (id) => {
-    const updated = savedCards.map(c => ({ ...c, isDefault: c.id === id }));
-    setSavedCards(updated);
-    saveSavedCards(updated);
+  const handleSetDefault = async (id) => {
+    const userId = user?.id || user?._id;
+    if (!userId) return;
+
+    try {
+      await setDefaultSavedCard(userId, id);
+      setSavedCards((prev) =>
+        prev.map((card) => ({
+          ...card,
+          isDefault: String(card.id || card._id) === String(id),
+        }))
+      );
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message ||
+          err.message ||
+          (isRTL ? 'فشل التحديث' : 'Failed to update card')
+      );
+    }
   };
 
   const fetchOrders = async () => {
@@ -1653,8 +1707,10 @@ export default function UserDashboard() {
                   </h3>
 
                   <div className="space-y-3 mb-3">
-                    {savedCards.map(card => (
-                      <div key={card.id} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-4 flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    {savedCards.map(card => {
+                      const cardId = card.id || card._id;
+                      return (
+                      <div key={cardId} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-4 flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                         <div className={`w-12 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
                           card.type === 'Visa' ? 'bg-brand-navy' :
                           card.type === 'Mastercard' ? 'bg-purple-700' :
@@ -1677,17 +1733,17 @@ export default function UserDashboard() {
                             {isRTL ? 'افتراضي' : 'Default'}
                           </span>
                         ) : (
-                          <button onClick={() => handleSetDefault(card.id)} className="text-xs text-brand-navy dark:text-brand-gold font-semibold hover:underline flex-shrink-0">
+                          <button onClick={() => handleSetDefault(cardId)} className="text-xs text-brand-navy dark:text-brand-gold font-semibold hover:underline flex-shrink-0">
                             {isRTL ? 'تعيين افتراضي' : 'Set Default'}
                           </button>
                         )}
-                        <button onClick={() => handleDeleteCard(card.id)} className="text-gray-300 hover:text-red-400 transition-colors flex-shrink-0">
+                        <button onClick={() => handleDeleteCard(cardId)} className="text-gray-300 hover:text-red-400 transition-colors flex-shrink-0">
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
                           </svg>
                         </button>
                       </div>
-                    ))}
+                    );})}
                   </div>
 
                   {!showAddCard ? (

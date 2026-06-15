@@ -5,12 +5,11 @@ import {
   CreditCard, Smartphone, Banknote, Building2, CheckCircle, Shield
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
-import { ordersAPI, addressesAPI, fetchSafeCrossSell, applyCartCouponCode, computeCartPromoAdjustments, extractOrderPaymentUrl, extractCreatedOrderId, initiateOrderPayment, syncCartBeforeCheckout } from '../services/api';
+import { ordersAPI, addressesAPI, fetchSafeCrossSell, applyCartCouponCode, computeCartPromoAdjustments, extractOrderPaymentUrl, extractCreatedOrderId, initiateOrderPayment, syncCartBeforeCheckout, prefetchCartBrandOffers, fetchSavedCards } from '../services/api';
 import { mapProduct } from '../utils/mappers';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
-import { loadSavedCards } from '../utils/savedCards';
 import toast from 'react-hot-toast';
 
 const CATEGORY_ICONS = {
@@ -70,13 +69,19 @@ export default function CartPage() {
   const [orderLoading, setOrderLoading] = useState(false);
   const [savedCards, setSavedCards] = useState([]);
   const [selectedCardId, setSelectedCardId] = useState(null);
+  const [offersVersion, setOffersVersion] = useState(0);
 
   const couponDiscount = appliedCoupon?.discount || 0;
   const adjustments = useMemo(
     () => computeCartPromoAdjustments(items, subtotal, couponDiscount),
-    [items, subtotal, couponDiscount]
+    [items, subtotal, couponDiscount, offersVersion]
   );
   const { shippingCost, bundleDiscount, total, promoLabels } = adjustments;
+
+  useEffect(() => {
+    if (items.length === 0) return;
+    prefetchCartBrandOffers(items).then(() => setOffersVersion((value) => value + 1));
+  }, [items]);
 
   useEffect(() => {
     const pending =
@@ -89,12 +94,22 @@ export default function CartPage() {
   }, [items.length]);
 
   useEffect(() => {
-    if (step !== 2) return;
-    const cards = loadSavedCards();
-    setSavedCards(cards);
-    const defaultCard = cards.find((card) => card.isDefault) || cards[0];
-    setSelectedCardId(defaultCard?.id || null);
-  }, [step, isAuthenticated]);
+    if (step !== 2 || !isAuthenticated) return;
+    const userId = user?.id || user?._id;
+    if (!userId) return;
+
+    const loadCards = async () => {
+      try {
+        const cards = await fetchSavedCards(userId);
+        setSavedCards(cards);
+        const defaultCard = cards.find((card) => card.isDefault) || cards[0];
+        setSelectedCardId(defaultCard?.id || defaultCard?._id || null);
+      } catch {
+        setSavedCards([]);
+      }
+    };
+    loadCards();
+  }, [step, isAuthenticated, user?.id, user?._id]);
 
   useEffect(() => {
     if (step !== 1 || !isAuthenticated) return;

@@ -18,7 +18,7 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $ServerDir = Join-Path $Root "server"
 
-Write-Host "`n=== BrandHive Mirror Server — Railway Deploy ===`n" -ForegroundColor Cyan
+Write-Host "`n=== BrandHive Mirror Server - Railway Deploy ===`n" -ForegroundColor Cyan
 
 Push-Location $ServerDir
 try {
@@ -77,6 +77,9 @@ try {
   }
 
   $mirrorUrl = $mirrorUrl.TrimEnd('/')
+  if (-not $mirrorUrl) {
+    $mirrorUrl = 'https://brandhive-mirror-production.up.railway.app'
+  }
   Write-Host "`nMirror server URL: $mirrorUrl" -ForegroundColor Green
 
   Pop-Location

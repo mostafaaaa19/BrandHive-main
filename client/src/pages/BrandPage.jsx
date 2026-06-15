@@ -163,7 +163,19 @@ export default function BrandPage() {
       setBrandOffers({ promos: [], coupons: [] });
       return;
     }
-    setBrandOffers(fetchBrandPublicOffers(brandId));
+
+    let cancelled = false;
+    fetchBrandPublicOffers(brandId)
+      .then((offers) => {
+        if (!cancelled) setBrandOffers(offers);
+      })
+      .catch(() => {
+        if (!cancelled) setBrandOffers({ promos: [], coupons: [] });
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [brand?.id, brand?._id, activeTab]);
 
   useEffect(() => {

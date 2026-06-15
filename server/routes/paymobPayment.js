@@ -49,21 +49,43 @@ const resolveOrderAmount = (order, fallbackAmount) => {
 };
 
 const forwardPaymobWebhookToRailway = async (orderId, paymobParams = {}) => {
+  let session = null;
+  if (dbReady()) {
+    session = await PaymentSession.findOne({
+      brandhiveOrderId: String(orderId),
+    }).lean();
+  }
+
   const txnId =
     paymobParams.id ||
     paymobParams.transaction_id ||
     paymobParams.transaction_no ||
-    Date.now();
+    session?.paymobTransactionId;
+
+  if (!txnId) {
+    return { ok: false, error: 'Missing Paymob transaction id' };
+  }
+
+  const merchantRef =
+    paymobParams.merchant_order_id ||
+    session?.paymobMerchantOrderId ||
+    String(orderId);
+
+  const amountCents =
+    Number(paymobParams.amount_cents) ||
+    Number(session?.amountCents) ||
+    undefined;
 
   const body = {
     obj: {
       id: Number(txnId) || txnId,
       success: true,
       pending: false,
-      amount_cents: Number(paymobParams.amount_cents) || undefined,
-      currency: paymobParams.currency || 'EGP',
+      amount_cents: amountCents,
+      currency: paymobParams.currency || session?.currency || 'EGP',
       order: {
-        merchant_order_id: String(orderId),
+        id: session?.paymobOrderId,
+        merchant_order_id: merchantRef,
       },
     },
   };
@@ -144,6 +166,7 @@ router.post('/paymob/initiate', async (req, res) => {
         {
           brandhiveOrderId: String(orderId),
           paymobOrderId: checkout.paymobOrderId,
+          paymobMerchantOrderId: checkout.merchantOrderRef,
           amountCents: checkout.amountCents,
           paymentMethod,
           status: 'pending',
@@ -195,6 +218,11 @@ router.post('/paymob/confirm', async (req, res) => {
   }
 
   const success = isPaymobReturnSuccess(paymobParams);
+  const txnId =
+    paymobParams.id ||
+    paymobParams.transaction_id ||
+    paymobParams.transaction_no ||
+    null;
 
   if (dbReady()) {
     await PaymentSession.findOneAndUpdate(
@@ -202,6 +230,10 @@ router.post('/paymob/confirm', async (req, res) => {
       {
         brandhiveOrderId: String(orderId),
         status: success ? 'paid' : 'failed',
+        ...(txnId ? { paymobTransactionId: String(txnId) } : {}),
+        ...(paymobParams.merchant_order_id
+          ? { paymobMerchantOrderId: String(paymobParams.merchant_order_id) }
+          : {}),
       },
       { upsert: true, setDefaultsOnInsert: true }
     );
@@ -223,6 +255,53 @@ router.post('/paymob/confirm', async (req, res) => {
   });
 });
 
+router.get('/paymob/paid-orders', async (req, res) => {
+  if (!dbReady()) {
+    return res.json({ data: { orderIds: [] } });
+  }
+
+  const sessions = await PaymentSession.find({ status: 'paid' })
+    .select('brandhiveOrderId')
+    .lean();
+
+  return res.json({
+    data: {
+      orderIds: sessions.map((entry) => entry.brandhiveOrderId).filter(Boolean),
+    },
+  });
+});
+
+router.post('/paymob/reconcile/:orderId', async (req, res) => {
+  const orderId = String(req.params.orderId || '');
+  if (!orderId) {
+    return res.status(400).json({ message: 'orderId is required' });
+  }
+
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Payment database unavailable' });
+  }
+
+  const session = await PaymentSession.findOne({ brandhiveOrderId: orderId }).lean();
+  if (!session || session.status !== 'paid') {
+    return res.status(404).json({ message: 'No paid payment session for this order' });
+  }
+
+  const railway = await forwardPaymobWebhookToRailway(orderId, {
+    id: session.paymobTransactionId,
+    merchant_order_id: session.paymobMerchantOrderId,
+    amount_cents: session.amountCents,
+    currency: session.currency,
+  });
+
+  return res.json({
+    data: {
+      orderId,
+      railwayUpdated: Boolean(railway?.ok),
+      railwayMessage: railway?.data?.message || railway?.error || null,
+    },
+  });
+});
+
 router.post('/paymob/webhook', async (req, res) => {
   const transaction = req.body?.obj || req.body?.transaction || req.body;
   const merchantRef =
@@ -235,13 +314,18 @@ router.post('/paymob/webhook', async (req, res) => {
     const success = Boolean(transaction?.success);
     await PaymentSession.findOneAndUpdate(
       { brandhiveOrderId: String(orderId) },
-      { status: success ? 'paid' : 'failed' },
+      {
+        status: success ? 'paid' : 'failed',
+        ...(transaction?.id ? { paymobTransactionId: String(transaction.id) } : {}),
+        ...(merchantRef ? { paymobMerchantOrderId: String(merchantRef) } : {}),
+      },
       { upsert: false }
     );
 
     if (success) {
       await forwardPaymobWebhookToRailway(String(orderId), {
         id: transaction?.id,
+        merchant_order_id: merchantRef,
         amount_cents: transaction?.amount_cents,
         currency: transaction?.currency,
       });

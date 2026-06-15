@@ -19,6 +19,7 @@ import {
   logAdminAction,
   fetchAdminAuditLogs,
   finalizeBrandRequestApproval,
+  syncAdminOrdersAfterPaymob,
 } from '../../services/api';
 import { isHomepageQualityProduct } from '../../utils/productQuality';
 import { useTranslation } from 'react-i18next';
@@ -353,7 +354,9 @@ function AdminOrdersTab({ adminAPI, isRTL }) {
     try {
       const res = await adminAPI.getOrders();
       const data = res.data?.data || res.data?.orders || [];
-      setOrders(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      const synced = await syncAdminOrdersAfterPaymob(list);
+      setOrders(synced);
     } catch {
       setOrders([]);
     } finally {
@@ -1029,15 +1032,12 @@ function AdminFeaturedSlotsTab({ isRTL, productsAPI }) {
       toast.success(isRTL ? 'تم إضافة المنتج للمميزة ⭐' : 'Added to featured ⭐');
     }
     setFeaturedIds(updated);
-    const featuredProducts = allProducts.filter(
-      (p) => updated.includes(p._id || p.id) && isHomepageQualityProduct(p)
-    );
-    localStorage.setItem('brandhive_featured_products', JSON.stringify(featuredProducts));
     try {
       const { saveFeaturedSlotIds } = await import('../../services/api');
       await saveFeaturedSlotIds(updated);
     } catch {
-      toast.error(isRTL ? 'تم الحفظ محلياً فقط' : 'Saved locally only');
+      toast.error(isRTL ? 'فشل حفظ المنتجات المميزة' : 'Failed to save featured products');
+      setFeaturedIds(featuredIds);
     }
   };
 

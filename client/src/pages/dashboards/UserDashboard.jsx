@@ -17,9 +17,14 @@ import {
   cleanSupportMessageText,
   reorderOrderToCart,
   hydrateMyReviews,
+  extractOrderPaymentUrl,
+  initiateOrderPayment,
+  applyPaidOrderOverlay,
+  hydratePaidOrdersFromMirror,
 } from '../../services/api';
 import { mapProduct } from '../../utils/mappers';
 import { showOrderInvoice } from '../../utils/invoice';
+import { loadSavedCards, saveSavedCards } from '../../utils/savedCards';
 import { useAuth } from '../../context/AuthContext';
 import { useWishlist, useCart } from '../../context/CartContext';
 import { useTranslation } from 'react-i18next';
@@ -40,6 +45,9 @@ const STATUS_COLORS = {
   pending: 'bg-gray-100 text-gray-600 dark:bg-gray-500/10 dark:text-gray-400',
   PENDING: 'bg-gray-100 text-gray-600 dark:bg-gray-500/10 dark:text-gray-400',
   Pending: 'bg-gray-100 text-gray-600 dark:bg-gray-500/10 dark:text-gray-400',
+  paid: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
+  PAID: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
+  Paid: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
   confirmed: 'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
   CONFIRMED: 'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
   Confirmed: 'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
@@ -223,13 +231,7 @@ export default function UserDashboard() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [recommendations, setRecommendations] = useState([]);
 
-  const [savedCards, setSavedCards] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('brandhive_saved_cards')) || [];
-    } catch {
-      return [];
-    }
-  });
+  const [savedCards, setSavedCards] = useState(() => loadSavedCards());
   const [showAddCard, setShowAddCard] = useState(false);
   const [cardForm, setCardForm] = useState({ number: '', name: '', expiry: '', cvv: '' });
   const [cardErrors, setCardErrors] = useState({});
@@ -394,7 +396,7 @@ export default function UserDashboard() {
     };
     const updated = [...savedCards, newCard];
     setSavedCards(updated);
-    localStorage.setItem('brandhive_saved_cards', JSON.stringify(updated));
+    saveSavedCards(updated);
     setCardForm({ number: '', name: '', expiry: '', cvv: '' });
     setCardErrors({});
     setShowAddCard(false);
@@ -405,14 +407,14 @@ export default function UserDashboard() {
     const updated = savedCards.filter(c => c.id !== id);
     if (updated.length > 0 && !updated.some(c => c.isDefault)) updated[0].isDefault = true;
     setSavedCards(updated);
-    localStorage.setItem('brandhive_saved_cards', JSON.stringify(updated));
+    saveSavedCards(updated);
     toast.success(isRTL ? 'تم حذف الكارت' : 'Card removed');
   };
 
   const handleSetDefault = (id) => {
     const updated = savedCards.map(c => ({ ...c, isDefault: c.id === id }));
     setSavedCards(updated);
-    localStorage.setItem('brandhive_saved_cards', JSON.stringify(updated));
+    saveSavedCards(updated);
   };
 
   const fetchOrders = async () => {
@@ -431,7 +433,8 @@ export default function UserDashboard() {
       if (ordersRes.status === 'fulfilled') {
         const data = ordersRes.value.data;
         const list = Array.isArray(data) ? data : data?.data || data?.orders || [];
-        setOrders(list);
+        const hydrated = await hydratePaidOrdersFromMirror(list);
+        setOrders(hydrated);
         if (countRes.status !== 'fulfilled') {
           setOrderCount(list.length);
         }
@@ -526,20 +529,52 @@ export default function UserDashboard() {
   const canReorder = (status) =>
     ['delivered', 'canceled', 'cancelled', 'Delivered', 'Canceled', 'Cancelled'].includes(status);
 
-  const needsPaymentRetry = (status) =>
-    ['pending_payment', 'payment_failed'].includes(
-      (status || '').toLowerCase()
-    );
+  const orderNeedsPaymentRetry = (order) => {
+    const status = String(order?.status || order?.orderStatus || '').toLowerCase();
+    const paymentMethod = String(
+      order?.paymentMethod || order?.payment?.method || ''
+    ).toLowerCase();
+    const isOnlinePayment =
+      ['paymob', 'fawry', 'card', 'visa', 'online'].includes(paymentMethod) ||
+      paymentMethod.includes('paymob') ||
+      paymentMethod.includes('fawry');
 
-  const handleRetryPayment = async (orderId) => {
+    if (['pending_payment', 'payment_failed'].includes(status)) return true;
+    if (status === 'paid') return false;
+    return status === 'pending' && isOnlinePayment;
+  };
+
+  const handleRetryPayment = async (order) => {
+    const orderId = order?._id || order?.id || order?.orderId;
+    if (!orderId) return;
+
     setRetryLoading(orderId);
     try {
-      const res = await ordersAPI.retryPayment(orderId);
-      const paymentUrl = res.data?.data?.paymentUrl || res.data?.paymentUrl;
+      let paymentUrl = null;
+      try {
+        const res = await ordersAPI.retryPayment(orderId);
+        paymentUrl = extractOrderPaymentUrl(res);
+      } catch {
+        paymentUrl = null;
+      }
+
+      if (!paymentUrl) {
+        paymentUrl = await initiateOrderPayment(orderId, {
+          amount: Number(order.totalAmount || order.total || order.amount || 0),
+          paymentMethod: order.paymentMethod || 'paymob',
+          billing: order.shippingAddress || {},
+          customerEmail: user?.email,
+        });
+      }
+
       if (paymentUrl) {
         window.location.href = paymentUrl;
       } else {
-        toast.success(isRTL ? 'تم إعادة تفعيل الطلب' : 'Order reactivated successfully');
+        toast.error(
+          isRTL
+            ? 'بوابة Paymob غير مفعّلة على السيرفر. تواصل مع الدعم أو اختر الدفع عند الاستلام في طلب جديد.'
+            : 'Paymob gateway is not configured on the server. Contact support or use cash on delivery for a new order.'
+        );
       }
     } catch (err) {
       toast.error(
@@ -680,6 +715,8 @@ export default function UserDashboard() {
       'Delivered': 'تم التوصيل',
       'Processing': 'جاري المعالجة',
       'Pending': 'قيد الانتظار',
+      'Paid': 'مدفوع',
+      'paid': 'مدفوع',
       'Confirmed': 'مؤكد',
       'Canceled': 'ملغي',
       'Cancelled': 'ملغي'
@@ -982,10 +1019,10 @@ export default function UserDashboard() {
                                     {reorderLoading === orderId ? '…' : (isRTL ? '🔄 إعادة الطلب' : '🔄 Reorder')}
                                   </button>
                                 )}
-                                {needsPaymentRetry(status) && (
+                                {orderNeedsPaymentRetry(order) && (
                                   <button
                                     type="button"
-                                    onClick={() => handleRetryPayment(order._id || order.id)}
+                                    onClick={() => handleRetryPayment(order)}
                                     disabled={retryLoading === (order._id || order.id)}
                                     className="text-xs px-3 py-1.5 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 rounded-lg font-semibold disabled:opacity-50"
                                   >
@@ -1073,10 +1110,10 @@ export default function UserDashboard() {
                                           )}
                                         </button>
                                       )}
-                                      {needsPaymentRetry(status) && (
+                                      {orderNeedsPaymentRetry(order) && (
                                         <button
                                           type="button"
-                                          onClick={() => handleRetryPayment(order._id || order.id)}
+                                          onClick={() => handleRetryPayment(order)}
                                           disabled={retryLoading === (order._id || order.id)}
                                           className="text-xs px-3 py-1.5 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 hover:bg-red-100 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-1"
                                         >
@@ -1921,9 +1958,9 @@ export default function UserDashboard() {
                           )}
                         </button>
                       )}
-                      {needsPaymentRetry(orderDetail.status || orderDetail.orderStatus) && (
+                      {orderNeedsPaymentRetry(orderDetail) && (
                         <button
-                          onClick={() => handleRetryPayment(orderDetail._id || orderDetail.id)}
+                          onClick={() => handleRetryPayment(orderDetail)}
                           disabled={retryLoading === (orderDetail._id || orderDetail.id)}
                           className="text-xs px-3 py-1.5 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 hover:bg-red-100 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-1"
                         >

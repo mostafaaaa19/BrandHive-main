@@ -46,6 +46,81 @@ const localSellerOrders = createMirrorApi('/orders-local', '/orders/seller-mirro
 const localSellerPayouts = createMirrorApi('/payouts-local', '/payouts/seller');
 const localProductImages = createMirrorApi('/product-images-local', '/products/image-mirror');
 const localAuditLog = createMirrorApi('/audit-local', '/audit/log');
+const localPlatform = createMirrorApi('/platform-local', '/platform');
+const localPayment = createMirrorApi('/payment-local', '/payment');
+
+const FEATURED_SLOTS_STORAGE_KEY = 'brandhive_featured_slots';
+const NEWSLETTER_LOCAL_KEY = 'brandhive_newsletter_emails';
+const AD_INQUIRIES_LOCAL_KEY = 'brandhive_ad_inquiries';
+
+export const subscribeNewsletter = async (email) => {
+  const normalized = String(email || '').toLowerCase().trim();
+  if (!normalized || !normalized.includes('@')) {
+    throw new Error('Invalid email');
+  }
+
+  if (localPlatform) {
+    const res = await localPlatform.post('/newsletter', { email: normalized });
+    return res.data?.data || res.data;
+  }
+
+  const list = JSON.parse(localStorage.getItem(NEWSLETTER_LOCAL_KEY) || '[]');
+  if (!list.includes(normalized)) {
+    list.push(normalized);
+    localStorage.setItem(NEWSLETTER_LOCAL_KEY, JSON.stringify(list.slice(-500)));
+  }
+
+  return { email: normalized, subscribed: true, localOnly: true };
+};
+
+export const fetchFeaturedSlotIds = async () => {
+  if (localPlatform) {
+    try {
+      const res = await localPlatform.get('/featured-slots');
+      const ids = res.data?.data?.productIds;
+      if (Array.isArray(ids)) {
+        localStorage.setItem(FEATURED_SLOTS_STORAGE_KEY, JSON.stringify(ids));
+        return ids.map(String);
+      }
+    } catch (err) {
+      console.warn('[fetchFeaturedSlotIds]', err.response?.data || err.message);
+    }
+  }
+
+  try {
+    const stored = JSON.parse(localStorage.getItem(FEATURED_SLOTS_STORAGE_KEY) || '[]');
+    return Array.isArray(stored) ? stored.map(String) : [];
+  } catch {
+    return [];
+  }
+};
+
+export const saveFeaturedSlotIds = async (productIds = []) => {
+  const ids = productIds.slice(0, 4).map(String);
+  localStorage.setItem(FEATURED_SLOTS_STORAGE_KEY, JSON.stringify(ids));
+
+  if (localPlatform) {
+    try {
+      await localPlatform.put('/featured-slots', { productIds: ids });
+    } catch (err) {
+      console.warn('[saveFeaturedSlotIds]', err.response?.data || err.message);
+    }
+  }
+
+  return ids;
+};
+
+export const submitAdInquiry = async (payload = {}) => {
+  if (localPlatform) {
+    const res = await localPlatform.post('/ad-inquiries', payload);
+    return res.data?.data || res.data;
+  }
+
+  const list = JSON.parse(localStorage.getItem(AD_INQUIRIES_LOCAL_KEY) || '[]');
+  list.unshift({ ...payload, createdAt: new Date().toISOString() });
+  localStorage.setItem(AD_INQUIRIES_LOCAL_KEY, JSON.stringify(list.slice(0, 50)));
+  return { submitted: true, localOnly: true };
+};
 
 const mirrorServiceUnavailable = () =>
   new Error(
@@ -1129,6 +1204,11 @@ export const brandsAPI = {
   request: (data) => api.post('/brand/request', data, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
+  follow: (brandId) => api.put('/brand/follow', { brandId: String(brandId) }),
+  unfollow: (brandId) =>
+    api.delete('/brand/unfollow', { data: { brandId: String(brandId) } }),
+  getMyFollowing: () => api.get('/brand/my-following'),
+  getFollowing: () => api.get('/brand/following'),
 };
 
 // ─── Products — GET /product* requires auth; /search/products is public fallback
@@ -1244,6 +1324,13 @@ export const sellerAPI = {
   adjustStock: (productId, data) =>
     api.patch(`/seller/inventory/${productId}/adjust`, data),
   getBazaarBySlug: (slug) => api.get(`/seller/bazaar/${encodeURIComponent(slug)}`),
+  getMessages: () => api.get('/support/seller'),
+  getBrandMessages: (brandId) =>
+    api.get('/support/brand', {
+      params: brandId ? { brandId: String(brandId) } : {},
+    }),
+  replyToCustomer: (messageId, reply) =>
+    api.post('/support/seller/reply', { messageId, reply }),
 };
 
 const sanitizeProductPayload = (payload = {}) => {
@@ -2614,63 +2701,60 @@ const collectSellerBrandIds = async (user) => {
 };
 
 export const fetchSellerOrders = async (user) => {
-  const merged = new Map();
-  const brandIds = await collectSellerBrandIds(user);
+  let railwayOrders = [];
 
   try {
     const ordRes = await sellerAPI.getOrders();
-    getResponseArray(ordRes).forEach((order) => {
-      const id = order._id || order.id;
-      if (id) merged.set(String(id), order);
+    railwayOrders = getResponseArray(ordRes);
+  } catch (err) {
+    console.warn('[fetchSellerOrders]', err.response?.data || err.message);
+  }
+
+  if (railwayOrders.length > 0) {
+    return railwayOrders.sort(
+      (a, b) =>
+        new Date(b.createdAt || 0).getTime() -
+        new Date(a.createdAt || 0).getTime()
+    );
+  }
+
+  const brandIds = await collectSellerBrandIds(user);
+  if (!localSellerOrders || brandIds.length === 0) {
+    return [];
+  }
+
+  try {
+    const localRes = await localSellerOrders.get('/', {
+      params: { brandIds: brandIds.join(','), _t: Date.now() },
     });
-  } catch {
-    // Railway seller orders may be empty when products aren't linked server-side
-  }
+    const mirrored = getResponseArray(localRes)
+      .map(normalizeMirroredSellerOrder)
+      .filter((order) => order._id || order.id);
 
-  if (localSellerOrders && brandIds.length > 0) {
-    try {
-      const localRes = await localSellerOrders.get('/', {
-        params: { brandIds: brandIds.join(','), _t: Date.now() },
-      });
-      getResponseArray(localRes).forEach((order) => {
-        const normalized = normalizeMirroredSellerOrder(order);
-        const id = String(normalized._id || normalized.id || '');
+    await Promise.all(
+      mirrored.map(async (order) => {
+        const id = order._id || order.id;
         if (!id) return;
-        // Keep live Railway status — mirror is fallback only for missing orders
-        if (!merged.has(id)) {
-          merged.set(id, normalized);
+        try {
+          const res = await sellerAPI.getOrderDetails(id);
+          const live =
+            res.data?.data || res.data?.order || res.data || null;
+          if (live?.status) order.status = live.status;
+        } catch {
+          // keep mirror status when Railway detail is unavailable
         }
-      });
-    } catch (err) {
-      console.warn('[fetchSellerOrders/mirror]', err.response?.data || err.message);
-    }
+      })
+    );
+
+    return mirrored.sort(
+      (a, b) =>
+        new Date(b.createdAt || 0).getTime() -
+        new Date(a.createdAt || 0).getTime()
+    );
+  } catch (err) {
+    console.warn('[fetchSellerOrders/mirror]', err.response?.data || err.message);
+    return [];
   }
-
-  const orders = [...merged.values()];
-
-  await Promise.all(
-    orders.map(async (order) => {
-      if (!order._mirrored) return;
-      const id = order._id || order.id;
-      if (!id) return;
-      try {
-        const res = await sellerAPI.getOrderDetails(id);
-        const live =
-          res.data?.data || res.data?.order || res.data || null;
-        if (live?.status) {
-          order.status = live.status;
-        }
-      } catch {
-        // keep mirror status when Railway detail is unavailable
-      }
-    })
-  );
-
-  return orders.sort(
-    (a, b) =>
-      new Date(b.createdAt || 0).getTime() -
-      new Date(a.createdAt || 0).getTime()
-  );
 };
 
 export const fetchSellerReviews = async (user) => {
@@ -3533,6 +3617,903 @@ export const couponsAPI = {
   validate: (data) => api.post('/coupons/validate', data),
 };
 
+const sellerCouponsStorageKey = (userId) =>
+  `brandhive_seller_coupons_${userId || 'default'}`;
+
+const sellerPromosStorageKey = (userId) =>
+  `brandhive_seller_promos_${userId || 'default'}`;
+
+const brandPublicCouponsKey = (brandId) =>
+  `brandhive_brand_coupons_${brandId || 'default'}`;
+
+const brandPublicPromosKey = (brandId) =>
+  `brandhive_brand_promos_${brandId || 'default'}`;
+
+const readBrandPublicCoupons = (brandId) => {
+  if (!brandId) return [];
+  try {
+    return JSON.parse(
+      localStorage.getItem(brandPublicCouponsKey(brandId)) || '[]'
+    );
+  } catch {
+    return [];
+  }
+};
+
+const writeBrandPublicCoupons = (brandId, coupons) => {
+  if (!brandId) return;
+  localStorage.setItem(
+    brandPublicCouponsKey(brandId),
+    JSON.stringify(coupons.slice(0, 20))
+  );
+};
+
+const readBrandPublicPromos = (brandId) => {
+  if (!brandId) return [];
+  try {
+    return JSON.parse(
+      localStorage.getItem(brandPublicPromosKey(brandId)) || '[]'
+    );
+  } catch {
+    return [];
+  }
+};
+
+const writeBrandPublicPromos = (brandId, promos) => {
+  if (!brandId) return;
+  localStorage.setItem(
+    brandPublicPromosKey(brandId),
+    JSON.stringify(promos.slice(0, 10))
+  );
+};
+
+export const fetchBrandPublicOffers = (brandId) => {
+  if (!brandId) return { promos: [], coupons: [] };
+
+  const promos = readBrandPublicPromos(brandId).filter((entry) => entry?.label);
+  const now = Date.now();
+  const coupons = readBrandPublicCoupons(brandId).filter((coupon) => {
+    if (!coupon?.code) return false;
+    if (!coupon.expiresAt) return true;
+    return new Date(coupon.expiresAt).getTime() >= now;
+  });
+
+  return { promos, coupons };
+};
+
+export const syncBrandPublicOffers = (userId, brandId) => {
+  if (!userId || !brandId) return;
+
+  try {
+    const coupons = JSON.parse(
+      localStorage.getItem(sellerCouponsStorageKey(userId)) || '[]'
+    );
+    const promos = JSON.parse(
+      localStorage.getItem(sellerPromosStorageKey(userId)) || '[]'
+    );
+    writeBrandPublicCoupons(brandId, coupons);
+    writeBrandPublicPromos(brandId, promos);
+  } catch {
+    // ignore sync errors
+  }
+};
+
+const getCartBrandIds = (items = []) =>
+  [
+    ...new Set(
+      items
+        .map((item) => String(item.brandId || item.brand?._id || item.brand?.id || ''))
+        .filter(Boolean)
+    ),
+  ];
+
+const listBrandIdsFromCouponStorage = () => {
+  if (typeof localStorage === 'undefined') return [];
+  const ids = [];
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const key = localStorage.key(i);
+    if (key?.startsWith('brandhive_brand_coupons_')) {
+      ids.push(key.replace('brandhive_brand_coupons_', ''));
+    }
+  }
+  return ids;
+};
+
+const findBrandCouponInStorage = (code, preferredBrandIds = []) => {
+  const normalized = String(code || '').toUpperCase().trim();
+  if (!normalized) return null;
+
+  const now = Date.now();
+  const brandIds =
+    preferredBrandIds.length > 0
+      ? preferredBrandIds
+      : listBrandIdsFromCouponStorage();
+
+  for (const brandId of brandIds) {
+    const coupons = readBrandPublicCoupons(brandId);
+    const match = coupons.find(
+      (coupon) => coupon.code?.toUpperCase() === normalized
+    );
+    if (!match) continue;
+    if (match.expiresAt && new Date(match.expiresAt).getTime() < now) continue;
+    return { coupon: match, brandId };
+  }
+
+  return null;
+};
+
+export const computeBrandCouponDiscount = (
+  coupon,
+  items = [],
+  subtotal = 0,
+  brandId = ''
+) => {
+  const scopedBrandId = String(brandId || coupon?.brandId || '');
+  const brandItems = scopedBrandId
+    ? items.filter((item) => String(item.brandId) === scopedBrandId)
+    : items;
+  const brandSubtotal = brandItems.reduce(
+    (sum, item) =>
+      sum + (Number(item.price) || 0) * (Number(item.quantity) || 1),
+    0
+  );
+  const base = brandSubtotal > 0 ? brandSubtotal : subtotal;
+  if (!base || !coupon) return 0;
+
+  if (coupon.type === 'percentage') {
+    return Math.round(base * (Number(coupon.value) || 0) / 100);
+  }
+
+  return Math.min(base, Number(coupon.value) || 0);
+};
+
+export const computeCartPromoAdjustments = (
+  items = [],
+  subtotal = 0,
+  couponDiscount = 0
+) => {
+  const brandIds = getCartBrandIds(items);
+  const baseShipping = subtotal >= 500 ? 0 : 50;
+  let bundleDiscount = 0;
+  const promoLabels = [];
+
+  let qualifyingSubtotal = 0;
+  brandIds.forEach((brandId) => {
+    const freeShip = readBrandPublicPromos(brandId).find(
+      (entry) => entry.type === 'free_shipping'
+    );
+    if (!freeShip) return;
+
+    const minOrder = Number(freeShip.minOrder) || 0;
+    const brandSubtotal = items
+      .filter((item) => String(item.brandId) === brandId)
+      .reduce(
+        (sum, item) =>
+          sum + (Number(item.price) || 0) * (Number(item.quantity) || 1),
+        0
+      );
+
+    if (brandSubtotal >= minOrder) {
+      qualifyingSubtotal += brandSubtotal;
+      if (freeShip.label) promoLabels.push(freeShip.label);
+    }
+  });
+
+  let shippingCost = baseShipping;
+  if (baseShipping > 0 && qualifyingSubtotal > 0 && subtotal > 0) {
+    shippingCost =
+      qualifyingSubtotal >= subtotal
+        ? 0
+        : Math.round(baseShipping * (1 - qualifyingSubtotal / subtotal));
+  }
+
+  brandIds.forEach((brandId) => {
+    const bundle = readBrandPublicPromos(brandId).find(
+      (entry) => entry.type === 'buy_x_get_y'
+    );
+    if (!bundle) return;
+
+    const buyQty = Number(bundle.buyQty) || 0;
+    const discountPct = Number(bundle.discount) || 0;
+    if (buyQty <= 1 || discountPct <= 0) return;
+
+    const units = [];
+    items
+      .filter((item) => String(item.brandId) === brandId)
+      .forEach((item) => {
+        const unitPrice = Number(item.price) || 0;
+        const qty = Number(item.quantity) || 1;
+        for (let i = 0; i < qty; i += 1) units.push(unitPrice);
+      });
+
+    units.sort((a, b) => a - b);
+    const extraUnits = units.length - buyQty;
+    if (extraUnits <= 0) return;
+
+    const savings = units
+      .slice(0, extraUnits)
+      .reduce((sum, price) => sum + Math.round(price * discountPct / 100), 0);
+
+    if (savings > 0) {
+      bundleDiscount += savings;
+      if (bundle.label) promoLabels.push(bundle.label);
+    }
+  });
+
+  const totalDiscount = couponDiscount + bundleDiscount;
+  const total = Math.max(0, subtotal + shippingCost - totalDiscount);
+
+  return {
+    shippingCost,
+    couponDiscount,
+    bundleDiscount,
+    totalDiscount,
+    total,
+    promoLabels,
+  };
+};
+
+export const applyCartCouponCode = async ({ code, items = [], subtotal = 0 }) => {
+  const normalized = String(code || '').toUpperCase().trim();
+  if (!normalized) throw new Error('Coupon code required');
+
+  try {
+    const res = await cartAPI.applyCoupon({ couponCode: normalized });
+    const data = res.data?.data || res.data || {};
+    const apiSubtotal = Number(data.subtotal) || subtotal;
+    const apiTotal = Number(data.total);
+    const apiDiscount =
+      Number(data.couponDiscount || data.couponSaving || 0) || 0;
+    const discountValue =
+      apiSubtotal && Number.isFinite(apiTotal)
+        ? Math.max(0, apiSubtotal - apiTotal)
+        : apiDiscount;
+
+    if (discountValue > 0) {
+      return {
+        code: normalized,
+        source: 'railway',
+        discount: discountValue,
+        persisted: true,
+      };
+    }
+  } catch {
+    // fall through to validate / brand coupons
+  }
+
+  try {
+    const res = await couponsAPI.validate({ code: normalized, subtotal });
+    const data = res.data?.data || res.data || {};
+    if (data.valid === false || data.isValid === false) {
+      throw new Error('invalid');
+    }
+
+    const discount = Number(
+      data.discount || data.couponDiscount || data.saving || data.amount || 0
+    );
+    if (discount > 0) {
+      return {
+        code: normalized,
+        source: 'validate',
+        discount,
+        persisted: false,
+      };
+    }
+  } catch {
+    // fall through
+  }
+
+  const brandIds = getCartBrandIds(items);
+  const found = findBrandCouponInStorage(normalized, brandIds);
+  if (!found) throw new Error('invalid');
+
+  const discount = computeBrandCouponDiscount(
+    found.coupon,
+    items,
+    subtotal,
+    found.brandId
+  );
+  if (discount <= 0) throw new Error('invalid');
+
+  return {
+    code: normalized,
+    source: 'brand',
+    brandId: found.brandId,
+    coupon: found.coupon,
+    discount,
+    persisted: false,
+  };
+};
+
+const extractServerCartLines = (data) => {
+  const raw =
+    data?.data?.items ||
+    data?.items ||
+    (Array.isArray(data?.data) ? data.data : []) ||
+    [];
+  if (!Array.isArray(raw)) return [];
+
+  return raw
+    .map((item) => ({
+      productId: String(
+        item.product?.id ||
+          item.product?._id ||
+          item.productId?._id ||
+          item.productId?.id ||
+          item.productId ||
+          item.id ||
+          ''
+      ),
+      quantity: Math.max(1, Number(item.quantity) || 1),
+    }))
+    .filter((line) => isMongoId(line.productId));
+};
+
+const cartLinesMatch = (clientLines, serverLines) => {
+  if (clientLines.length !== serverLines.length) return false;
+  const serverMap = new Map(serverLines.map((line) => [line.productId, line.quantity]));
+  return clientLines.every((line) => serverMap.get(line.productId) === line.quantity);
+};
+
+export const syncCartBeforeCheckout = async (cartItems = []) => {
+  const payload = cartItems
+    .filter((item) => {
+      const id = String(item.id || item.productId || '');
+      return isMongoId(id);
+    })
+    .map((item) => ({
+      productId: String(item.id || item.productId),
+      quantity: Math.max(1, Number(item.quantity) || 1),
+    }));
+
+  if (payload.length === 0) {
+    throw new Error('Cart items must be real catalog products to checkout');
+  }
+
+  let serverLines = [];
+  try {
+    const res = await cartAPI.get();
+    serverLines = extractServerCartLines(res.data);
+  } catch {
+    serverLines = [];
+  }
+
+  if (cartLinesMatch(payload, serverLines)) {
+    return payload;
+  }
+
+  try {
+    await cartAPI.clear();
+  } catch {
+    // cart may already be empty
+  }
+
+  const failedIds = [];
+  for (const entry of payload) {
+    try {
+      await cartAPI.add(entry);
+    } catch {
+      failedIds.push(entry.productId);
+    }
+  }
+
+  if (failedIds.length > 0) {
+    throw new Error(
+      failedIds.length === payload.length
+        ? 'Could not sync your cart with the server. Remove items and add them again.'
+        : 'Some cart items could not be synced. Please refresh and try again.'
+    );
+  }
+
+  try {
+    const verify = await cartAPI.get();
+    const verified = extractServerCartLines(verify.data);
+    if (!cartLinesMatch(payload, verified)) {
+      throw new Error('Cart sync verification failed');
+    }
+  } catch (err) {
+    if (err.message?.includes('sync') || err.message?.includes('Cart')) throw err;
+    throw new Error('Could not verify cart before checkout');
+  }
+
+  return payload;
+};
+
+export const isUsablePaymentUrl = (url) => {
+  if (!url || typeof url !== 'string') return false;
+
+  const trimmed = url.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return false;
+
+  const blockedPatterns = [
+    /PLACEHOLDER/i,
+    /IFRAME_ID/i,
+    /YOUR_/i,
+    /example\.com/i,
+    /localhost/i,
+  ];
+  if (blockedPatterns.some((pattern) => pattern.test(trimmed))) return false;
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.hostname.includes('paymob.com')) {
+      if (/iframe/i.test(parsed.pathname) && !/\/iframes\/\d+/i.test(parsed.pathname)) {
+        return false;
+      }
+      const token = parsed.searchParams.get('payment_token');
+      if (!token || /placeholder/i.test(token)) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const extractOrderPaymentUrl = (response) => {
+  const data = response?.data?.data || response?.data?.order || response?.data || {};
+  const raw =
+    data.paymentUrl ||
+    data.checkoutUrl ||
+    data.iframeUrl ||
+    response?.data?.paymentUrl ||
+    null;
+
+  return isUsablePaymentUrl(raw) ? raw : null;
+};
+
+export const extractCreatedOrderId = (response) => {
+  const data = response?.data?.data || response?.data?.order || response?.data || {};
+  return data._id || data.id || data.orderId || null;
+};
+
+export const initiateOrderPayment = async (orderId, options = {}) => {
+  if (!orderId) return null;
+
+  try {
+    const res = await ordersAPI.retryPayment(orderId);
+    const railwayUrl = extractOrderPaymentUrl(res);
+    if (railwayUrl) return railwayUrl;
+  } catch {
+    // fall through to companion Paymob
+  }
+
+  return initiatePaymobCheckout({ orderId, ...options });
+};
+
+export const initiatePaymobCheckout = async ({
+  orderId,
+  amount,
+  paymentMethod = 'paymob',
+  billing = {},
+  customerEmail = '',
+} = {}) => {
+  if (!orderId) return null;
+
+  if (!localPayment) {
+    throw new Error(
+      'Payment service unavailable. Run `npm run server` locally or set VITE_MIRROR_API_URL.'
+    );
+  }
+
+  const parsed = getStoredAuth();
+  const token = parsed?.token || parsed?.accessToken;
+
+  const res = await localPayment.post(
+    '/paymob/initiate',
+    {
+      orderId,
+      amount,
+      paymentMethod,
+      billing,
+      customerEmail,
+    },
+    token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
+  );
+
+  const paymentUrl = res.data?.data?.paymentUrl || res.data?.paymentUrl || null;
+  return isUsablePaymentUrl(paymentUrl) ? paymentUrl : null;
+};
+
+const PAID_ORDERS_STORAGE_KEY = 'brandhive_paid_orders';
+
+export const parsePaymobReturnSuccess = (params = {}) => {
+  const read = (key) => {
+    if (params instanceof URLSearchParams) return params.get(key);
+    return params?.[key];
+  };
+
+  const success = read('success');
+  if (success === 'true' || success === '1') return true;
+
+  const code = String(read('txn_response_code') || read('txn_response') || '').toUpperCase();
+  if (code === 'APPROVED') return true;
+
+  const message = String(read('data_message') || read('message') || '').toLowerCase();
+  if (message.includes('approved') || message.includes('success')) return true;
+
+  if (read('paid') === 'true') return true;
+  return false;
+};
+
+export const markOrderPaidLocally = (orderId) => {
+  if (!orderId || typeof localStorage === 'undefined') return;
+  try {
+    const map = JSON.parse(localStorage.getItem(PAID_ORDERS_STORAGE_KEY) || '{}');
+    map[String(orderId)] = { paidAt: new Date().toISOString() };
+    localStorage.setItem(PAID_ORDERS_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // ignore quota errors
+  }
+};
+
+export const applyPaidOrderOverlay = (orders = []) => {
+  if (!Array.isArray(orders) || typeof localStorage === 'undefined') return orders;
+
+  let paidMap = {};
+  try {
+    paidMap = JSON.parse(localStorage.getItem(PAID_ORDERS_STORAGE_KEY) || '{}');
+  } catch {
+    paidMap = {};
+  }
+
+  return orders.map((order) => {
+    const id = String(order._id || order.id || order.orderId || '');
+    const status = String(order.status || order.orderStatus || '').toLowerCase();
+    if (!id || !paidMap[id]) return order;
+    if (!['pending', 'pending_payment', 'payment_failed'].includes(status)) return order;
+    return { ...order, status: 'paid' };
+  });
+};
+
+export const hydratePaidOrdersFromMirror = async (orders = []) => {
+  const withLocal = applyPaidOrderOverlay(orders);
+  if (!localPayment || !Array.isArray(withLocal) || withLocal.length === 0) {
+    return withLocal;
+  }
+
+  const updated = [...withLocal];
+  await Promise.allSettled(
+    updated.map(async (order, index) => {
+      const id = String(order._id || order.id || order.orderId || '');
+      const status = String(order.status || order.orderStatus || '').toLowerCase();
+      if (!id || status === 'paid') return;
+
+      try {
+        const res = await localPayment.get(`/paymob/order/${encodeURIComponent(id)}/status`);
+        const sessionStatus = res.data?.data?.status || res.data?.status;
+        if (sessionStatus === 'paid') {
+          updated[index] = { ...order, status: 'paid' };
+          markOrderPaidLocally(id);
+        }
+      } catch {
+        // mirror unavailable
+      }
+    })
+  );
+
+  return updated;
+};
+
+export const confirmPaymobReturn = async (orderId, paymobParams = {}) => {
+  if (!orderId) return null;
+
+  const paramsObject =
+    paymobParams instanceof URLSearchParams
+      ? Object.fromEntries(paymobParams.entries())
+      : paymobParams;
+
+  const success = parsePaymobReturnSuccess(paramsObject);
+  if (!success) {
+    return { success: false, status: 'pending' };
+  }
+
+  if (localPayment) {
+    try {
+      const parsed = getStoredAuth();
+      const token = parsed?.token || parsed?.accessToken;
+      const res = await localPayment.post(
+        '/paymob/confirm',
+        { orderId: String(orderId), paymobParams: paramsObject },
+        token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
+      );
+      const data = res.data?.data || res.data || {};
+      if (data.success) {
+        markOrderPaidLocally(orderId);
+      }
+      return data;
+    } catch {
+      markOrderPaidLocally(orderId);
+      return { success: true, status: 'paid', localOnly: true };
+    }
+  }
+
+  markOrderPaidLocally(orderId);
+  return { success: true, status: 'paid', localOnly: true };
+};
+
+export const fetchPaymobStatus = async () => {
+  if (!localPayment) {
+    return { configured: false, fawryConfigured: false, available: false };
+  }
+
+  try {
+    const res = await localPayment.get('/paymob/status');
+    return {
+      available: true,
+      ...(res.data?.data || res.data || {}),
+    };
+  } catch {
+    return { configured: false, fawryConfigured: false, available: true };
+  }
+};
+
+export const fetchSellerCoupons = async (userId) => {
+  const local = JSON.parse(
+    localStorage.getItem(sellerCouponsStorageKey(userId)) || '[]'
+  );
+
+  try {
+    const res = await couponsAPI.getAll({ page: 1, limit: 50 });
+    const remote = getResponseArray(res);
+    if (remote.length === 0) return local;
+
+    const merged = new Map();
+    local.forEach((coupon) => {
+      const id = coupon._id || coupon.id || coupon.code;
+      if (id) merged.set(String(id), coupon);
+    });
+    remote.forEach((coupon) => {
+      const id = coupon._id || coupon.id || coupon.code;
+      if (id) merged.set(String(id), coupon);
+    });
+    return [...merged.values()];
+  } catch {
+    return local;
+  }
+};
+
+export const createSellerCoupon = async (userId, brandId, payload) => {
+  const body = {
+    code: String(payload.code || '').toUpperCase().trim(),
+    type: payload.type || 'percentage',
+    value: Number(payload.value),
+    expiresAt: payload.expiresAt,
+    ...(brandId ? { brandId: String(brandId) } : {}),
+  };
+
+  let created = null;
+  try {
+    const res = await couponsAPI.create(body);
+    created = res.data?.data || res.data || body;
+  } catch (err) {
+    const message = String(err.response?.data?.message || '');
+    if (!message.includes('should not exist')) throw err;
+    const res = await couponsAPI.create({
+      code: body.code,
+      type: body.type,
+      value: body.value,
+      expiresAt: body.expiresAt,
+    });
+    created = res.data?.data || res.data || body;
+  }
+
+  const entry = {
+    ...created,
+    code: created.code || body.code,
+    brandId: brandId ? String(brandId) : undefined,
+    createdAt: created.createdAt || new Date().toISOString(),
+  };
+
+  const list = JSON.parse(
+    localStorage.getItem(sellerCouponsStorageKey(userId)) || '[]'
+  );
+  localStorage.setItem(
+    sellerCouponsStorageKey(userId),
+    JSON.stringify([entry, ...list.filter((c) => c.code !== entry.code)].slice(0, 30))
+  );
+
+  if (brandId) {
+    const publicCoupons = readBrandPublicCoupons(brandId);
+    writeBrandPublicCoupons(brandId, [
+      entry,
+      ...publicCoupons.filter((c) => c.code !== entry.code),
+    ]);
+  }
+
+  return entry;
+};
+
+export const deleteSellerCoupon = async (userId, couponId, code, brandId) => {
+  try {
+    if (couponId) await couponsAPI.delete(couponId);
+  } catch {
+    // keep local removal even if API delete fails
+  }
+
+  const list = JSON.parse(
+    localStorage.getItem(sellerCouponsStorageKey(userId)) || '[]'
+  );
+  const next = list.filter(
+    (coupon) =>
+      String(coupon._id || coupon.id || '') !== String(couponId || '') &&
+      coupon.code !== code
+  );
+  localStorage.setItem(sellerCouponsStorageKey(userId), JSON.stringify(next));
+
+  if (brandId) {
+    writeBrandPublicCoupons(
+      brandId,
+      readBrandPublicCoupons(brandId).filter(
+        (coupon) =>
+          String(coupon._id || coupon.id || '') !== String(couponId || '') &&
+          coupon.code !== code
+      )
+    );
+  }
+
+  return next;
+};
+
+export const fetchSellerPromotions = (userId) => {
+  try {
+    return JSON.parse(
+      localStorage.getItem(sellerPromosStorageKey(userId)) || '[]'
+    );
+  } catch {
+    return [];
+  }
+};
+
+export const saveSellerPromotion = (userId, brandId, promotion) => {
+  const list = fetchSellerPromotions(userId).filter(
+    (entry) => entry.type !== promotion.type
+  );
+  const entry = {
+    ...promotion,
+    brandId: brandId ? String(brandId) : undefined,
+    id: promotion.id || `${promotion.type}-${Date.now()}`,
+    updatedAt: new Date().toISOString(),
+  };
+  const next = [entry, ...list];
+  localStorage.setItem(sellerPromosStorageKey(userId), JSON.stringify(next));
+
+  if (brandId) {
+    const publicPromos = readBrandPublicPromos(brandId).filter(
+      (item) => item.type !== promotion.type
+    );
+    writeBrandPublicPromos(brandId, [entry, ...publicPromos]);
+  }
+
+  return next;
+};
+
+export const applySellerFlashSale = async (productId, discountPercent) => {
+  const pct = Math.min(90, Math.max(1, Number(discountPercent) || 0));
+  if (!productId || pct <= 0) {
+    throw new Error('Invalid flash sale values');
+  }
+
+  const res = await sellerAPI.getProduct(productId);
+  const product = res.data?.data || res.data?.product || res.data || {};
+  const price = Number(product.price) || 0;
+  if (price <= 0) throw new Error('Product price unavailable');
+
+  const discountPrice = Math.round(price * (1 - pct / 100));
+  return sellerAPI.updateProduct(productId, {
+    discountPrice,
+    isOnSale: true,
+  });
+};
+
+export const fetchBrandProductReviews = async (products = []) => {
+  const aggregated = [];
+  const seen = new Set();
+
+  await Promise.all(
+    products.slice(0, 30).map(async (product) => {
+      const productId = product.id || product._id;
+      if (!productId) return;
+
+      try {
+        const res = await reviewsAPI.getProductReviews(productId);
+        getResponseArray(res).forEach((review) => {
+          const id = review._id || review.id;
+          if (id && seen.has(String(id))) return;
+          if (id) seen.add(String(id));
+          aggregated.push({
+            ...review,
+            productName: product.name,
+            productId,
+          });
+        });
+      } catch {
+        // ignore per-product failures
+      }
+    })
+  );
+
+  return aggregated.sort(
+    (a, b) =>
+      new Date(b.createdAt || 0).getTime() -
+      new Date(a.createdAt || 0).getTime()
+  );
+};
+
+const followingStorageKey = (userId) => `brandhive_following_${userId || 'default'}`;
+
+export const readLocalFollowing = (userId) => {
+  try {
+    return JSON.parse(localStorage.getItem(followingStorageKey(userId)) || '[]');
+  } catch {
+    return [];
+  }
+};
+
+export const writeLocalFollowing = (userId, brandIds) => {
+  localStorage.setItem(
+    followingStorageKey(userId),
+    JSON.stringify([...new Set(brandIds.map(String))])
+  );
+};
+
+export const fetchBrandFollowState = async (userId, brandId) => {
+  if (!userId || !brandId) {
+    return { isFollowing: false, followingIds: readLocalFollowing(userId) };
+  }
+
+  try {
+    const res = await brandsAPI.getMyFollowing();
+    const following = getResponseArray(res);
+    const followingIds = following
+      .map((brand) => brand._id || brand.id)
+      .filter(Boolean)
+      .map(String);
+    writeLocalFollowing(userId, followingIds);
+    return {
+      isFollowing: followingIds.includes(String(brandId)),
+      followingIds,
+      followersCount: null,
+    };
+  } catch {
+    const followingIds = readLocalFollowing(userId);
+    return {
+      isFollowing: followingIds.includes(String(brandId)),
+      followingIds,
+    };
+  }
+};
+
+export const toggleBrandFollow = async (userId, brandId, isCurrentlyFollowing) => {
+  const id = String(brandId);
+  const localIds = readLocalFollowing(userId);
+
+  try {
+    if (isCurrentlyFollowing) {
+      await brandsAPI.unfollow(id);
+      writeLocalFollowing(
+        userId,
+        localIds.filter((entry) => entry !== id)
+      );
+      return false;
+    }
+
+    await brandsAPI.follow(id);
+    writeLocalFollowing(userId, [...localIds, id]);
+    return true;
+  } catch (err) {
+    const nextFollowing = !isCurrentlyFollowing;
+    if (nextFollowing) {
+      writeLocalFollowing(userId, [...localIds, id]);
+    } else {
+      writeLocalFollowing(
+        userId,
+        localIds.filter((entry) => entry !== id)
+      );
+    }
+    throw err;
+  }
+};
+
 const fetchSimilarProducts = async (productId) => {
   try {
     const res = await api.get(`/product/similar/${productId}`);
@@ -3670,6 +4651,7 @@ export const openInvoiceFromResponse = async (response) => {
 export const supportAPI = {
   sendMessage: (data) => api.post('/support', data),
   getAllMessages: () => api.get('/support'),
+  getMyMessages: () => api.get('/support/my-messages'),
   getMessage: (id) => api.get(`/support/${id}`),
   replyToMessage: (id, data) =>
     api.post(`/support/${id}/reply`, data),
@@ -3725,7 +4707,21 @@ export const saveLocalSupportTicket = async ({
   }
 };
 
-const brandInboxStorageKey = (brandId) => `brandhive_brand_inbox_${brandId}`;
+const stripBrandTagFromMessage = (text) =>
+  String(text || '')
+    .replace(/^\[[^\]]+\]\s*/, '')
+    .trim();
+
+const normalizeSellerInboxMessage = (entry, brandName) => ({
+  ...entry,
+  _id: entry._id || entry.id,
+  message: stripBrandTagFromMessage(entry.message),
+  fullName: entry.fullName || entry.user?.name || 'Customer',
+  email: entry.email || entry.user?.email || '',
+  status: entry.status || 'pending',
+  reply: entry.reply || '',
+  brandName: entry.brandName || brandName || '',
+});
 
 export const saveBrandInquiryMessage = async ({
   brandId,
@@ -3736,76 +4732,114 @@ export const saveBrandInquiryMessage = async ({
   message,
   railwayTicketId,
 }) => {
-  if (!brandId || !message?.trim()) return null;
+  if (!message?.trim()) return null;
 
-  const entry = {
-    _id: railwayTicketId || `local-${Date.now()}`,
-    brandId: String(brandId),
-    brandName: brandName || '',
-    userId: userId || undefined,
-    email: email || '',
-    fullName: fullName || 'Customer',
-    message: message.trim(),
-    createdAt: new Date().toISOString(),
-    status: 'pending',
-    messageType: 'brand_inquiry',
-  };
-
-  try {
-    const key = brandInboxStorageKey(brandId);
-    const list = JSON.parse(localStorage.getItem(key) || '[]');
-    list.unshift(entry);
-    localStorage.setItem(key, JSON.stringify(list.slice(0, 100)));
-  } catch {
-    // ignore local cache errors
+  if (railwayTicketId) {
+    return { _id: railwayTicketId, message: message.trim(), brandId, brandName };
   }
 
-  return saveLocalSupportTicket({
-    userId,
-    email,
-    fullName,
-    message: message.trim(),
-    railwayTicketId,
-    brandId,
-    brandName,
-    messageType: 'brand_inquiry',
-  });
+  const taggedMessage = brandName
+    ? `[${brandName}] ${message.trim()}`
+    : message.trim();
+
+  const apiMessage =
+    taggedMessage.length >= 20
+      ? taggedMessage
+      : taggedMessage + '\u200b'.repeat(20 - taggedMessage.length);
+
+  try {
+    const res = await supportAPI.sendMessage({
+      fullName: fullName || 'Guest',
+      email: email || 'guest@brandhive.com',
+      message: apiMessage,
+    });
+    const ticketId = extractSupportTicketId(res) || railwayTicketId;
+    if (userId && ticketId) rememberSupportTicketId(userId, ticketId);
+    return res.data?.data || res.data || { _id: ticketId, message: message.trim() };
+  } catch (err) {
+    console.warn('[saveBrandInquiryMessage]', err.response?.data || err.message);
+    return null;
+  }
 };
 
-export const fetchSellerBrandMessages = async (brandId) => {
-  if (!brandId) return [];
+export const replyToSellerCustomer = async (messageId, reply) => {
+  const trimmed = String(reply || '').trim();
+  if (!messageId || !trimmed) return null;
 
+  try {
+    const res = await sellerAPI.replyToCustomer(messageId, trimmed);
+    return res.data?.data || res.data;
+  } catch (err) {
+    console.warn('[replyToSellerCustomer]', err.response?.data || err.message);
+    throw err;
+  }
+};
+
+export const fetchSellerBrandMessages = async (brandId, brandName = '') => {
   const merged = new Map();
 
   try {
-    const key = brandInboxStorageKey(brandId);
-    JSON.parse(localStorage.getItem(key) || '[]').forEach((entry) => {
-      const id = entry._id || entry.id || entry.railwayTicketId;
-      if (id) merged.set(String(id), entry);
+    const res = await sellerAPI.getMessages();
+    getResponseArray(res).forEach((entry) => {
+      const id = entry._id || entry.id;
+      if (id) merged.set(String(id), normalizeSellerInboxMessage(entry, brandName));
     });
-  } catch {
-    // ignore local cache errors
+  } catch (err) {
+    console.warn('[fetchSellerBrandMessages/seller]', err.response?.status);
   }
 
-  if (localSupport) {
+  if (merged.size === 0 && brandId) {
+    try {
+      const res = await sellerAPI.getBrandMessages(brandId);
+      getResponseArray(res).forEach((entry) => {
+        const id = entry._id || entry.id;
+        if (id) merged.set(String(id), normalizeSellerInboxMessage(entry, brandName));
+      });
+    } catch (err) {
+      console.warn('[fetchSellerBrandMessages/brand]', err.response?.status);
+    }
+  }
+
+  let messages = [...merged.values()];
+
+  if (brandName && messages.length > 0) {
+    const tag = `[${brandName}]`;
+    const tagged = messages.filter((entry) =>
+      String(entry.message || '').includes(tag) ||
+      String(entry.brandName || '').toLowerCase() === brandName.toLowerCase() ||
+      String(entry.brandId || '') === String(brandId || '')
+    );
+    if (tagged.length > 0) messages = tagged;
+  }
+
+  if (messages.length > 0) {
+    return messages.sort(
+      (a, b) =>
+        new Date(b.createdAt || 0).getTime() -
+        new Date(a.createdAt || 0).getTime()
+    );
+  }
+
+  if (localSupport && brandId) {
     try {
       const res = await localSupport.get('/', {
         params: { brandId: String(brandId) },
       });
       getResponseArray(res).forEach((entry) => {
         const id = entry._id || entry.id || entry.railwayTicketId;
-        if (id) merged.set(String(id), entry);
+        if (id) merged.set(String(id), normalizeSellerInboxMessage(entry, brandName));
       });
+      return [...merged.values()].sort(
+        (a, b) =>
+          new Date(b.createdAt || 0).getTime() -
+          new Date(a.createdAt || 0).getTime()
+      );
     } catch {
-      // mirror server may be offline
+      // mirror offline
     }
   }
 
-  return [...merged.values()].sort(
-    (a, b) =>
-      new Date(b.createdAt || 0).getTime() -
-      new Date(a.createdAt || 0).getTime()
-  );
+  return [];
 };
 
 export const syncLocalSupportReply = async (
@@ -3833,6 +4867,15 @@ export const fetchMySupportTickets = async (user) => {
 
   const userId = user.id || user._id;
   const byId = new Map();
+
+  try {
+    const res = await supportAPI.getMyMessages();
+    getResponseArray(res).forEach((ticket) => {
+      byId.set(ticket._id || ticket.id, ticket);
+    });
+  } catch {
+    // fall through to legacy paths
+  }
 
   if (localSupport) {
     try {

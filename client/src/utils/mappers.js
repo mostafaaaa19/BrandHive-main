@@ -86,7 +86,7 @@ export const mapBrand = (b) => ({
             b.category?.name ||
             b.category || 'General',
   country: b.governorate || b.location || b.country || 'Egypt',
-  verified: b.isVerified ?? b.verified ?? true,
+  verified: Boolean(b.isVerified ?? b.verified),
   featured: b.isFeatured || false,
   productCount: b.stats?.totalProducts ||
                 b.productsCount ||

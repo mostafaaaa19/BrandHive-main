@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { MapPin, Star, CheckCircle2, MessageSquare, Heart, Share2, ArrowLeft, Truck, RotateCcw } from 'lucide-react';
+import { MapPin, Star, CheckCircle2, MessageSquare, Heart, Share2, ArrowLeft, Truck, RotateCcw, Tag, Gift, Zap } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
-import { productsAPI, brandsAPI, loadLocalProductImages, enrichProductsWithLocalImages } from '../services/api';
+import { productsAPI, brandsAPI, loadLocalProductImages, enrichProductsWithLocalImages, fetchBrandProductReviews, fetchBrandFollowState, toggleBrandFollow, fetchBrandPublicOffers } from '../services/api';
 import { mapProduct, mapBrand } from '../utils/mappers';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
@@ -22,8 +22,12 @@ export default function BrandPage() {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('Bazaar');
   const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
   const [localFollowers, setLocalFollowers] = useState(0);
   const [localSales, setLocalSales] = useState(0);
+  const [brandReviews, setBrandReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [brandOffers, setBrandOffers] = useState({ promos: [], coupons: [] });
   const [sortBy, setSortBy] = useState('Best Match');
   const [filterCat, setFilterCat] = useState('All');
 
@@ -113,18 +117,54 @@ export default function BrandPage() {
   }, [slug, isRTL]);
 
   useEffect(() => {
-    if (brand) {
-      setLocalFollowers(brand.followers || 0);
-      try {
-        const userId = JSON.parse(localStorage.getItem('brandhive_user') || '{}')?.id ||
-          JSON.parse(localStorage.getItem('brandhive_user') || '{}')?._id;
-        const following = JSON.parse(localStorage.getItem(`brandhive_following_${userId}`) || '[]');
-        setIsFollowing(following.includes(brand?.id || brand?._id));
-      } catch {
-        setIsFollowing(false);
-      }
+    if (!brand) return;
+
+    setLocalFollowers(brand.followers || 0);
+
+    const userId = user?.id || user?._id;
+    if (!userId) {
+      setIsFollowing(false);
+      return;
     }
-  }, [brand]);
+
+    const loadFollowState = async () => {
+      const brandId = brand.id || brand._id;
+      const state = await fetchBrandFollowState(userId, brandId);
+      setIsFollowing(state.isFollowing);
+    };
+
+    loadFollowState();
+  }, [brand, user?.id, user?._id]);
+
+  useEffect(() => {
+    if (!brandProducts.length) {
+      setBrandReviews([]);
+      return;
+    }
+
+    const loadReviews = async () => {
+      setReviewsLoading(true);
+      try {
+        const reviews = await fetchBrandProductReviews(brandProducts);
+        setBrandReviews(reviews);
+      } catch {
+        setBrandReviews([]);
+      } finally {
+        setReviewsLoading(false);
+      }
+    };
+
+    loadReviews();
+  }, [brandProducts]);
+
+  useEffect(() => {
+    const brandId = brand?.id || brand?._id;
+    if (!brandId) {
+      setBrandOffers({ promos: [], coupons: [] });
+      return;
+    }
+    setBrandOffers(fetchBrandPublicOffers(brandId));
+  }, [brand?.id, brand?._id, activeTab]);
 
   useEffect(() => {
     if (!brand?.id) return;
@@ -147,30 +187,69 @@ export default function BrandPage() {
     return () => clearInterval(interval);
   }, [brand?.id, slug]);
 
-  const handleFollow = () => {
+  const handleFollow = async () => {
     if (!isAuthenticated) {
       toast.error(isRTL ? 'يرجى تسجيل الدخول أولاً' : 'Please login first');
+      navigate('/login', { state: { from: `/brand/${slug}` } });
       return;
     }
-    const newFollowing = !isFollowing;
-    setIsFollowing(newFollowing);
-    setLocalFollowers(prev => newFollowing ? prev + 1 : prev - 1);
 
-    const key = `brandhive_following_${user?.id || user?._id}`;
-    const following = JSON.parse(localStorage.getItem(key) || '[]');
     const brandId = brand?.id || brand?._id;
-    if (newFollowing) {
-      if (!following.includes(brandId)) following.push(brandId);
-    } else {
-      const idx = following.indexOf(brandId);
-      if (idx > -1) following.splice(idx, 1);
-    }
-    localStorage.setItem(key, JSON.stringify(following));
+    const userId = user?.id || user?._id;
+    if (!brandId || !userId || followLoading) return;
 
-    toast.success(newFollowing
-      ? (isRTL ? 'تم المتابعة ✅' : 'Following ✅')
-      : (isRTL ? 'تم إلغاء المتابعة' : 'Unfollowed')
-    );
+    setFollowLoading(true);
+    try {
+      const nextFollowing = await toggleBrandFollow(
+        userId,
+        brandId,
+        isFollowing
+      );
+      setIsFollowing(nextFollowing);
+      setLocalFollowers((prev) =>
+        nextFollowing ? prev + 1 : Math.max(0, prev - 1)
+      );
+      toast.success(
+        nextFollowing
+          ? isRTL
+            ? 'تم المتابعة ✅'
+            : 'Following ✅'
+          : isRTL
+            ? 'تم إلغاء المتابعة'
+            : 'Unfollowed'
+      );
+    } catch {
+      toast.error(
+        isRTL ? 'تعذرت متابعة الماركة' : 'Could not update follow status'
+      );
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
+  const handleShare = async () => {
+    const url = `${window.location.origin}/brand/${slug}`;
+    const shareTitle = brand?.name || 'BrandHive';
+    const shareText = isRTL
+      ? `تصفح ماركة ${shareTitle} على BrandHive`
+      : `Check out ${shareTitle} on BrandHive`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: shareTitle, text: shareText, url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      toast.success(isRTL ? 'تم نسخ الرابط ✅' : 'Link copied ✅');
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast.success(isRTL ? 'تم نسخ الرابط ✅' : 'Link copied ✅');
+      } catch {
+        toast.error(isRTL ? 'تعذر مشاركة الرابط' : 'Could not share link');
+      }
+    }
   };
 
   const handleMessage = () => {
@@ -205,9 +284,49 @@ export default function BrandPage() {
   };
 
   const totalReviews = useMemo(
-    () => brandProducts.reduce((sum, p) => sum + (p.reviews || 0), 0),
-    [brandProducts]
+    () =>
+      brandReviews.length > 0
+        ? brandReviews.length
+        : brandProducts.reduce((sum, p) => sum + (p.reviews || 0), 0),
+    [brandReviews, brandProducts]
   );
+
+  const reviewAverage = useMemo(() => {
+    if (brandReviews.length > 0) {
+      const rated = brandReviews.filter((review) => Number(review.rating) > 0);
+      if (rated.length === 0) return brand?.rating || 0;
+      return (
+        Math.round(
+          (rated.reduce((sum, review) => sum + Number(review.rating), 0) /
+            rated.length) *
+            10
+        ) / 10
+      );
+    }
+    return brand?.rating || 0;
+  }, [brandReviews, brand?.rating]);
+
+  const handleCopyCoupon = async (code) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      sessionStorage.setItem('brandhive_pending_coupon', String(code).toUpperCase());
+      toast.success(
+        isRTL ? `تم نسخ الكود: ${code}` : `Coupon copied: ${code}`
+      );
+    } catch {
+      toast.error(isRTL ? 'تعذر نسخ الكود' : 'Could not copy code');
+    }
+  };
+
+  const freeShippingOffer = brandOffers.promos.find(
+    (entry) => entry.type === 'free_shipping'
+  );
+  const bundleOffer = brandOffers.promos.find(
+    (entry) => entry.type === 'buy_x_get_y'
+  );
+  const hasActiveOffers =
+    brandOffers.coupons.length > 0 ||
+    Boolean(freeShippingOffer || bundleOffer);
 
   const filteredProducts = useMemo(() => {
     let result = brandProducts.filter((p) => {
@@ -375,6 +494,7 @@ export default function BrandPage() {
                 <button
                   type="button"
                   onClick={handleFollow}
+                  disabled={followLoading}
                   className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 ${isRTL ? 'flex-row-reverse' : ''} ${
                   isFollowing
                     ? 'bg-gray-100 dark:bg-dark-bg text-gray-700 dark:text-dark-text hover:bg-gray-200 dark:hover:bg-dark-surface'
@@ -387,14 +507,24 @@ export default function BrandPage() {
                   <MessageSquare size={15} />
                   {isRTL ? 'رسالة' : 'Message'}
                 </button>
-                <button className="p-2.5 rounded-xl border-2 border-gray-200 dark:border-dark-border hover:border-brand-navy dark:hover:border-brand-gold text-gray-500 dark:text-dark-muted hover:text-brand-navy dark:hover:text-brand-navy transition-all">
+                <button
+                  type="button"
+                  onClick={handleShare}
+                  className="p-2.5 rounded-xl border-2 border-gray-200 dark:border-dark-border hover:border-brand-navy dark:hover:border-brand-gold text-gray-500 dark:text-dark-muted hover:text-brand-navy dark:hover:text-brand-navy transition-all"
+                  aria-label={isRTL ? 'مشاركة' : 'Share'}
+                >
                   <Share2 size={15} />
                 </button>
               </div>
 
               {/* Shipping info */}
               <div className={`flex gap-4 text-xs text-gray-500 dark:text-dark-muted ${isRTL ? 'flex-row-reverse' : ''}`}>
-                <span className={`flex items-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}><Truck size={12} /> {isRTL ? 'توصيل:' : 'Shipping:'} {brand.shipping}</span>
+                <span className={`flex items-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <Truck size={12} />
+                  {freeShippingOffer
+                    ? freeShippingOffer.label
+                    : `${isRTL ? 'توصيل:' : 'Shipping:'} ${brand.shipping}`}
+                </span>
                 <span className={`flex items-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}><RotateCcw size={12} /> {isRTL ? 'استرجاع:' : 'Returns:'} {brand.returns}</span>
               </div>
             </div>
@@ -428,6 +558,75 @@ export default function BrandPage() {
         {/* Bazaar Tab */}
         {activeTab === 'Bazaar' && (
           <div>
+            {hasActiveOffers && (
+              <div className="mb-6 space-y-3">
+                <div className={`flex items-center gap-2 mb-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <Zap size={16} className="text-brand-gold" />
+                  <h3 className="font-bold text-gray-900 dark:text-dark-text">
+                    {isRTL ? 'عروض المتجر' : 'Store Offers'}
+                  </h3>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {freeShippingOffer && (
+                    <div className={`flex items-start gap-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-2xl p-4 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+                      <Truck size={18} className="text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-sm text-gray-900 dark:text-dark-text">
+                          {isRTL ? 'شحن مجاني' : 'Free Shipping'}
+                        </p>
+                        <p className="text-xs text-gray-600 dark:text-dark-muted mt-1">
+                          {freeShippingOffer.label}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {bundleOffer && (
+                    <div className={`flex items-start gap-3 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 rounded-2xl p-4 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+                      <Gift size={18} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-sm text-gray-900 dark:text-dark-text">
+                          {isRTL ? 'عرض خاص' : 'Bundle Deal'}
+                        </p>
+                        <p className="text-xs text-gray-600 dark:text-dark-muted mt-1">
+                          {bundleOffer.label}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {brandOffers.coupons.map((coupon) => (
+                    <div
+                      key={coupon._id || coupon.id || coupon.code}
+                      className={`flex items-center justify-between gap-3 bg-brand-gold-pale dark:bg-brand-gold/10 border border-brand-gold/30 rounded-2xl p-4 ${isRTL ? 'flex-row-reverse' : ''}`}
+                    >
+                      <div className={`flex items-start gap-3 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+                        <Tag size={18} className="text-brand-navy dark:text-brand-gold flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-bold text-brand-navy dark:text-brand-gold tracking-wide">
+                            {coupon.code}
+                          </p>
+                          <p className="text-xs text-gray-600 dark:text-dark-muted mt-1">
+                            {coupon.type === 'percentage'
+                              ? `${coupon.value}% ${isRTL ? 'خصم' : 'off'}`
+                              : `${coupon.value} EGP ${isRTL ? 'خصم' : 'off'}`}
+                            {coupon.expiresAt
+                              ? ` · ${isRTL ? 'حتى' : 'until'} ${new Date(coupon.expiresAt).toLocaleDateString(isRTL ? 'ar-EG' : 'en-US')}`
+                              : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyCoupon(coupon.code)}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy hover:opacity-90"
+                      >
+                        {isRTL ? 'نسخ' : 'Copy'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Filters bar */}
             <div className={`flex flex-wrap items-center gap-3 mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
               {[
@@ -481,7 +680,11 @@ export default function BrandPage() {
         {/* Reviews Tab */}
         {activeTab === 'Reviews' && (
           <div className={`max-w-2xl ${isRTL ? 'mr-0' : ''}`}>
-            {totalReviews === 0 ? (
+            {reviewsLoading ? (
+              <div className="text-center py-16 bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:border dark:border-dark-border">
+                <div className="w-6 h-6 border-2 border-brand-gold border-t-transparent rounded-full animate-spin mx-auto" />
+              </div>
+            ) : totalReviews === 0 ? (
               <div className="text-center py-16 bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:border dark:border-dark-border">
                 <div className="text-5xl mb-4">⭐</div>
                 <p className="text-gray-500 dark:text-dark-muted">
@@ -489,26 +692,74 @@ export default function BrandPage() {
                 </p>
               </div>
             ) : (
-              <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
-                <div className={`flex items-center gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  <div className="text-center">
-                    <div className="text-5xl font-display font-bold text-brand-navy dark:text-brand-gold">
-                      {displayRating > 0 ? displayRating : '—'}
-                    </div>
-                    <div className="flex justify-center my-1">
-                      {[...Array(5)].map((_, i) => (
-                        <Star
-                          key={i}
-                          size={16}
-                          className={i < Math.floor(displayRating) ? 'text-amber-400 fill-amber-400' : 'text-gray-300 dark:text-gray-600'}
-                        />
-                      ))}
-                    </div>
-                    <div className="text-sm text-gray-500 dark:text-dark-muted">
-                      {totalReviews} {isRTL ? 'تقييم' : 'reviews'}
+              <div className="space-y-4">
+                <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
+                  <div className={`flex items-center gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <div className="text-center">
+                      <div className="text-5xl font-display font-bold text-brand-navy dark:text-brand-gold">
+                        {reviewAverage > 0 ? reviewAverage : '—'}
+                      </div>
+                      <div className="flex justify-center my-1">
+                        {[...Array(5)].map((_, i) => (
+                          <Star
+                            key={i}
+                            size={16}
+                            className={i < Math.floor(reviewAverage) ? 'text-amber-400 fill-amber-400' : 'text-gray-300 dark:text-gray-600'}
+                          />
+                        ))}
+                      </div>
+                      <div className="text-sm text-gray-500 dark:text-dark-muted">
+                        {totalReviews} {isRTL ? 'تقييم' : 'reviews'}
+                      </div>
                     </div>
                   </div>
                 </div>
+
+                {brandReviews.map((review, i) => (
+                  <div
+                    key={review._id || review.id || i}
+                    className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5 ${isRTL ? 'text-right' : ''}`}
+                  >
+                    <div className={`flex items-center gap-3 mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                      <div className="w-9 h-9 rounded-full bg-brand-gold flex items-center justify-center text-white text-sm font-bold">
+                        {review.user?.name?.[0] || 'U'}
+                      </div>
+                      <div className={isRTL ? 'text-right' : ''}>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-dark-text">
+                          {review.user?.name || 'Customer'}
+                        </p>
+                        <div className={`flex ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          {[...Array(5)].map((_, s) => (
+                            <Star
+                              key={s}
+                              size={12}
+                              className={
+                                s < (review.rating || 0)
+                                  ? 'text-amber-400 fill-amber-400'
+                                  : 'text-gray-300 dark:text-gray-600'
+                              }
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <span className={`${isRTL ? 'mr-auto ml-0' : 'ml-auto mr-0'} text-xs text-gray-400 dark:text-dark-muted`}>
+                        {review.createdAt
+                          ? new Date(review.createdAt).toLocaleDateString(
+                              isRTL ? 'ar-EG' : 'en-US'
+                            )
+                          : ''}
+                      </span>
+                    </div>
+                    <p className={`text-sm text-gray-700 dark:text-dark-muted ${isRTL ? 'mr-12' : 'ml-12'}`}>
+                      {review.comment || '-'}
+                    </p>
+                    {review.productName && (
+                      <p className={`text-xs text-brand-gold mt-2 ${isRTL ? 'mr-12' : 'ml-12'}`}>
+                        {review.productName}
+                      </p>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>

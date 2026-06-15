@@ -1,11 +1,16 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, Phone, MapPin } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
+import { subscribeNewsletter } from '../services/api';
+import toast from 'react-hot-toast';
 
 export default function Footer() {
   const { t } = useTranslation();
   const { isRTL } = useLanguage();
+  const [email, setEmail] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const footerLinks = {
     [t('footer.about')]: [
@@ -33,6 +38,33 @@ export default function Footer() {
     { label: isRTL ? 'فن وثقافة' : 'Art & Culture', path: '/products?category=art' },
   ];
 
+  const handleNewsletterSubmit = async (e) => {
+    e.preventDefault();
+    const trimmed = email.trim();
+    if (!trimmed || !trimmed.includes('@')) {
+      toast.error(isRTL ? 'يرجى إدخال بريد إلكتروني صحيح' : 'Please enter a valid email');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await subscribeNewsletter(trimmed);
+      toast.success(
+        isRTL
+          ? 'تم الاشتراك بنجاح! 🐝'
+          : 'Subscribed successfully! 🐝'
+      );
+      setEmail('');
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message ||
+          (isRTL ? 'تعذر الاشتراك، حاول مجدداً' : 'Could not subscribe, please try again')
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <footer className="bg-brand-dark text-gray-300">
       {/* Newsletter Bar */}
@@ -49,14 +81,26 @@ export default function Footer() {
                   : 'New brands, exclusive deals & Egyptian artisan stories — in your inbox.'}
               </p>
             </div>
-            <form className={`flex gap-2 w-full md:w-auto ${isRTL ? 'flex-row-reverse' : ''}`} onSubmit={(e) => e.preventDefault()}>
+            <form
+              className={`flex gap-2 w-full md:w-auto ${isRTL ? 'flex-row-reverse' : ''}`}
+              onSubmit={handleNewsletterSubmit}
+            >
               <input
                 type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 placeholder="your@email.com"
-                className={`flex-1 md:w-72 px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-brand-gold text-sm ${isRTL ? 'text-right' : 'text-left'}`}
+                disabled={submitting}
+                className={`flex-1 md:w-72 px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-brand-gold text-sm disabled:opacity-60 ${isRTL ? 'text-right' : 'text-left'}`}
               />
-              <button type="submit" className="btn-gold px-6 py-3 text-sm whitespace-nowrap">
-                {isRTL ? 'اشترك' : 'Subscribe'}
+              <button
+                type="submit"
+                disabled={submitting}
+                className="btn-gold px-6 py-3 text-sm whitespace-nowrap disabled:opacity-70"
+              >
+                {submitting
+                  ? (isRTL ? 'جاري...' : '...')
+                  : (isRTL ? 'اشترك' : 'Subscribe')}
               </button>
             </form>
           </div>
@@ -66,7 +110,6 @@ export default function Footer() {
       {/* Main Footer */}
       <div className="page-container py-12">
         <div className={`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-8 mb-10 ${isRTL ? 'text-right' : 'text-left'}`}>
-          {/* Brand Column */}
           <div className="col-span-2 md:col-span-3 lg:col-span-1">
             <Link to="/" className={`flex items-center gap-2 mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
               <div className="w-9 h-9 bg-brand-gold rounded-xl flex items-center justify-center">
@@ -98,7 +141,6 @@ export default function Footer() {
             </div>
           </div>
 
-          {/* Link Columns */}
           {Object.entries(footerLinks).map(([title, links]) => (
             <div key={title}>
               <h4 className="text-white font-semibold text-sm mb-4">{title}</h4>
@@ -118,7 +160,6 @@ export default function Footer() {
           ))}
         </div>
 
-        {/* Categories */}
         <div className="border-t border-white/10 pt-8 mb-8">
           <p className={`text-gray-500 text-xs mb-3 uppercase tracking-wider ${isRTL ? 'text-right' : 'text-left'}`}>
             {isRTL ? 'تصفح حسب الفئة' : 'Browse by category'}
@@ -136,7 +177,6 @@ export default function Footer() {
           </div>
         </div>
 
-        {/* Contact */}
         <div className="border-t border-white/10 pt-8 mb-8">
           <div className={`flex flex-wrap gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
             <a href="mailto:support@brandhive.eg" className="flex items-center gap-2 text-gray-400 text-sm hover:text-brand-gold transition-colors">
@@ -154,7 +194,6 @@ export default function Footer() {
           </div>
         </div>
 
-        {/* Bottom Bar */}
         <div className={`border-t border-white/10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 ${isRTL ? 'sm:flex-row-reverse' : ''}`}>
           <p className="text-gray-500 text-xs">
             © 2025 BrandHive Inc. {t('footer.rights')}. &nbsp;

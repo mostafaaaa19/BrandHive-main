@@ -971,16 +971,25 @@ function AdminCouponsTab({ isRTL, toast }) {
 }
 
 function AdminFeaturedSlotsTab({ isRTL, productsAPI }) {
-  const STORAGE_KEY = 'brandhive_featured_slots';
   const MAX_SLOTS = 4;
 
   const [allProducts, setAllProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [featuredIds, setFeaturedIds] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
-    catch { return []; }
-  });
+  const [featuredIds, setFeaturedIds] = useState([]);
+
+  useEffect(() => {
+    const loadSlots = async () => {
+      try {
+        const { fetchFeaturedSlotIds } = await import('../../services/api');
+        const ids = await fetchFeaturedSlotIds();
+        setFeaturedIds(Array.isArray(ids) ? ids : []);
+      } catch {
+        setFeaturedIds([]);
+      }
+    };
+    loadSlots();
+  }, []);
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -997,7 +1006,7 @@ function AdminFeaturedSlotsTab({ isRTL, productsAPI }) {
     fetchProducts();
   }, []);
 
-  const toggleFeatured = (product) => {
+  const toggleFeatured = async (product) => {
     const id = product._id || product.id;
     let updated;
     if (featuredIds.includes(id)) {
@@ -1023,8 +1032,13 @@ function AdminFeaturedSlotsTab({ isRTL, productsAPI }) {
     const featuredProducts = allProducts.filter(
       (p) => updated.includes(p._id || p.id) && isHomepageQualityProduct(p)
     );
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(featuredProducts.map((p) => p._id || p.id)));
     localStorage.setItem('brandhive_featured_products', JSON.stringify(featuredProducts));
+    try {
+      const { saveFeaturedSlotIds } = await import('../../services/api');
+      await saveFeaturedSlotIds(updated);
+    } catch {
+      toast.error(isRTL ? 'تم الحفظ محلياً فقط' : 'Saved locally only');
+    }
   };
 
   const filtered = allProducts.filter(p =>

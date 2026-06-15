@@ -112,9 +112,7 @@ export const CartProvider = ({ children }) => {
       if (!Array.isArray(cartItems)) return null;
 
       if (cartItems.length === 0) {
-        setItems([]);
-        localStorage.removeItem('brandhive_cart');
-        return [];
+        return null;
       }
 
       const mapped = cartItems.map(mapApiCartItem);

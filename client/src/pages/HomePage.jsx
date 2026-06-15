@@ -10,7 +10,7 @@ import BrandCard from '../components/BrandCard';
 import { testimonials } from '../data/mockData';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
-import { productsAPI, brandsAPI, categoriesAPI, aiAPI, loadLocalProductImages, enrichProductsWithLocalImages, sanitizeFeaturedLocalStorage } from '../services/api';
+import { productsAPI, brandsAPI, categoriesAPI, aiAPI, loadLocalProductImages, enrichProductsWithLocalImages, sanitizeFeaturedLocalStorage, fetchFeaturedSlotIds } from '../services/api';
 import { mapProduct, mapBrand, mapCategory, hydrateProductImages } from '../utils/mappers';
 import { filterHomepageQualityProducts, buildTrendingDisplayList } from '../utils/productQuality';
 
@@ -103,21 +103,40 @@ export default function HomePage() {
         );
         sanitizeFeaturedLocalStorage(catalogIds);
 
-        const adminFeatured = localStorage.getItem('brandhive_featured_products');
-        if (adminFeatured) {
-          try {
-            const parsed = JSON.parse(adminFeatured);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              const adminMapped = parsed.map(mapProduct);
-              const seen = new Set();
-              catalog = [...adminMapped, ...catalog].filter((product) => {
-                const key = product.id || product.slug || product.name;
-                if (!key || seen.has(key)) return false;
-                seen.add(key);
-                return true;
-              });
-            }
-          } catch { /* ignore stale cache */ }
+        const slotIds = await fetchFeaturedSlotIds();
+        if (Array.isArray(slotIds) && slotIds.length > 0) {
+          const byId = new Map(
+            catalog.map((product) => [String(product.id), product])
+          );
+          const slotted = slotIds
+            .map((id) => byId.get(String(id)))
+            .filter(Boolean);
+          if (slotted.length > 0) {
+            const seen = new Set();
+            catalog = [...slotted, ...catalog].filter((product) => {
+              const key = product.id || product.slug || product.name;
+              if (!key || seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+          }
+        } else {
+          const adminFeatured = localStorage.getItem('brandhive_featured_products');
+          if (adminFeatured) {
+            try {
+              const parsed = JSON.parse(adminFeatured);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                const adminMapped = parsed.map(mapProduct);
+                const seen = new Set();
+                catalog = [...adminMapped, ...catalog].filter((product) => {
+                  const key = product.id || product.slug || product.name;
+                  if (!key || seen.has(key)) return false;
+                  seen.add(key);
+                  return true;
+                });
+              }
+            } catch { /* ignore stale cache */ }
+          }
         }
 
         catalog = filterHomepageQualityProducts(catalog);

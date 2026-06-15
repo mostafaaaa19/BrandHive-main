@@ -3,7 +3,7 @@ import { Search, Grid3X3, List, X } from 'lucide-react';
 import BrandCard from '../components/BrandCard';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
-import { brandsAPI, getResponseArray } from '../services/api';
+import { brandsAPI, productsAPI, getResponseArray } from '../services/api';
 import { mapBrand } from '../utils/mappers';
 
 export default function ExploreBrands() {
@@ -33,18 +33,41 @@ export default function ExploreBrands() {
   const [activeFilter, setActiveFilter] = useState('All');
   
   const [brands, setBrands] = useState([]);
+  const [productCounts, setProductCounts] = useState({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchBrands = async () => {
       try {
-        const res = await brandsAPI.getAll({ page: 1, limit: 100 });
-        const raw = getResponseArray(res);
-        setBrands(
-          Array.isArray(raw) ? raw.map(mapBrand) : []
-        );
+        const [brandsRes, productsRes] = await Promise.all([
+          brandsAPI.getAll({ page: 1, limit: 100 }),
+          productsAPI.getAll({ page: 1, limit: 100 }),
+        ]);
+        const raw = getResponseArray(brandsRes);
+        setBrands(Array.isArray(raw) ? raw.map(mapBrand) : []);
+
+        const products = getResponseArray(productsRes);
+        const counts = {};
+        products.forEach((product) => {
+          const isActive =
+            product.isActive !== false &&
+            product.status !== 'inactive' &&
+            product.status !== 'draft';
+          if (!isActive) return;
+
+          const brandId =
+            product.brand?._id ||
+            product.brand?.id ||
+            product.brandId?._id ||
+            product.brandId;
+          if (!brandId) return;
+          const key = String(brandId);
+          counts[key] = (counts[key] || 0) + 1;
+        });
+        setProductCounts(counts);
       } catch {
         setBrands([]);
+        setProductCounts({});
       } finally {
         setLoading(false);
       }
@@ -52,25 +75,36 @@ export default function ExploreBrands() {
     fetchBrands();
   }, []);
 
+  const activeBrands = useMemo(
+    () =>
+      brands
+        .map((brand) => ({
+          ...brand,
+          productCount: productCounts[String(brand.id)] ?? brand.productCount ?? 0,
+        }))
+        .filter((brand) => brand.productCount > 0),
+    [brands, productCounts]
+  );
+
   const realCategories = useMemo(() => {
     const cats = new Set();
-    brands.forEach(b => {
+    activeBrands.forEach(b => {
       if (b.category) cats.add(b.category);
     });
     return Array.from(cats).filter(Boolean);
-  }, [brands]);
+  }, [activeBrands]);
 
   const realGovernorates = useMemo(() => {
     const govs = new Set();
-    brands.forEach(b => {
+    activeBrands.forEach(b => {
       if (b.governorate) govs.add(b.governorate);
       if (b.location && b.location !== 'Egypt') govs.add(b.location);
     });
     return Array.from(govs).filter(Boolean);
-  }, [brands]);
+  }, [activeBrands]);
 
   const filtered = useMemo(() => {
-    let result = [...brands];
+    let result = [...activeBrands];
 
     // Search
     if (search) {
@@ -104,12 +138,10 @@ export default function ExploreBrands() {
     // Active filter tabs
     switch (activeFilter) {
       case 'Verified Only':
-        // All real brands are verified — skip filter
-        // result = result.filter(b => b.verified);
+        result = result.filter((b) => b.verified === true);
         break;
       case 'Featured':
-        // Show first 10 since no featured flag in API
-        result = result.slice(0, 10);
+        result = result.filter((b) => b.featured === true);
         break;
       case 'New Sellers':
         // Sort by newest
@@ -153,7 +185,7 @@ export default function ExploreBrands() {
     }
 
     return result;
-  }, [brands, search, selectedGov, selectedCat, 
+  }, [activeBrands, search, selectedGov, selectedCat, 
       activeFilter, sort]);
 
   const clearFilters = () => {

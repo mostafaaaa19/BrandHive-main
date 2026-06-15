@@ -287,13 +287,13 @@ export default function SupportChat() {
             message: currentInput,
             railwayTicketId: ticketId,
           });
-        }
 
-        await autoResolveSupportTicket({
-          ticketId,
-          reply: replyText,
-          ticketMeta,
-        });
+          await autoResolveSupportTicket({
+            ticketId,
+            reply: replyText,
+            ticketMeta,
+          });
+        }
       } else if (!shouldOpenTicket) {
         await persistAutoResolvedChat(currentInput, replyText);
       }

@@ -1,15 +1,16 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ShoppingCart, Minus, Plus, X, ArrowLeft, Tag, ChevronRight,
   CreditCard, Smartphone, Banknote, Building2, CheckCircle, Shield
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
-import { ordersAPI, cartAPI, addressesAPI, fetchSafeCrossSell, mirrorSellerOrder, lookupProductBrand } from '../services/api';
+import { ordersAPI, addressesAPI, fetchSafeCrossSell, applyCartCouponCode, computeCartPromoAdjustments, extractOrderPaymentUrl, extractCreatedOrderId, initiateOrderPayment, syncCartBeforeCheckout } from '../services/api';
 import { mapProduct } from '../utils/mappers';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
+import { loadSavedCards } from '../utils/savedCards';
 import toast from 'react-hot-toast';
 
 const CATEGORY_ICONS = {
@@ -20,7 +21,7 @@ const CATEGORY_ICONS = {
 export default function CartPage() {
   const { t } = useTranslation();
   const { isRTL } = useLanguage();
-  const { items, removeFromCart, updateQuantity, clearCart, subtotal, itemCount, addToCart, fetchCart } = useCart();
+  const { items, removeFromCart, updateQuantity, clearCart, subtotal, itemCount, addToCart } = useCart();
   const { isAuthenticated, isCustomer, user } = useAuth();
   const [savedAddresses, setSavedAddresses] = useState([]);
   const [selectedAddressId, setSelectedAddressId] = useState(null);
@@ -29,7 +30,7 @@ export default function CartPage() {
   const [step, setStep] = useState(0);
   const [crossSell, setCrossSell] = useState([]);
   const [promoCode, setPromoCode] = useState('');
-  const [appliedPromo, setAppliedPromo] = useState(null);
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [selectedPayment, setSelectedPayment] = useState('cod');
   const [orderPlaced, setOrderPlaced] = useState(false);
 
@@ -67,7 +68,33 @@ export default function CartPage() {
 
   const [promoLoading, setPromoLoading] = useState(false);
   const [orderLoading, setOrderLoading] = useState(false);
-  const [discount, setDiscount] = useState(0);
+  const [savedCards, setSavedCards] = useState([]);
+  const [selectedCardId, setSelectedCardId] = useState(null);
+
+  const couponDiscount = appliedCoupon?.discount || 0;
+  const adjustments = useMemo(
+    () => computeCartPromoAdjustments(items, subtotal, couponDiscount),
+    [items, subtotal, couponDiscount]
+  );
+  const { shippingCost, bundleDiscount, total, promoLabels } = adjustments;
+
+  useEffect(() => {
+    const pending =
+      sessionStorage.getItem('brandhive_pending_coupon') ||
+      new URLSearchParams(window.location.search).get('coupon');
+    if (!pending || items.length === 0) return;
+
+    sessionStorage.removeItem('brandhive_pending_coupon');
+    setPromoCode(pending.toUpperCase());
+  }, [items.length]);
+
+  useEffect(() => {
+    if (step !== 2) return;
+    const cards = loadSavedCards();
+    setSavedCards(cards);
+    const defaultCard = cards.find((card) => card.isDefault) || cards[0];
+    setSelectedCardId(defaultCard?.id || null);
+  }, [step, isAuthenticated]);
 
   useEffect(() => {
     if (step !== 1 || !isAuthenticated) return;
@@ -116,38 +143,24 @@ export default function CartPage() {
     });
   };
 
-  const shippingCost = subtotal >= 500 ? 0 : 50;
-  const total = Math.max(0, subtotal + shippingCost - discount);
-
   const handlePromo = async () => {
     if (!promoCode.trim()) return;
     setPromoLoading(true);
     try {
-      const res = await cartAPI.applyCoupon({
-        couponCode: promoCode.toUpperCase()
+      const result = await applyCartCouponCode({
+        code: promoCode,
+        items,
+        subtotal,
       });
-      const data = res.data;
-
-      setAppliedPromo(promoCode.toUpperCase());
-
-      const apiSubtotal = data?.data?.subtotal || 0;
-      const apiTotal = data?.data?.total || 0;
-      const apiDiscount = data?.data?.couponDiscount || data?.data?.couponSaving || 0;
-
-      const discountValue = (apiSubtotal && apiTotal)
-        ? apiSubtotal - apiTotal
-        : apiDiscount;
-
-      setDiscount(discountValue);
-
+      setAppliedCoupon(result);
       toast.success(
         isRTL
-          ? `تم تطبيق الكوبون! خصم ${discountValue.toLocaleString()} ج.م`
-          : `Coupon applied! ${discountValue.toLocaleString()} EGP off`,
+          ? `تم تطبيق الكوبون! خصم ${result.discount.toLocaleString()} ج.م`
+          : `Coupon applied! ${result.discount.toLocaleString()} EGP off`,
         { style: { borderRadius: '12px' } }
       );
-      return;
-    } catch (err) {
+    } catch {
+      setAppliedCoupon(null);
       toast.error(
         isRTL
           ? 'كوبون غير صالح أو منتهي الصلاحية'
@@ -160,21 +173,36 @@ export default function CartPage() {
   };
 
   const handlePlaceOrder = async () => {
+    if (!isAuthenticated) {
+      toast.error(
+        isRTL ? 'يرجى تسجيل الدخول لإتمام الطلب' : 'Please log in to place your order',
+        { style: { borderRadius: '12px' } }
+      );
+      navigate('/login', { state: { from: '/cart' } });
+      return;
+    }
+
+    if (!isCustomer) {
+      toast.error(
+        isRTL
+          ? 'يجب استخدام حساب عميل لإتمام الطلب'
+          : 'Please use a customer account to place orders',
+        { style: { borderRadius: '12px' } }
+      );
+      return;
+    }
+
+    if (items.length === 0) {
+      toast.error(
+        isRTL ? 'السلة فارغة' : 'Your cart is empty',
+        { style: { borderRadius: '12px' } }
+      );
+      return;
+    }
+
     setOrderLoading(true);
     try {
-      let checkoutItems = items;
-      if (isAuthenticated && isCustomer) {
-        const synced = await fetchCart();
-        if (Array.isArray(synced)) checkoutItems = synced;
-      }
-
-      if (checkoutItems.length === 0) {
-        toast.error(
-          isRTL ? 'السلة فارغة' : 'Your cart is empty',
-          { style: { borderRadius: '12px' } }
-        );
-        return;
-      }
+      await syncCartBeforeCheckout(items);
 
       const orderData = {
         shippingAddress: {
@@ -186,72 +214,72 @@ export default function CartPage() {
           country: 'Egypt',
         },
         paymentMethod: selectedPayment,
+        ...(appliedCoupon?.code ? { couponCode: appliedCoupon.code } : {}),
+        ...(selectedCardId && selectedPayment === 'paymob'
+          ? { savedCardId: selectedCardId }
+          : {}),
       };
 
-      const orderRes = await ordersAPI.create(orderData);
-      const orderPayload = orderRes.data?.data || orderRes.data || {};
-      const railwayOrderId = orderPayload._id || orderPayload.id;
+      const res = await ordersAPI.create(orderData);
+      const orderId = extractCreatedOrderId(res);
+      let paymentUrl = extractOrderPaymentUrl(res);
 
-      const enrichedItems = await Promise.all(
-        checkoutItems.map(async (item) => {
-          const productId = item.id || item.productId;
-          let brandId = item.brandId;
-          let brandName = item.brandName;
-          if (!brandId && productId) {
-            const brand = await lookupProductBrand(productId);
-            brandId = brand?.brandId;
-            brandName = brand?.brandName || brandName;
-          }
-          return {
-            productId,
-            name: item.name,
-            quantity: item.quantity,
-            price: item.price,
-            brandId,
-            brandName,
-          };
-        })
-      );
-
-      if (enrichedItems.length > 0) {
-        await mirrorSellerOrder({
-          railwayOrderId,
-          customerUserId: user?.id || user?._id,
-          customerEmail: user?.email,
-          customerName: delivery.name?.trim() || user?.name,
-          brandIds: [
-            ...new Set(
-              enrichedItems
-                .map((item) => item.brandId)
-                .filter(Boolean)
-                .map(String)
-            ),
-          ],
-          items: enrichedItems,
-          subtotal: checkoutItems.reduce(
-            (sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 1),
-            0
-          ),
-          totalAmount: checkoutItems.reduce(
-            (sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 1),
-            0
-          ),
-          paymentMethod: selectedPayment,
-          status: orderPayload.status || 'pending',
-          shippingAddress: orderData.shippingAddress,
-        });
+      if (
+        !paymentUrl &&
+        orderId &&
+        ['paymob', 'fawry'].includes(selectedPayment)
+      ) {
+        try {
+          paymentUrl = await initiateOrderPayment(orderId, {
+            amount: total,
+            paymentMethod: selectedPayment,
+            billing: {
+              fullName: delivery.name,
+              phone: delivery.phone,
+              street: delivery.street,
+              governorate: delivery.governorate,
+              city: delivery.governorate,
+              postalCode: delivery.postalCode,
+            },
+            customerEmail: user?.email,
+          });
+        } catch {
+          paymentUrl = null;
+        }
       }
 
       await clearCart();
+
+      if (paymentUrl && ['paymob', 'fawry'].includes(selectedPayment)) {
+        toast.success(
+          isRTL ? 'جاري تحويلك لبوابة الدفع...' : 'Redirecting to payment...',
+          { style: { borderRadius: '12px' } }
+        );
+        window.location.href = paymentUrl;
+        return;
+      }
+
+      if (['paymob', 'fawry'].includes(selectedPayment)) {
+        toast.success(
+          isRTL
+            ? 'تم إنشاء الطلب ✅ الدفع الإلكتروني غير مفعّل بعد — أكمل من صفحة طلباتك أو استخدم الدفع عند الاستلام.'
+            : 'Order created ✅ Online payment is not live yet — complete from your orders or use cash on delivery.',
+          { style: { borderRadius: '12px' }, duration: 6000 }
+        );
+        navigate('/account?tab=orders');
+        return;
+      }
+
       setOrderPlaced(true);
       setTimeout(() => navigate('/account?tab=orders'), 3000);
     } catch (err) {
-      const msg = err.response?.data?.message;
+      const msg =
+        err.response?.data?.message ||
+        err.message ||
+        (isRTL ? 'يرجى المحاولة مجدداً' : 'Please try again');
       toast.error(
-        isRTL
-          ? `فشل إتمام الطلب: ${msg || 'يرجى المحاولة مجدداً'}`
-          : `Order failed: ${msg || 'Please try again'}`,
-        { style: { borderRadius: '12px' } }
+        isRTL ? `فشل إتمام الطلب: ${msg}` : `Order failed: ${msg}`,
+        { style: { borderRadius: '12px' }, duration: 5000 }
       );
     } finally {
       setOrderLoading(false);
@@ -470,10 +498,31 @@ export default function CartPage() {
                       {shippingCost === 0 ? (isRTL ? 'مجاني' : 'Free') : `${shippingCost} ${isRTL ? 'ج.م' : t('common.egp')}`}
                     </span>
                   </div>
-                  {appliedPromo && (
+                  {bundleDiscount > 0 && (
                     <div className={`flex justify-between text-sm ${isRTL ? 'flex-row-reverse' : ''}`}>
-                      <span className="text-emerald-600 dark:text-emerald-400">{isRTL ? `خصم (${appliedPromo})` : `Discount (${appliedPromo})`}</span>
-                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">-{discount.toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}</span>
+                      <span className="text-emerald-600 dark:text-emerald-400">
+                        {isRTL ? 'عرض الباندل' : 'Bundle offer'}
+                      </span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                        -{bundleDiscount.toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}
+                      </span>
+                    </div>
+                  )}
+                  {appliedCoupon?.code && (
+                    <div className={`flex justify-between text-sm ${isRTL ? 'flex-row-reverse' : ''}`}>
+                      <span className="text-emerald-600 dark:text-emerald-400">
+                        {isRTL ? `خصم (${appliedCoupon.code})` : `Discount (${appliedCoupon.code})`}
+                      </span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                        -{couponDiscount.toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}
+                      </span>
+                    </div>
+                  )}
+                  {promoLabels.length > 0 && (
+                    <div className={`text-xs text-emerald-600 dark:text-emerald-400 space-y-1 ${isRTL ? 'text-right' : ''}`}>
+                      {promoLabels.map((label, idx) => (
+                        <p key={`${label}-${idx}`}>✓ {label}</p>
+                      ))}
                     </div>
                   )}
                   <div className={`border-t border-gray-100 dark:border-dark-border pt-3 flex justify-between font-bold text-lg ${isRTL ? 'flex-row-reverse' : ''}`}>
@@ -691,6 +740,61 @@ export default function CartPage() {
                   </label>
                 ))}
               </div>
+              {['paymob', 'fawry'].includes(selectedPayment) && (
+                <p className={`text-xs text-amber-700 dark:text-amber-400 mt-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 rounded-xl p-3 ${isRTL ? 'text-right' : ''}`}>
+                  {isRTL
+                    ? 'الدفع بالفيزا/فوري يحتاج Paymob مفعّل على السيرفر. لو البوابة مش جاهزة، الطلب يتسجل «في انتظار الدفع» — أو اختر الدفع عند الاستلام.'
+                    : 'Card/Fawry payment needs Paymob enabled on the server. If not live yet, the order is saved as pending — or choose cash on delivery.'}
+                </p>
+              )}
+
+              {selectedPayment === 'paymob' && savedCards.length > 0 && (
+                <div className="mt-5 pt-5 border-t border-gray-100 dark:border-dark-border">
+                  <p className={`text-sm font-semibold text-gray-900 dark:text-dark-text mb-3 ${isRTL ? 'text-right' : ''}`}>
+                    {isRTL ? 'الكارت المفضل' : 'Preferred card'}
+                  </p>
+                  <div className="space-y-2">
+                    {savedCards.map((card) => (
+                      <label
+                        key={card.id}
+                        className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${isRTL ? 'flex-row-reverse text-right' : ''} ${
+                          selectedCardId === card.id
+                            ? 'border-brand-navy dark:border-brand-gold bg-brand-navy/5 dark:bg-brand-gold/5'
+                            : 'border-gray-200 dark:border-dark-border'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="savedCard"
+                          checked={selectedCardId === card.id}
+                          onChange={() => setSelectedCardId(card.id)}
+                          className="text-brand-navy dark:text-brand-gold"
+                        />
+                        <CreditCard size={16} className="text-brand-navy dark:text-brand-gold flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 dark:text-dark-text">
+                            {card.type} •••• {card.last4}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-dark-muted">
+                            {isRTL ? 'ينتهي' : 'Expires'} {card.expiry}
+                          </p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                  <p className={`text-xs text-gray-500 dark:text-dark-muted mt-3 ${isRTL ? 'text-right' : ''}`}>
+                    {isRTL
+                      ? 'سيتم إدخال بيانات البطاقة بأمان على بوابة Paymob عند إتمام الطلب.'
+                      : 'Card details will be entered securely on the Paymob gateway when you place the order.'}
+                  </p>
+                  <Link
+                    to="/account?tab=payment"
+                    className={`inline-block text-xs text-brand-navy dark:text-brand-gold font-semibold mt-2 hover:underline ${isRTL ? 'float-left' : ''}`}
+                  >
+                    {isRTL ? 'إدارة الكروت المحفوظة' : 'Manage saved cards'}
+                  </Link>
+                </div>
+              )}
             </div>
             <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
               <button onClick={() => setStep(1)} className={`btn-ghost flex items-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
@@ -722,6 +826,28 @@ export default function CartPage() {
                   <span className="text-sm font-semibold dark:text-dark-text">{((Number(item.price) || 0) * (Number(item.quantity) || 1)).toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}</span>
                 </div>
               ))}
+              <div className={`space-y-2 pt-3 border-t border-gray-100 dark:border-dark-border text-sm ${isRTL ? 'text-right' : ''}`}>
+                <div className={`flex justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <span className="text-gray-600 dark:text-dark-muted">{isRTL ? 'المجموع' : 'Subtotal'}</span>
+                  <span>{subtotal.toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}</span>
+                </div>
+                <div className={`flex justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <span className="text-gray-600 dark:text-dark-muted">{isRTL ? 'الشحن' : 'Shipping'}</span>
+                  <span>{shippingCost === 0 ? (isRTL ? 'مجاني' : 'Free') : `${shippingCost} ${isRTL ? 'ج.م' : t('common.egp')}`}</span>
+                </div>
+                {bundleDiscount > 0 && (
+                  <div className={`flex justify-between text-emerald-600 dark:text-emerald-400 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <span>{isRTL ? 'عرض الباندل' : 'Bundle offer'}</span>
+                    <span>-{bundleDiscount.toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}</span>
+                  </div>
+                )}
+                {appliedCoupon?.code && (
+                  <div className={`flex justify-between text-emerald-600 dark:text-emerald-400 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <span>{isRTL ? `كوبون (${appliedCoupon.code})` : `Coupon (${appliedCoupon.code})`}</span>
+                    <span>-{couponDiscount.toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}</span>
+                  </div>
+                )}
+              </div>
               <div className={`flex justify-between items-center pt-3 font-bold text-lg ${isRTL ? 'flex-row-reverse' : ''}`}>
                 <span className="dark:text-dark-text">{isRTL ? 'الإجمالي' : t('cart.total')}</span>
                 <span className="text-brand-navy dark:text-brand-gold">{total.toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}</span>
@@ -742,6 +868,13 @@ export default function CartPage() {
               <p className="text-sm text-gray-700 dark:text-dark-text">
                 {PAYMENT_METHODS.find(m => m.id === selectedPayment)?.label}
               </p>
+              {['paymob', 'fawry'].includes(selectedPayment) && (
+                <p className="text-xs text-amber-700 dark:text-amber-400 mt-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 rounded-xl p-3">
+                  {isRTL
+                    ? 'الدفع الإلكتروني يتطلب تفعيل Paymob على سيرفر BrandHive. إذا لم تُفعَّل البوابة بعد، سيُسجَّل طلبك كـ «في انتظار الدفع» ويمكنك المحاولة لاحقاً أو اختيار الدفع عند الاستلام.'
+                    : 'Online payment requires Paymob to be enabled on the BrandHive server. If the gateway is not live yet, your order will be saved as pending payment — retry later or choose cash on delivery.'}
+                </p>
+              )}
             </div>
 
             <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>

@@ -30,6 +30,7 @@ import AdminDashboard from './pages/dashboards/AdminDashboard';
 import AddProductPage from './pages/seller/AddProductPage';
 import SellerPendingPage from './pages/seller/SellerPendingPage';
 import BazaarPage from './pages/BazaarPage';
+import PaymentReturnPage from './pages/PaymentReturnPage';
 
 function ProtectedRoute({ children, requiredRole }) {
   const { user, loading } = useAuth();
@@ -87,6 +88,7 @@ function AppRoutes() {
       <Route path="/products" element={<Layout><ListingPage /></Layout>} />
       <Route path="/product/:slug" element={<Layout><ProductPage /></Layout>} />
       <Route path="/cart" element={<Layout noFooter><CartPage /></Layout>} />
+      <Route path="/payment/return" element={<Layout noFooter><PaymentReturnPage /></Layout>} />
       <Route path="/global" element={<Layout><ListingPage /></Layout>} />
       <Route path="/chat" element={<Layout noFooter><SupportChat /></Layout>} />
       <Route path="/support" element={<Navigate to="/chat" replace />} />

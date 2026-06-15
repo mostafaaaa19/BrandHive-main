@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard, Store, Package, ShoppingBag, DollarSign, Target, Star, Megaphone,
   Settings, MessageSquare, CreditCard, LogOut, Users,
-  Plus, BarChart3, Bell, Edit, XCircle, Boxes
+  Plus, BarChart3, Bell, Edit, XCircle, Boxes, Trash2
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../../context/AuthContext';
@@ -18,6 +18,7 @@ import {
   fetchSellerOrders,
   fetchSellerReviews,
   fetchSellerBrandMessages,
+  replyToSellerCustomer,
   readCachedSellerProducts,
   getCachedSellerProductCount,
   fetchSellerPayoutSummary,
@@ -28,6 +29,14 @@ import {
   rememberSellerBrand,
   readCachedSellerBrandForUser,
   ensureSellerBrandLinked,
+  fetchSellerCoupons,
+  createSellerCoupon,
+  deleteSellerCoupon,
+  fetchSellerPromotions,
+  saveSellerPromotion,
+  applySellerFlashSale,
+  syncBrandPublicOffers,
+  submitAdInquiry,
 } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../../context/LanguageContext';
@@ -809,24 +818,417 @@ function SellerRevenueTab({ dashboard, analytics, analyticsLoading, orderStats, 
   );
 }
 
-function SellerMessagesTab({ isRTL, brandId }) {
-  const [messages, setMessages] = useState([]);
+function SellerPromotionsTab({ isRTL, user, brandId, products, onProductsChange }) {
+  const userId = user?.id || user?._id;
+  const [coupons, setCoupons] = useState([]);
+  const [promos, setPromos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeTool, setActiveTool] = useState('coupons');
+  const [couponForm, setCouponForm] = useState({
+    code: '',
+    type: 'percentage',
+    value: '',
+    expiresAt: '',
+  });
+  const [flashForm, setFlashForm] = useState({
+    productId: '',
+    discount: '20',
+  });
+  const [freeShippingForm, setFreeShippingForm] = useState({ minOrder: '500' });
+  const [bundleForm, setBundleForm] = useState({
+    buyQty: '2',
+    discount: '50',
+  });
+  const [saving, setSaving] = useState(false);
+
+  const loadPromotions = useCallback(async () => {
+    if (!userId) return;
+    setLoading(true);
+    try {
+      if (brandId) syncBrandPublicOffers(userId, brandId);
+      const [couponData, promoData] = await Promise.all([
+        fetchSellerCoupons(userId),
+        Promise.resolve(fetchSellerPromotions(userId)),
+      ]);
+      setCoupons(Array.isArray(couponData) ? couponData : []);
+      setPromos(Array.isArray(promoData) ? promoData : []);
+    } finally {
+      setLoading(false);
+    }
+  }, [userId, brandId]);
 
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        const data = await fetchSellerBrandMessages(brandId);
-        setMessages(Array.isArray(data) ? data : []);
-      } catch {
-        setMessages([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, [brandId]);
+    loadPromotions();
+  }, [loadPromotions]);
+
+  const handleCreateCoupon = async () => {
+    if (!couponForm.code || !couponForm.value || !couponForm.expiresAt) {
+      toast.error(isRTL ? 'يرجى ملء جميع الحقول' : 'Please fill all fields');
+      return;
+    }
+    setSaving(true);
+    try {
+      await createSellerCoupon(userId, brandId, {
+        code: couponForm.code,
+        type: couponForm.type,
+        value: parseFloat(couponForm.value),
+        expiresAt: new Date(couponForm.expiresAt).toISOString(),
+      });
+      toast.success(isRTL ? 'تم إنشاء الكوبون ✅' : 'Coupon created ✅');
+      setCouponForm({ code: '', type: 'percentage', value: '', expiresAt: '' });
+      await loadPromotions();
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message ||
+          (isRTL ? 'فشل إنشاء الكوبون' : 'Failed to create coupon')
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteCoupon = async (coupon) => {
+    await deleteSellerCoupon(userId, coupon._id || coupon.id, coupon.code, brandId);
+    await loadPromotions();
+    toast.success(isRTL ? 'تم الحذف' : 'Deleted');
+  };
+
+  const handleFlashSale = async () => {
+    if (!flashForm.productId || !flashForm.discount) {
+      toast.error(isRTL ? 'اختر منتجاً ونسبة الخصم' : 'Select a product and discount');
+      return;
+    }
+    setSaving(true);
+    try {
+      await applySellerFlashSale(flashForm.productId, flashForm.discount);
+      toast.success(isRTL ? 'تم تفعيل عرض الفلاش ✅' : 'Flash sale activated ✅');
+      if (onProductsChange) await onProductsChange();
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message ||
+          err.message ||
+          (isRTL ? 'فشل تفعيل العرض' : 'Failed to activate sale')
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleFreeShipping = async () => {
+    const minOrder = Number(freeShippingForm.minOrder);
+    if (!minOrder || minOrder <= 0) {
+      toast.error(isRTL ? 'أدخل حد أدنى صحيح' : 'Enter a valid minimum order');
+      return;
+    }
+    saveSellerPromotion(userId, brandId, {
+      type: 'free_shipping',
+      minOrder,
+      label: isRTL
+        ? `شحن مجاني للطلبات فوق ${minOrder} ج.م`
+        : `Free shipping on orders above ${minOrder} EGP`,
+    });
+    await loadPromotions();
+    toast.success(isRTL ? 'تم حفظ عرض الشحن المجاني ✅' : 'Free shipping offer saved ✅');
+  };
+
+  const handleBundlePromo = async () => {
+    const buyQty = Number(bundleForm.buyQty);
+    const discount = Number(bundleForm.discount);
+    if (!buyQty || !discount) {
+      toast.error(isRTL ? 'أدخل قيم صحيحة' : 'Enter valid values');
+      return;
+    }
+    saveSellerPromotion(userId, brandId, {
+      type: 'buy_x_get_y',
+      buyQty,
+      discount,
+      label: isRTL
+        ? `اشترِ ${buyQty} واحصل على خصم ${discount}% على القطعة الإضافية`
+        : `Buy ${buyQty} items and get ${discount}% off the extra item`,
+    });
+    await loadPromotions();
+    toast.success(isRTL ? 'تم حفظ العرض ✅' : 'Bundle offer saved ✅');
+  };
+
+  const tools = [
+    { id: 'coupons', icon: '🏷️', label: isRTL ? 'كوبونات' : 'Coupons' },
+    { id: 'flash', icon: '⚡', label: isRTL ? 'فلاش' : 'Flash Sale' },
+    { id: 'shipping', icon: '🚚', label: isRTL ? 'شحن مجاني' : 'Free Shipping' },
+    { id: 'bundle', icon: '🎁', label: isRTL ? 'اشترِ X' : 'Buy X Get Y' },
+  ];
+
+  const activePromo = (type) => promos.find((entry) => entry.type === type);
+
+  return (
+    <div>
+      <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
+        {isRTL ? 'العروض والخصومات' : 'Promotions & Discounts'}
+      </h1>
+
+      <div className={`flex flex-wrap gap-2 mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+        {tools.map((tool) => (
+          <button
+            key={tool.id}
+            type="button"
+            onClick={() => setActiveTool(tool.id)}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+              activeTool === tool.id
+                ? 'bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy'
+                : 'bg-white dark:bg-dark-surface text-gray-600 dark:text-dark-text border border-gray-200 dark:border-dark-border'
+            }`}
+          >
+            {tool.icon} {tool.label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="w-6 h-6 border-2 border-brand-gold border-t-transparent rounded-full animate-spin mx-auto" />
+        </div>
+      ) : (
+        <>
+          {activeTool === 'coupons' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
+                <h3 className={`font-bold text-gray-900 dark:text-dark-text mb-4 ${isRTL ? 'text-right' : ''}`}>
+                  {isRTL ? 'إنشاء كوبون خصم' : 'Create Discount Coupon'}
+                </h3>
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={couponForm.code}
+                    onChange={(e) => setCouponForm((prev) => ({ ...prev, code: e.target.value }))}
+                    placeholder={isRTL ? 'رمز الكوبون' : 'Coupon code'}
+                    className={`input-field ${isRTL ? 'text-right' : ''}`}
+                  />
+                  <select
+                    value={couponForm.type}
+                    onChange={(e) => setCouponForm((prev) => ({ ...prev, type: e.target.value }))}
+                    className={`input-field ${isRTL ? 'text-right' : ''}`}
+                  >
+                    <option value="percentage">{isRTL ? 'نسبة مئوية' : 'Percentage'}</option>
+                    <option value="fixed">{isRTL ? 'قيمة ثابتة' : 'Fixed amount'}</option>
+                  </select>
+                  <input
+                    type="number"
+                    value={couponForm.value}
+                    onChange={(e) => setCouponForm((prev) => ({ ...prev, value: e.target.value }))}
+                    placeholder={isRTL ? 'قيمة الخصم' : 'Discount value'}
+                    className={`input-field ${isRTL ? 'text-right' : ''}`}
+                  />
+                  <input
+                    type="date"
+                    value={couponForm.expiresAt}
+                    onChange={(e) => setCouponForm((prev) => ({ ...prev, expiresAt: e.target.value }))}
+                    className={`input-field ${isRTL ? 'text-right' : ''}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCreateCoupon}
+                    disabled={saving}
+                    className="btn-primary w-full disabled:opacity-50"
+                  >
+                    {isRTL ? 'إنشاء الكوبون' : 'Create Coupon'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
+                <h3 className={`font-bold text-gray-900 dark:text-dark-text mb-4 ${isRTL ? 'text-right' : ''}`}>
+                  {isRTL ? 'كوبوناتك النشطة' : 'Your Active Coupons'}
+                </h3>
+                {coupons.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-dark-muted">
+                    {isRTL ? 'لا توجد كوبونات بعد' : 'No coupons yet'}
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {coupons.map((coupon) => (
+                      <div
+                        key={coupon._id || coupon.id || coupon.code}
+                        className={`flex items-center justify-between gap-3 p-3 bg-brand-cream dark:bg-dark-bg rounded-xl ${isRTL ? 'flex-row-reverse' : ''}`}
+                      >
+                        <div className={isRTL ? 'text-right' : ''}>
+                          <p className="font-bold text-brand-navy dark:text-brand-gold">{coupon.code}</p>
+                          <p className="text-xs text-gray-500 dark:text-dark-muted">
+                            {coupon.type === 'percentage'
+                              ? `${coupon.value}%`
+                              : `${coupon.value} EGP`}
+                            {' · '}
+                            {coupon.expiresAt
+                              ? new Date(coupon.expiresAt).toLocaleDateString()
+                              : '—'}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCoupon(coupon)}
+                          className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTool === 'flash' && (
+            <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 max-w-xl">
+              <h3 className={`font-bold text-gray-900 dark:text-dark-text mb-4 ${isRTL ? 'text-right' : ''}`}>
+                {isRTL ? 'عرض فلاش على منتج' : 'Flash Sale on Product'}
+              </h3>
+              <div className="space-y-3">
+                <select
+                  value={flashForm.productId}
+                  onChange={(e) => setFlashForm((prev) => ({ ...prev, productId: e.target.value }))}
+                  className={`input-field ${isRTL ? 'text-right' : ''}`}
+                >
+                  <option value="">{isRTL ? 'اختر منتجاً' : 'Select product'}</option>
+                  {products.map((product) => (
+                    <option key={product._id || product.id} value={product._id || product.id}>
+                      {product.name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  min="1"
+                  max="90"
+                  value={flashForm.discount}
+                  onChange={(e) => setFlashForm((prev) => ({ ...prev, discount: e.target.value }))}
+                  placeholder={isRTL ? 'نسبة الخصم %' : 'Discount %'}
+                  className={`input-field ${isRTL ? 'text-right' : ''}`}
+                />
+                <button
+                  type="button"
+                  onClick={handleFlashSale}
+                  disabled={saving || products.length === 0}
+                  className="btn-primary disabled:opacity-50"
+                >
+                  {isRTL ? 'تفعيل العرض' : 'Activate Sale'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {activeTool === 'shipping' && (
+            <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 max-w-xl">
+              <h3 className={`font-bold text-gray-900 dark:text-dark-text mb-4 ${isRTL ? 'text-right' : ''}`}>
+                {isRTL ? 'شحن مجاني' : 'Free Shipping Offer'}
+              </h3>
+              <div className="space-y-3">
+                <input
+                  type="number"
+                  value={freeShippingForm.minOrder}
+                  onChange={(e) =>
+                    setFreeShippingForm({ minOrder: e.target.value })
+                  }
+                  placeholder={isRTL ? 'الحد الأدنى للطلب (ج.م)' : 'Minimum order (EGP)'}
+                  className={`input-field ${isRTL ? 'text-right' : ''}`}
+                />
+                <button type="button" onClick={handleFreeShipping} className="btn-primary">
+                  {isRTL ? 'حفظ العرض' : 'Save Offer'}
+                </button>
+                {activePromo('free_shipping') && (
+                  <p className="text-sm text-emerald-600 dark:text-emerald-400">
+                    {activePromo('free_shipping').label}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTool === 'bundle' && (
+            <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 max-w-xl">
+              <h3 className={`font-bold text-gray-900 dark:text-dark-text mb-4 ${isRTL ? 'text-right' : ''}`}>
+                {isRTL ? 'اشترِ X واحصل على خصم' : 'Buy X Get Discount'}
+              </h3>
+              <div className="space-y-3">
+                <input
+                  type="number"
+                  min="2"
+                  value={bundleForm.buyQty}
+                  onChange={(e) =>
+                    setBundleForm((prev) => ({ ...prev, buyQty: e.target.value }))
+                  }
+                  placeholder={isRTL ? 'عدد القطع' : 'Item quantity'}
+                  className={`input-field ${isRTL ? 'text-right' : ''}`}
+                />
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={bundleForm.discount}
+                  onChange={(e) =>
+                    setBundleForm((prev) => ({ ...prev, discount: e.target.value }))
+                  }
+                  placeholder={isRTL ? 'نسبة الخصم %' : 'Discount %'}
+                  className={`input-field ${isRTL ? 'text-right' : ''}`}
+                />
+                <button type="button" onClick={handleBundlePromo} className="btn-primary">
+                  {isRTL ? 'حفظ العرض' : 'Save Offer'}
+                </button>
+                {activePromo('buy_x_get_y') && (
+                  <p className="text-sm text-emerald-600 dark:text-emerald-400">
+                    {activePromo('buy_x_get_y').label}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function SellerMessagesTab({ isRTL, brandId, brandName }) {
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [replyDrafts, setReplyDrafts] = useState({});
+  const [replyingId, setReplyingId] = useState(null);
+
+  const loadMessages = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await fetchSellerBrandMessages(brandId, brandName);
+      setMessages(Array.isArray(data) ? data : []);
+    } catch {
+      setMessages([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [brandId, brandName]);
+
+  useEffect(() => {
+    loadMessages();
+  }, [loadMessages]);
+
+  useEffect(() => {
+    if (!brandId) return undefined;
+    const interval = setInterval(loadMessages, 15000);
+    return () => clearInterval(interval);
+  }, [brandId, loadMessages]);
+
+  const handleReply = async (messageId) => {
+    const reply = replyDrafts[messageId]?.trim();
+    if (!reply || reply.length < 10) return;
+    setReplyingId(messageId);
+    try {
+      await replyToSellerCustomer(messageId, reply);
+      setReplyDrafts((prev) => ({ ...prev, [messageId]: '' }));
+      await loadMessages();
+      toast.success(isRTL ? 'تم إرسال الرد ✅' : 'Reply sent ✅');
+    } catch {
+      toast.error(isRTL ? 'فشل إرسال الرد' : 'Failed to send reply');
+    } finally {
+      setReplyingId(null);
+    }
+  };
 
   return (
     <div>
@@ -845,30 +1247,87 @@ function SellerMessagesTab({ isRTL, brandId }) {
               {isRTL ? 'لا توجد رسائل بعد' : 'No messages yet'}
             </h3>
             <p className="text-sm text-gray-500 dark:text-dark-muted">
-              {isRTL ? 'ستظهر رسائل العملاء من صفحة ماركتك هنا' : 'Customer messages from your brand page will appear here'}
+              {isRTL
+                ? 'ستظهر رسائل العملاء من صفحة ماركتك هنا'
+                : 'Customer messages from your brand page will appear here'}
             </p>
           </div>
         ) : (
           <div className="space-y-4">
-            {messages.map((msg, i) => (
-              <div
-                key={msg._id || msg.id || i}
-                className={`border-b border-gray-100 dark:border-dark-border pb-4 last:border-0 ${isRTL ? 'text-right' : ''}`}
-              >
-                <div className={`flex items-center justify-between mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  <span className="font-medium text-sm dark:text-dark-text">
-                    {msg.fullName || msg.user?.name || 'Customer'}
-                  </span>
-                  <span className="text-xs text-gray-400 dark:text-dark-muted">
-                    {msg.createdAt ? new Date(msg.createdAt).toLocaleDateString() : ''}
-                  </span>
+            {messages.map((msg, i) => {
+              const messageId = msg._id || msg.id || i;
+              return (
+                <div
+                  key={messageId}
+                  className={`border-b border-gray-100 dark:border-dark-border pb-4 last:border-0 ${isRTL ? 'text-right' : ''}`}
+                >
+                  <div className={`flex items-center justify-between mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <span className="font-medium text-sm dark:text-dark-text">
+                      {msg.fullName || 'Customer'}
+                    </span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                      msg.status === 'resolved'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {msg.status || 'open'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-600 dark:text-dark-muted">{msg.message}</p>
+                  {msg.email && (
+                    <p className="text-xs text-gray-400 dark:text-dark-muted mt-1">{msg.email}</p>
+                  )}
+                  <p className="text-xs text-gray-400 dark:text-dark-muted mt-1">
+                    {msg.createdAt ? new Date(msg.createdAt).toLocaleString() : ''}
+                  </p>
+                  {msg.reply?.trim() && (
+                    <div className="mt-3 bg-brand-gold/10 border border-brand-gold/20 rounded-xl p-3 text-sm text-gray-700 dark:text-dark-text">
+                      <span className="font-semibold text-brand-navy dark:text-brand-gold">
+                        {isRTL ? 'ردك: ' : 'Your reply: '}
+                      </span>
+                      {msg.reply}
+                    </div>
+                  )}
+                  {msg.status !== 'resolved' && (
+                    <div className="mt-3 space-y-2">
+                      <textarea
+                        value={replyDrafts[messageId] || ''}
+                        onChange={(e) =>
+                          setReplyDrafts((prev) => ({
+                            ...prev,
+                            [messageId]: e.target.value,
+                          }))
+                        }
+                        rows={2}
+                        placeholder={
+                          isRTL
+                            ? 'اكتب ردك (10 أحرف على الأقل)...'
+                            : 'Write your reply (min 10 characters)...'
+                        }
+                        className={`input-field text-sm ${isRTL ? 'text-right' : ''}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleReply(messageId)}
+                        disabled={
+                          replyingId === messageId ||
+                          (replyDrafts[messageId] || '').trim().length < 10
+                        }
+                        className="btn-primary text-sm py-2 px-4 disabled:opacity-50"
+                      >
+                        {replyingId === messageId
+                          ? isRTL
+                            ? 'جاري الإرسال...'
+                            : 'Sending...'
+                          : isRTL
+                            ? 'إرسال الرد'
+                            : 'Send Reply'}
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <p className="text-sm text-gray-600 dark:text-dark-muted">{msg.message}</p>
-                {msg.email && (
-                  <p className="text-xs text-gray-400 dark:text-dark-muted mt-1">{msg.email}</p>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -1956,6 +2415,7 @@ export default function SellerDashboard() {
   const [analytics, setAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [stockAlerts, setStockAlerts] = useState([]);
+  const [adSubmitting, setAdSubmitting] = useState(null);
 
   const orderStats = useMemo(
     () => computeSellerOrderStats(orders, isRTL ? 'ar-EG' : 'en-US'),
@@ -1980,6 +2440,32 @@ export default function SellerDashboard() {
     () => pickTopProducts(orderStats, analytics, products),
     [orderStats, analytics, products]
   );
+
+  const handleAdRequest = async (adType, title) => {
+    setAdSubmitting(adType);
+    try {
+      await submitAdInquiry({
+        sellerId: user?.id || user?._id,
+        sellerEmail: user?.email,
+        brandId: myBrandId,
+        brandName: dashboard?.brand?.name,
+        adType,
+        message: title,
+      });
+      toast.success(
+        isRTL
+          ? 'تم إرسال طلبك! سيتواصل معك فريق BrandHive قريباً.'
+          : 'Request sent! The BrandHive team will contact you soon.'
+      );
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message ||
+          (isRTL ? 'تعذر إرسال الطلب' : 'Could not submit request')
+      );
+    } finally {
+      setAdSubmitting(null);
+    }
+  };
 
   const loadSellerProducts = useCallback(async () => {
     try {
@@ -2473,7 +2959,11 @@ export default function SellerDashboard() {
             )}
 
             {activeTab === 'messages' && (
-              <SellerMessagesTab isRTL={isRTL} brandId={myBrandId} />
+              <SellerMessagesTab
+                isRTL={isRTL}
+                brandId={myBrandId}
+                brandName={dashboard?.brand?.name || user?.brandName || user?.name}
+              />
             )}
 
             {activeTab === 'payouts' && (
@@ -2486,41 +2976,13 @@ export default function SellerDashboard() {
             )}
 
             {activeTab === 'promotions' && (
-              <div>
-                <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
-                  {isRTL ? 'العروض والخصومات' : 'Promotions & Discounts'}
-                </h1>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                  {[
-                    { icon: '🏷️', title: isRTL ? 'كوبونات الخصم' : 'Discount Coupons', desc: isRTL ? 'أنشئ كوبونات خصم لعملائك بنسبة مئوية أو قيمة ثابتة' : 'Create discount coupons for customers — percentage or fixed value', status: isRTL ? 'قريباً' : 'Coming Soon', color: 'bg-purple-50 dark:bg-purple-900/10' },
-                    { icon: '⚡', title: isRTL ? 'عروض فلاش' : 'Flash Sales', desc: isRTL ? 'خصومات محدودة الوقت تزيد المبيعات بشكل كبير' : 'Limited-time discounts that dramatically boost sales', status: isRTL ? 'قريباً' : 'Coming Soon', color: 'bg-amber-50 dark:bg-amber-900/10' },
-                    { icon: '🎁', title: isRTL ? 'اشترِ X واحصل على Y' : 'Buy X Get Y', desc: isRTL ? 'عروض "اشترِ واحد واحصل على الثاني بنصف السعر" وما شابهها' : 'Buy one get one free and similar bundle deals', status: isRTL ? 'قريباً' : 'Coming Soon', color: 'bg-emerald-50 dark:bg-emerald-900/10' },
-                    { icon: '🚚', title: isRTL ? 'شحن مجاني' : 'Free Shipping', desc: isRTL ? 'قدم شحناً مجانياً عند تجاوز حد معين للطلب' : 'Offer free shipping above a minimum order value', status: isRTL ? 'قريباً' : 'Coming Soon', color: 'bg-blue-50 dark:bg-blue-900/10' },
-                  ].map((item, i) => (
-                    <div key={i} className={`${item.color} rounded-2xl p-5 ${isRTL ? 'text-right' : ''}`}>
-                      <div className="text-3xl mb-3">{item.icon}</div>
-                      <div className={`flex items-start justify-between gap-2 mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                        <h3 className="font-bold text-gray-900 dark:text-dark-text">{item.title}</h3>
-                        <span className="text-xs bg-gray-200 dark:bg-dark-bg text-gray-500 dark:text-dark-muted px-2 py-0.5 rounded-full whitespace-nowrap">{item.status}</span>
-                      </div>
-                      <p className="text-sm text-gray-500 dark:text-dark-muted">{item.desc}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className={`flex items-start gap-3 bg-brand-gold-pale dark:bg-brand-gold/10 rounded-2xl p-5 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
-                  <span className="text-2xl">💡</span>
-                  <div>
-                    <p className="font-semibold text-gray-900 dark:text-dark-text text-sm mb-1">
-                      {isRTL ? 'هل تعلم؟' : 'Did you know?'}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-dark-muted">
-                      {isRTL
-                        ? 'المتاجر التي تستخدم العروض والخصومات تحقق مبيعات أعلى بنسبة 35% في المتوسط على منصة BrandHive.'
-                        : 'Stores using promotions and discounts achieve 35% higher sales on average on BrandHive.'}
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <SellerPromotionsTab
+                isRTL={isRTL}
+                user={user}
+                brandId={myBrandId}
+                products={products}
+                onProductsChange={loadSellerProducts}
+              />
             )}
 
             {activeTab === 'ads' && (
@@ -2530,18 +2992,25 @@ export default function SellerDashboard() {
                 </h1>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                   {[
-                    { icon: '🔝', title: isRTL ? 'منتج مميز' : 'Featured Product', desc: isRTL ? 'اجعل منتجك يظهر في أعلى نتائج البحث والصفحة الرئيسية' : 'Get your product featured on search results and homepage', price: isRTL ? 'من 99 ج.م / يوم' : 'From 99 EGP/day' },
-                    { icon: '🏪', title: isRTL ? 'ماركة مميزة' : 'Featured Brand', desc: isRTL ? 'احصل على مكان مميز في قسم "أفضل الماركات" على الصفحة الرئيسية' : 'Get a featured spot in the Top Brands section on homepage', price: isRTL ? 'من 299 ج.م / أسبوع' : 'From 299 EGP/week' },
-                    { icon: '📢', title: isRTL ? 'إعلان بانر' : 'Banner Ad', desc: isRTL ? 'أعلن عن منتجاتك أو عروضك في أماكن بارزة على المنصة' : 'Advertise your products or offers in prominent platform spots', price: isRTL ? 'من 499 ج.م / أسبوع' : 'From 499 EGP/week' },
-                  ].map((item, i) => (
-                    <div key={i} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 ${isRTL ? 'text-right' : ''}`}>
+                    { id: 'featured_product', icon: '🔝', title: isRTL ? 'منتج مميز' : 'Featured Product', desc: isRTL ? 'اجعل منتجك يظهر في أعلى نتائج البحث والصفحة الرئيسية' : 'Get your product featured on search results and homepage', price: isRTL ? 'من 99 ج.م / يوم' : 'From 99 EGP/day' },
+                    { id: 'featured_brand', icon: '🏪', title: isRTL ? 'ماركة مميزة' : 'Featured Brand', desc: isRTL ? 'احصل على مكان مميز في قسم "أفضل الماركات" على الصفحة الرئيسية' : 'Get a featured spot in the Top Brands section on homepage', price: isRTL ? 'من 299 ج.م / أسبوع' : 'From 299 EGP/week' },
+                    { id: 'banner_ad', icon: '📢', title: isRTL ? 'إعلان بانر' : 'Banner Ad', desc: isRTL ? 'أعلن عن منتجاتك أو عروضك في أماكن بارزة على المنصة' : 'Advertise your products or offers in prominent platform spots', price: isRTL ? 'من 499 ج.م / أسبوع' : 'From 499 EGP/week' },
+                  ].map((item) => (
+                    <div key={item.id} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 ${isRTL ? 'text-right' : ''}`}>
                       <div className="text-3xl mb-3">{item.icon}</div>
                       <h3 className="font-bold text-gray-900 dark:text-dark-text mb-2">{item.title}</h3>
                       <p className="text-sm text-gray-500 dark:text-dark-muted mb-4">{item.desc}</p>
                       <div className={`flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
                         <span className="text-brand-gold font-bold text-sm">{item.price}</span>
-                        <button type="button" className="text-xs bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy px-3 py-1.5 rounded-lg font-semibold opacity-50 cursor-not-allowed">
-                          {isRTL ? 'قريباً' : 'Coming Soon'}
+                        <button
+                          type="button"
+                          disabled={adSubmitting === item.id}
+                          onClick={() => handleAdRequest(item.id, item.title)}
+                          className="text-xs bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy px-3 py-1.5 rounded-lg font-semibold hover:opacity-90 disabled:opacity-60"
+                        >
+                          {adSubmitting === item.id
+                            ? (isRTL ? 'جاري...' : '...')
+                            : (isRTL ? 'اطلب الآن' : 'Request')}
                         </button>
                       </div>
                     </div>

@@ -16,14 +16,14 @@
   "home": {
     "hero": {
       "title": "Discover Egypt's Finest",
-      "subtitle": "Shop from 12,000+ verified Egyptian brands. Support local, shop smart.",
+      "subtitle": "Shop from {{count}}+ verified Egyptian brands. Support local, shop smart.",
       "shopNow": "Shop Now",
       "startSelling": "Start Selling",
       "stats": {
-        "brands": "12K+ Brands",
-        "products": "280K Products",
-        "governorates": "27 Governorates",
-        "buyers": "500K+ Buyers"
+        "brands": "Brands",
+        "products": "Products",
+        "governorates": "Governorates",
+        "buyers": "Buyers"
       }
     },
     "features": {

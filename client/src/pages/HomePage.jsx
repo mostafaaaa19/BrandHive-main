@@ -10,9 +10,10 @@ import BrandCard from '../components/BrandCard';
 import { testimonials } from '../data/mockData';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
-import { productsAPI, brandsAPI, categoriesAPI, aiAPI, loadLocalProductImages, enrichProductsWithLocalImages, sanitizeFeaturedLocalStorage, fetchFeaturedSlotIds } from '../services/api';
+import { productsAPI, brandsAPI, categoriesAPI, aiAPI, loadLocalProductImages, enrichProductsWithLocalImages, sanitizeFeaturedLocalStorage, fetchFeaturedSlotIds, fetchPublicStats } from '../services/api';
 import { mapProduct, mapBrand, mapCategory, hydrateProductImages } from '../utils/mappers';
 import { filterHomepageQualityProducts, buildTrendingDisplayList } from '../utils/productQuality';
+import { formatStatNumber } from '../utils/formatStat';
 
 function CountUp({ target, suffix = '', duration = 2000 }) {
   const [count, setCount] = useState(0);
@@ -64,6 +65,8 @@ export default function HomePage() {
   const [globalBrands, setGlobalBrands] = useState([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [brandsLoading, setBrandsLoading] = useState(true);
+  const [publicStats, setPublicStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(true);
   const { ref: featuresRef, inView: featuresInView } = useInView({ triggerOnce: true, threshold: 0.1 });
 
   const mergeUniqueProducts = (...lists) => {
@@ -251,6 +254,23 @@ export default function HomePage() {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetchPublicStats()
+      .then((data) => {
+        if (!cancelled) setPublicStats(data);
+      })
+      .catch(() => {
+        if (!cancelled) setPublicStats(null);
+      })
+      .finally(() => {
+        if (!cancelled) setStatsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const tabProducts = useMemo(() => ({
     Popular: mergeUniqueProducts(
       topRatedProducts,
@@ -283,12 +303,48 @@ export default function HomePage() {
     [trendingProducts, featuredProducts, filteredProducts]
   );
 
-  const stats = [
-    { value: '12K+', label: t('home.hero.stats.brands'), icon: '🏪' },
-    { value: '280K', label: t('home.hero.stats.products'), icon: '📦' },
-    { value: '27', label: t('home.hero.stats.governorates'), icon: '📍' },
-    { value: '500K+', label: t('home.hero.stats.buyers'), icon: '😊' },
-  ];
+  const stats = useMemo(() => {
+    const source = publicStats || { brands: 0, products: 0, governorates: 0, buyers: 0 };
+    const entries = [
+      { key: 'brands', labelKey: 'home.hero.stats.brands', icon: '🏪' },
+      { key: 'products', labelKey: 'home.hero.stats.products', icon: '📦' },
+      { key: 'governorates', labelKey: 'home.hero.stats.governorates', icon: '📍' },
+      { key: 'buyers', labelKey: 'home.hero.stats.buyers', icon: '😊' },
+    ];
+
+    return entries.map(({ key, labelKey, icon }) => {
+      const formatted = formatStatNumber(source[key]);
+      return {
+        key,
+        icon,
+        label: t(labelKey),
+        animateTo: formatted.animateTo,
+        suffix: formatted.suffix,
+      };
+    });
+  }, [publicStats, t]);
+
+  const movementStats = useMemo(() => {
+    const brands = formatStatNumber(publicStats?.brands || 0);
+    const buyers = formatStatNumber(publicStats?.buyers || 0);
+    return [
+      { key: 'brands', emoji: '🔥', label: t('home.hero.stats.brands'), ...brands },
+      {
+        key: 'commission',
+        emoji: '💰',
+        label: isRTL ? 'عمولة فقط' : 'Commission Only',
+        animateTo: 5,
+        suffix: '%',
+      },
+      { key: 'buyers', emoji: '🚀', label: t('home.hero.stats.buyers'), ...buyers },
+    ];
+  }, [publicStats, t, isRTL]);
+
+  const heroBrandCountLabel = useMemo(() => {
+    if (statsLoading) return '...';
+    const count = publicStats?.brands || 0;
+    return count.toLocaleString(isRTL ? 'ar-EG' : 'en-US');
+  }, [publicStats, statsLoading, isRTL]);
 
   const features = [
     { icon: Shield, title: t('home.features.verifiedSellers'), desc: t('home.features.verifiedSellersDesc'), color: 'text-emerald-500' },
@@ -416,7 +472,7 @@ export default function HomePage() {
               </h1>
 
               <p className={`text-gray-300 text-lg leading-relaxed mb-8 max-w-lg ${isRTL ? 'mr-0 ml-auto' : ''}`}>
-                {t('home.hero.subtitle')}
+                {t('home.hero.subtitle', { count: heroBrandCountLabel })}
               </p>
 
               <div className={`flex flex-wrap gap-3 mb-10 ${isRTL ? 'flex-row-reverse' : ''}`}>
@@ -430,14 +486,23 @@ export default function HomePage() {
 
               {/* Stats */}
               <div className={`flex flex-wrap gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                {stats.map((stat) => (
-                  <div key={stat.label} className={isRTL ? 'text-right' : 'text-left'}>
-                    <div className="text-2xl font-display font-bold text-white">
-                      <CountUp target={parseInt(stat.value) || 0} />{stat.value.replace(/[0-9]/g, '')}
+                {statsLoading ? (
+                  Array.from({ length: 4 }).map((_, index) => (
+                    <div key={index} className={isRTL ? 'text-right' : 'text-left'}>
+                      <div className="h-8 w-16 bg-white/10 rounded animate-pulse mb-1" />
+                      <div className="h-4 w-20 bg-white/5 rounded animate-pulse" />
                     </div>
-                    <div className="text-gray-400 text-sm">{stat.label}</div>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  stats.map((stat) => (
+                    <div key={stat.key} className={isRTL ? 'text-right' : 'text-left'}>
+                      <div className="text-2xl font-display font-bold text-white">
+                        <CountUp target={stat.animateTo} suffix={stat.suffix} />
+                      </div>
+                      <div className="text-gray-400 text-sm">{stat.label}</div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
@@ -712,14 +777,16 @@ export default function HomePage() {
             </p>
 
             <div className={`grid grid-cols-3 gap-4 mb-10 ${isRTL ? 'flex-row-reverse' : ''}`}>
-              {[
-                { emoji: '🔥', stat: '12K+', label: t('home.hero.stats.brands') },
-                { emoji: '💰', stat: '5%', label: isRTL ? 'عمولة فقط' : 'Commission Only' },
-                { emoji: '🚀', stat: '500K+', label: t('home.hero.stats.buyers') },
-              ].map((item) => (
-                <div key={item.label} className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
+              {movementStats.map((item) => (
+                <div key={item.key} className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
                   <div className="text-3xl mb-2">{item.emoji}</div>
-                  <div className="text-2xl font-display font-bold text-white">{item.stat}</div>
+                  <div className="text-2xl font-display font-bold text-white">
+                    {statsLoading && item.key !== 'commission' ? (
+                      <span className="inline-block h-7 w-14 bg-white/10 rounded animate-pulse" />
+                    ) : (
+                      <CountUp target={item.animateTo} suffix={item.suffix} />
+                    )}
+                  </div>
                   <div className="text-gray-400 text-sm">{item.label}</div>
                 </div>
               ))}

@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { authAPI, humanizeApiError, syncSellerBrandNameForUser } from '../services/api';
+import { authAPI, humanizeApiError, syncSellerBrandNameForUser, syncHomepageStatsFromAdmin, incrementPublicBuyerCount } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -47,6 +47,10 @@ export const AuthProvider = ({ children }) => {
           'brandhive_user', 
           JSON.stringify(parsed)
         );
+        const role = parsed.serverRole || parsed.role;
+        if (role === 'admin') {
+          syncHomepageStatsFromAdmin().catch(() => {});
+        }
       } else {
         localStorage.removeItem('brandhive_user');
       }
@@ -94,6 +98,10 @@ export const AuthProvider = ({ children }) => {
         'brandhive_user',
         JSON.stringify(userToStore)
       );
+      const role = userToStore.serverRole || userToStore.role;
+      if (role === 'admin') {
+        syncHomepageStatsFromAdmin().catch(() => {});
+      }
       return userToStore;
     } catch (err) {
       const message = humanizeApiError(
@@ -135,6 +143,7 @@ export const AuthProvider = ({ children }) => {
         };
         setUser(userToStore);
         localStorage.setItem('brandhive_user', JSON.stringify(userToStore));
+        incrementPublicBuyerCount().catch(() => {});
         return userToStore;
       }
 

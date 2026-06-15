@@ -7,9 +7,19 @@ const BrandCoupon = require('../models/BrandCoupon');
 const BrandPromo = require('../models/BrandPromo');
 const SavedCard = require('../models/SavedCard');
 const SellerStoreSettings = require('../models/SellerStoreSettings');
+const PlatformCoupon = require('../models/PlatformCoupon');
+
+let User;
+try {
+  User = require('../models/User');
+} catch {
+  User = null;
+}
 
 const router = express.Router();
 const FEATURED_SLOTS_KEY = 'featured_product_ids';
+const PUBLIC_STATS_KEY = 'public_homepage_stats';
+const EGYPT_GOVERNORATES_COUNT = 27;
 
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -51,6 +61,74 @@ router.get('/featured-slots', async (req, res) => {
     return res.json({ data: { productIds } });
   } catch (err) {
     return res.status(500).json({ message: err.message || 'Failed to load featured slots' });
+  }
+});
+
+router.get('/public-stats', async (req, res) => {
+  if (!dbReady()) {
+    return res.json({
+      data: {
+        buyers: 0,
+        governorates: EGYPT_GOVERNORATES_COUNT,
+        newsletterCount: 0,
+        registeredUsers: 0,
+      },
+    });
+  }
+
+  try {
+    const [doc, newsletterCount, registeredUsers] = await Promise.all([
+      SiteSettings.findOne({ key: PUBLIC_STATS_KEY }).lean(),
+      NewsletterSubscriber.countDocuments(),
+      User
+        ? User.countDocuments({ role: 'customer', isActive: { $ne: false } })
+        : Promise.resolve(0),
+    ]);
+
+    const value = doc?.value && typeof doc.value === 'object' ? doc.value : {};
+    const cachedBuyers = Number(value.buyers) || 0;
+    const buyers = Math.max(cachedBuyers, newsletterCount, registeredUsers);
+
+    return res.json({
+      data: {
+        buyers,
+        governorates: Number(value.governorates) || EGYPT_GOVERNORATES_COUNT,
+        newsletterCount,
+        registeredUsers,
+        updatedAt: value.updatedAt || null,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to load public stats' });
+  }
+});
+
+router.put('/public-stats', async (req, res) => {
+  const buyers = Number(req.body?.buyers);
+  const governorates = Number(req.body?.governorates);
+
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Public stats unavailable (database offline)' });
+  }
+
+  try {
+    const value = {
+      buyers: Number.isFinite(buyers) ? Math.max(0, buyers) : 0,
+      governorates: Number.isFinite(governorates)
+        ? Math.max(0, governorates)
+        : EGYPT_GOVERNORATES_COUNT,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await SiteSettings.findOneAndUpdate(
+      { key: PUBLIC_STATS_KEY },
+      { value },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    return res.json({ data: value });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to save public stats' });
   }
 });
 
@@ -100,6 +178,153 @@ router.post('/ad-inquiries', async (req, res) => {
     return res.status(201).json({ data: entry });
   } catch (err) {
     return res.status(500).json({ message: err.message || 'Failed to submit ad inquiry' });
+  }
+});
+
+const toPlatformCouponDto = (doc) => ({
+  _id: String(doc._id),
+  id: String(doc._id),
+  code: doc.code,
+  type: doc.type,
+  value: doc.value,
+  expiresAt: doc.expiresAt,
+  minOrder: doc.minOrder || 0,
+  active: doc.active !== false,
+  railwayId: doc.railwayId,
+  createdAt: doc.createdAt,
+  updatedAt: doc.updatedAt,
+});
+
+const computeCouponDiscount = (coupon, subtotal = 0) => {
+  const base = Math.max(0, Number(subtotal) || 0);
+  if (!coupon || base <= 0) return 0;
+
+  const minOrder = Number(coupon.minOrder) || 0;
+  if (minOrder > 0 && base < minOrder) return 0;
+
+  if (coupon.type === 'percentage') {
+    return Math.round(base * (Number(coupon.value) || 0) / 100);
+  }
+
+  return Math.min(base, Number(coupon.value) || 0);
+};
+
+const isCouponExpired = (expiresAt) => {
+  if (!expiresAt) return false;
+  const expiry = new Date(expiresAt);
+  if (Number.isNaN(expiry.getTime())) return false;
+  return expiry.getTime() < Date.now();
+};
+
+router.post('/coupons/validate', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Coupon validation unavailable (database offline)' });
+  }
+
+  const code = String(req.body?.code || '').toUpperCase().trim();
+  const subtotal = Number(req.body?.subtotal) || 0;
+
+  if (!code) {
+    return res.status(400).json({ message: 'code is required', valid: false });
+  }
+
+  try {
+    const coupon = await PlatformCoupon.findOne({ code, active: { $ne: false } }).lean();
+    if (!coupon) {
+      return res.status(404).json({ message: 'Coupon not found', valid: false });
+    }
+    if (isCouponExpired(coupon.expiresAt)) {
+      return res.status(400).json({ message: 'Coupon expired', valid: false });
+    }
+
+    const discount = computeCouponDiscount(coupon, subtotal);
+    if (discount <= 0) {
+      return res.status(400).json({
+        message: 'Coupon does not apply to this order',
+        valid: false,
+      });
+    }
+
+    return res.json({
+      data: {
+        valid: true,
+        code,
+        discount,
+        coupon: toPlatformCouponDto(coupon),
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to validate coupon', valid: false });
+  }
+});
+
+router.get('/coupons', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Coupons unavailable (database offline)' });
+  }
+
+  try {
+    const coupons = await PlatformCoupon.find().sort({ createdAt: -1 }).limit(100).lean();
+    return res.json({ data: coupons.map(toPlatformCouponDto) });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to load coupons' });
+  }
+});
+
+router.post('/coupons', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Coupons unavailable (database offline)' });
+  }
+
+  const { code, type, value, expiresAt, minOrder, railwayId } = req.body || {};
+  const normalizedCode = String(code || '').toUpperCase().trim();
+
+  if (!normalizedCode || value == null) {
+    return res.status(400).json({ message: 'code and value are required' });
+  }
+
+  try {
+    const entry = await PlatformCoupon.findOneAndUpdate(
+      { code: normalizedCode },
+      {
+        code: normalizedCode,
+        type: type === 'fixed' ? 'fixed' : 'percentage',
+        value: Number(value),
+        expiresAt: expiresAt ? new Date(expiresAt) : undefined,
+        minOrder: Number(minOrder) || 0,
+        railwayId: railwayId ? String(railwayId) : undefined,
+        active: true,
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    return res.status(201).json({ data: toPlatformCouponDto(entry) });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to save coupon' });
+  }
+});
+
+router.delete('/coupons/:couponId', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Coupons unavailable (database offline)' });
+  }
+
+  const { couponId } = req.params;
+  const { code } = req.query;
+
+  try {
+    const filter = {};
+    if (couponId && couponId !== 'by-code') {
+      filter._id = couponId;
+    } else if (code) {
+      filter.code = String(code).toUpperCase().trim();
+    } else {
+      return res.status(400).json({ message: 'couponId or code is required' });
+    }
+
+    await PlatformCoupon.deleteOne(filter);
+    return res.json({ data: { deleted: true } });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to delete coupon' });
   }
 });
 

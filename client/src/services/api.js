@@ -84,6 +84,119 @@ export const saveFeaturedSlotIds = async (productIds = []) => {
   return ids;
 };
 
+const PUBLIC_STATS_STORAGE_KEY = 'brandhive_public_stats';
+export const EGYPT_GOVERNORATES_COUNT = 27;
+
+export const fetchPublicHomepageStats = async () => {
+  if (localPlatform) {
+    const res = await localPlatform.get('/public-stats');
+    const data = res.data?.data || res.data || {};
+    localStorage.setItem(PUBLIC_STATS_STORAGE_KEY, JSON.stringify(data));
+    return data;
+  }
+
+  try {
+    const cached = localStorage.getItem(PUBLIC_STATS_STORAGE_KEY);
+    return cached ? JSON.parse(cached) : {};
+  } catch {
+    return {};
+  }
+};
+
+export const savePublicHomepageStats = async (stats = {}) => {
+  const current = await fetchPublicHomepageStats().catch(() => ({}));
+  const payload = {
+    buyers: Math.max(
+      Number(stats.buyers) || 0,
+      Number(current.buyers) || 0,
+      Number(current.newsletterCount) || 0,
+      Number(current.registeredUsers) || 0
+    ),
+    governorates: Math.max(0, Number(stats.governorates) || EGYPT_GOVERNORATES_COUNT),
+    updatedAt: new Date().toISOString(),
+  };
+
+  localStorage.setItem(PUBLIC_STATS_STORAGE_KEY, JSON.stringify(payload));
+
+  if (localPlatform) {
+    await localPlatform.put('/public-stats', payload);
+  }
+
+  return payload;
+};
+
+export const incrementPublicBuyerCount = async () => {
+  const current = await fetchPublicHomepageStats().catch(() => ({}));
+  return savePublicHomepageStats({
+    buyers: Math.max(Number(current.buyers) || 0, 1) + 1,
+    governorates: Number(current.governorates) || EGYPT_GOVERNORATES_COUNT,
+  });
+};
+
+export const syncHomepageStatsFromAdmin = async () => {
+  if (!isAdminSession()) return null;
+
+  try {
+    const dashRes = await adminAPI.getDashboard();
+    const overview = dashRes.data?.data?.overview || dashRes.data?.overview || {};
+    let buyers = Number(overview.totalCustomers || overview.totalUsers) || 0;
+
+    if (!buyers) {
+      try {
+        const usersRes = await adminAPI.getUsers({ page: 1, limit: 1 });
+        buyers = Number(usersRes.data?.meta?.total) || 0;
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!buyers) return null;
+
+    return savePublicHomepageStats({
+      buyers,
+      governorates: EGYPT_GOVERNORATES_COUNT,
+    });
+  } catch {
+    return null;
+  }
+};
+
+const countEngagedReviewers = (facets = {}) =>
+  (facets.ratings || [])
+    .filter((entry) => Number(entry?.rating) > 0)
+    .reduce((sum, entry) => sum + (Number(entry?.count) || 0), 0);
+
+const resolveBuyersCount = async ({ mirrorStats = {}, facets = {}, products = 0 } = {}) => {
+  let buyers = Math.max(
+    Number(mirrorStats.buyers) || 0,
+    Number(mirrorStats.newsletterCount) || 0,
+    Number(mirrorStats.registeredUsers) || 0,
+    countEngagedReviewers(facets)
+  );
+
+  if (!buyers && isAdminSession()) {
+    const synced = await syncHomepageStatsFromAdmin();
+    buyers = Number(synced?.buyers) || buyers;
+  }
+
+  if (!buyers && products > 0) {
+    buyers = Math.max(countEngagedReviewers(facets), Math.ceil(products / 20), 1);
+  }
+
+  return buyers;
+};
+
+const isAdminSession = () => {
+  if (!hasAuthToken()) return false;
+  try {
+    const user = JSON.parse(localStorage.getItem('brandhive_user') || 'null');
+    const role = user?.serverRole || user?.role;
+    return role === 'admin';
+  } catch {
+    return false;
+  }
+};
+
 export const submitAdInquiry = async (payload = {}) => {
   if (!localPlatform) throw mirrorServiceUnavailable();
 
@@ -3578,6 +3691,87 @@ export const searchAPI = {
   getFacets: () => api.get('/search/facets'),
 };
 
+const normalizeFacetsPayload = (facetsRes) => {
+  const root = facetsRes?.data || {};
+  if (root?.data && typeof root.data === 'object' && !Array.isArray(root.data)) {
+    return root.data;
+  }
+  return root;
+};
+
+const collectGovernorates = (brands = [], facets = {}) => {
+  const govs = new Set();
+  brands.forEach((brand) => {
+    ['governorate', 'city', 'location'].forEach((field) => {
+      const value = brand?.[field];
+      if (!value) return;
+      const normalized = String(value).trim();
+      if (!normalized || normalized.toLowerCase() === 'egypt') return;
+      govs.add(normalized);
+    });
+  });
+  (facets.governorates || []).forEach((entry) => {
+    const name =
+      typeof entry === 'string'
+        ? entry
+        : entry?.name || entry?.governorate || entry?._id;
+    if (name) govs.add(String(name).trim());
+  });
+  return govs;
+};
+
+/** Public homepage stats from live catalog data (no auth required). */
+export const fetchPublicStats = async () => {
+  const [productsRes, facetsRes, mirrorStats] = await Promise.all([
+    getPublicProducts({ page: 1, limit: 1 }),
+    searchAPI.getFacets().catch(() => null),
+    fetchPublicHomepageStats().catch(() => ({})),
+  ]);
+
+  const facets = normalizeFacetsPayload(facetsRes);
+  const facetBrands = Array.isArray(facets.brands) ? facets.brands : [];
+
+  const products =
+    productsRes?.data?.meta?.total ??
+    getResponseArray(productsRes).length ??
+    0;
+
+  let brands =
+    facets.totalBrands ??
+    facets.brandsCount ??
+    facets.brandCount ??
+    facetBrands.length;
+
+  if (hasAuthToken()) {
+    try {
+      const brandRes = await api.get('/brand', { params: { page: 1, limit: 1 } });
+      const brandTotal = brandRes.data?.meta?.total;
+      if (brandTotal != null) brands = brandTotal;
+    } catch {
+      // keep facet-derived count
+    }
+  }
+
+  const derivedGovernorates = collectGovernorates(facetBrands, facets).size;
+  let governorates =
+    Number(mirrorStats?.governorates) ||
+    derivedGovernorates ||
+    EGYPT_GOVERNORATES_COUNT;
+
+  const buyers = await resolveBuyersCount({
+    mirrorStats,
+    facets,
+    products: Number(products) || 0,
+  });
+
+  return {
+    brands: Number(brands) || 0,
+    products: Number(products) || 0,
+    governorates: Number(governorates) || EGYPT_GOVERNORATES_COUNT,
+    buyers: Number(buyers) || 0,
+  };
+};
+
 export const couponsAPI = {
   create: (data) => api.post('/coupons', data),
   getAll: (params = {}) =>
@@ -3586,6 +3780,68 @@ export const couponsAPI = {
   update: (id, data) => api.put(`/coupons/${id}`, data),
   delete: (id) => api.delete(`/coupons/${id}`),
   validate: (data) => api.post('/coupons/validate', data),
+};
+
+const normalizeCouponExpiry = (expiresAt) => {
+  if (!expiresAt) return undefined;
+  const raw = String(expiresAt).trim();
+  if (!raw) return undefined;
+  if (raw.includes('T')) return new Date(raw).toISOString();
+  const endOfDay = new Date(`${raw}T23:59:59.999`);
+  return Number.isNaN(endOfDay.getTime()) ? raw : endOfDay.toISOString();
+};
+
+const computeCouponDiscountAmount = (coupon, subtotal = 0) => {
+  const base = Math.max(0, Number(subtotal) || 0);
+  if (!coupon || base <= 0) return 0;
+
+  const minOrder = Number(coupon.minOrder || coupon.minimumOrder) || 0;
+  if (minOrder > 0 && base < minOrder) return 0;
+
+  const type = coupon.type || coupon.discountType || 'percentage';
+  const value = Number(coupon.value ?? coupon.discountValue ?? coupon.amount) || 0;
+
+  if (type === 'percentage' || type === 'percent') {
+    return Math.round(base * value / 100);
+  }
+
+  return Math.min(base, value);
+};
+
+export const syncPlatformCoupon = async (coupon = {}) => {
+  if (!localPlatform || !coupon?.code) return null;
+
+  const res = await localPlatform.post('/coupons', {
+    code: String(coupon.code).toUpperCase().trim(),
+    type: coupon.type || 'percentage',
+    value: Number(coupon.value),
+    expiresAt: normalizeCouponExpiry(coupon.expiresAt),
+    minOrder: Number(coupon.minOrder) || 0,
+    railwayId: coupon._id || coupon.id || undefined,
+  });
+  return res.data?.data || res.data;
+};
+
+export const validatePlatformCoupon = async (code, subtotal = 0) => {
+  if (!localPlatform) return null;
+
+  const res = await localPlatform.post('/coupons/validate', {
+    code: String(code || '').toUpperCase().trim(),
+    subtotal: Number(subtotal) || 0,
+  });
+  return res.data?.data || res.data;
+};
+
+export const removePlatformCoupon = async (coupon = {}) => {
+  if (!localPlatform) return;
+  const couponId = coupon._id || coupon.id;
+  const code = coupon.code;
+  if (!couponId && !code) return;
+
+  await localPlatform.delete(
+    `/coupons/${couponId ? String(couponId) : 'by-code'}`,
+    { params: code ? { code: String(code).toUpperCase().trim() } : {} }
+  );
 };
 
 const brandOffersCache = new Map();
@@ -3789,6 +4045,28 @@ export const applyCartCouponCode = async ({ code, items = [], subtotal = 0 }) =>
   const normalized = String(code || '').toUpperCase().trim();
   if (!normalized) throw new Error('Coupon code required');
 
+  if (localPlatform) {
+    try {
+      const mirrorResult = await validatePlatformCoupon(normalized, subtotal);
+      if (mirrorResult?.valid !== false) {
+        const discount = Number(mirrorResult?.discount) || 0;
+        if (discount > 0) {
+          return {
+            code: normalized,
+            source: 'platform',
+            discount,
+            coupon: mirrorResult.coupon,
+            persisted: false,
+          };
+        }
+      }
+    } catch (err) {
+      if (err.response?.status !== 404) {
+        // keep trying other validators
+      }
+    }
+  }
+
   try {
     const res = await cartAPI.applyCoupon({ couponCode: normalized });
     const data = res.data?.data || res.data || {};
@@ -3820,14 +4098,26 @@ export const applyCartCouponCode = async ({ code, items = [], subtotal = 0 }) =>
       throw new Error('invalid');
     }
 
-    const discount = Number(
-      data.discount || data.couponDiscount || data.saving || data.amount || 0
+    const coupon = data.coupon || data;
+    let discount = Number(
+      data.discount ||
+        data.discountAmount ||
+        data.couponDiscount ||
+        data.saving ||
+        data.amount ||
+        0
     );
+
+    if (discount <= 0) {
+      discount = computeCouponDiscountAmount(coupon, subtotal);
+    }
+
     if (discount > 0) {
       return {
         code: normalized,
         source: 'validate',
         discount,
+        coupon,
         persisted: false,
       };
     }

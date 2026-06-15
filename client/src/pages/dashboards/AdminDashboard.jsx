@@ -11,6 +11,8 @@ import {
   productsAPI,
   notificationsAPI,
   couponsAPI,
+  syncPlatformCoupon,
+  removePlatformCoupon,
   categoriesAPI,
   supportAPI,
   syncLocalSupportReply,
@@ -20,6 +22,7 @@ import {
   fetchAdminAuditLogs,
   finalizeBrandRequestApproval,
   syncAdminOrdersAfterPaymob,
+  syncHomepageStatsFromAdmin,
 } from '../../services/api';
 import { isHomepageQualityProduct } from '../../utils/productQuality';
 import { useTranslation } from 'react-i18next';
@@ -767,7 +770,16 @@ function AdminCouponsTab({ isRTL, toast }) {
     try {
       const res = await couponsAPI.getAll({ page: 1, limit: 20 });
       const data = res.data?.data || res.data?.coupons || res.data || [];
-      setCoupons(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setCoupons(list);
+      await Promise.allSettled(
+        list.map((coupon) =>
+          syncPlatformCoupon({
+            ...coupon,
+            expiresAt: coupon.expiresAt,
+          })
+        )
+      );
     } catch {
       setCoupons([]);
     } finally {
@@ -784,11 +796,23 @@ function AdminCouponsTab({ isRTL, toast }) {
     }
     setCreating(true);
     try {
-      await couponsAPI.create({
+      const expiresAt = form.expiresAt
+        ? new Date(`${form.expiresAt}T23:59:59.999`).toISOString()
+        : undefined;
+      const payload = {
         code: form.code.toUpperCase().trim(),
         type: form.type,
         value: parseFloat(form.value),
-        expiresAt: form.expiresAt,
+        expiresAt,
+      };
+      const res = await couponsAPI.create(payload);
+      const created = res.data?.data || res.data || payload;
+      await syncPlatformCoupon({
+        ...created,
+        code: created.code || payload.code,
+        type: created.type || payload.type,
+        value: created.value ?? payload.value,
+        expiresAt: created.expiresAt || expiresAt,
       });
       toast.success(isRTL ? 'تم إنشاء الكوبون ✅' : 'Coupon created ✅');
       setForm({ code: '', type: 'percentage', value: '', expiresAt: '' });
@@ -805,8 +829,10 @@ function AdminCouponsTab({ isRTL, toast }) {
 
   const handleDelete = async (id) => {
     if (!window.confirm(isRTL ? 'هل تريد حذف هذا الكوبون؟' : 'Delete this coupon?')) return;
+    const coupon = coupons.find((entry) => (entry._id || entry.id) === id);
     try {
       await couponsAPI.delete(id);
+      await removePlatformCoupon(coupon || { id, code: coupon?.code });
       toast.success(isRTL ? 'تم الحذف' : 'Deleted');
       setCoupons(prev => prev.filter(c => (c._id || c.id) !== id));
     } catch {
@@ -1730,6 +1756,12 @@ export default function AdminDashboard() {
           lowStockProducts: dashData.alerts?.lowStockProducts || 0,
           ordersByStatus: dashData.ordersByStatus || {},
         });
+
+        const homepageBuyers =
+          dashData.overview?.totalCustomers || dashData.overview?.totalUsers || 0;
+        if (homepageBuyers) {
+          syncHomepageStatsFromAdmin().catch(() => {});
+        }
       } catch {
         setDashboard(null);
         setStats(null);

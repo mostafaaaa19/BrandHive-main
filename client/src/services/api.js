@@ -1703,6 +1703,40 @@ export const rememberSellerBrand = (userId, brand) => {
   if (brand.slug) {
     localStorage.setItem(sellerBrandSlugStorageKey(userId), brand.slug);
   }
+  if (brand.name) {
+    rememberSellerBrandName(userId, brand.name);
+  }
+
+  if (brandId && localPlatform) {
+    const payload = { brandId: String(brandId) };
+    if (brand.name || brand.slug) {
+      payload.bazaar = {
+        ...(brand.name ? { name: brand.name } : {}),
+        ...(brand.slug ? { slug: brand.slug } : {}),
+      };
+    }
+    localPlatform
+      .put(`/users/${encodeURIComponent(String(userId))}/store-settings`, payload)
+      .catch(() => {});
+  }
+};
+
+const loadMirrorSellerBrandRecord = async (userId) => {
+  if (!userId || !localPlatform) return null;
+  try {
+    const settings = await fetchSellerStoreSettings(userId);
+    const brandId = settings?.brandId;
+    if (!brandId) return null;
+    const bazaar = settings?.bazaar || {};
+    return {
+      _id: brandId,
+      id: brandId,
+      name: bazaar.name || null,
+      slug: bazaar.slug || null,
+    };
+  } catch {
+    return null;
+  }
 };
 
 const brandOwnedByUser = (brand, userId) => {
@@ -2104,6 +2138,12 @@ export const ensureSellerBrandLinked = async (user) => {
   const hints = collectSellerBrandHints(user);
   const { userId, savedName } = hints;
 
+  const linkFromMirrorStore = async () => {
+    const mirrorBrand = await loadMirrorSellerBrandRecord(userId);
+    if (!mirrorBrand) return null;
+    return pickSellerBrand(userId, mirrorBrand, savedName || mirrorBrand.name);
+  };
+
   const linkFromRequest = async () => {
     const req = await fetchMyBrandRequest(user);
     const status = req?.status || req?.requestStatus;
@@ -2135,6 +2175,7 @@ export const ensureSellerBrandLinked = async (user) => {
   try {
     const linked = await Promise.any([
       cached ? Promise.resolve(cached) : Promise.reject(),
+      linkFromMirrorStore(),
       linkFromDashboard(),
       linkFromRequest(),
       linkBrandFromAuthedCatalog(user),
@@ -2144,6 +2185,7 @@ export const ensureSellerBrandLinked = async (user) => {
   } catch {
     return (
       cached ||
+      (await linkFromMirrorStore().catch(() => null)) ||
       (await linkFromDashboard().catch(() => null)) ||
       (await linkBrandFromAuthedCatalog(user).catch(() => null)) ||
       (await linkFromRequest().catch(() => null)) ||
@@ -2431,6 +2473,12 @@ export const resolveSellerBrandId = async (user) => {
   const { userId, savedName, savedSlug } = hints;
   if (!userId) return null;
 
+  const mirrorBrand = await loadMirrorSellerBrandRecord(userId);
+  if (mirrorBrand?._id || mirrorBrand?.id) {
+    rememberSellerBrand(userId, mirrorBrand);
+    return mirrorBrand._id || mirrorBrand.id;
+  }
+
   try {
     const brands = await loadBrandsForSellerResolution();
     const hinted = findBrandByHints(brands, hints);
@@ -2523,6 +2571,10 @@ export const fetchSellerProducts = async (user) => {
     if (id) candidateBrandIds.add(String(id));
   };
 
+  await ensureSellerBrandLinked(user).catch(() => null);
+  const resolvedBrandId = await resolveSellerBrandId(user);
+  if (resolvedBrandId) rememberBrandId(resolvedBrandId);
+
   const cachedBrandId = userId
     ? localStorage.getItem(sellerBrandStorageKey(userId))
     : null;
@@ -2534,21 +2586,21 @@ export const fetchSellerProducts = async (user) => {
 
   const fastFetches = [
     sellerAPI.getProducts().catch(() => null),
-    cachedBrandId
-      ? productsAPI.getByBrand(cachedBrandId).catch(() => null)
-      : Promise.resolve(null),
-    cachedBrandId
-      ? getPublicProducts({ brand: cachedBrandId, limit: 100 }).catch(() => null)
-      : Promise.resolve(null),
+    ...[...candidateBrandIds].map((id) =>
+      productsAPI.getByBrand(id).catch(() => null)
+    ),
+    ...[...candidateBrandIds].map((id) =>
+      getPublicProducts({ brand: id, limit: 100 }).catch(() => null)
+    ),
   ];
 
-  const [sellerRes, brandProductsRes, publicBrandRes] = await Promise.all(fastFetches);
-  if (sellerRes) addProducts(getResponseArray(sellerRes));
-  if (brandProductsRes) addProducts(getResponseArray(brandProductsRes));
-  if (publicBrandRes) addProducts(getResponseArray(publicBrandRes));
+  const fetchResults = await Promise.all(fastFetches);
+  fetchResults.forEach((res) => {
+    if (res) addProducts(getResponseArray(res));
+  });
 
   if (byId.size === 0) {
-    const brandId = await resolveSellerBrandId(user);
+    const brandId = resolvedBrandId || (await resolveSellerBrandId(user));
     rememberBrandId(brandId);
 
     try {

@@ -726,4 +726,55 @@ router.put('/users/:userId/store-settings', async (req, res) => {
   }
 });
 
+const userProfileKey = (userId) => `user_profile:${String(userId)}`;
+
+router.get('/users/:userId/profile', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Profile storage unavailable (database offline)' });
+  }
+
+  const userId = String(req.params.userId || '');
+  if (!userId) return res.status(400).json({ message: 'userId is required' });
+
+  try {
+    const doc = await SiteSettings.findOne({ key: userProfileKey(userId) }).lean();
+    return res.json({ data: doc?.value || null });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to load profile' });
+  }
+});
+
+router.put('/users/:userId/profile', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Profile storage unavailable (database offline)' });
+  }
+
+  const userId = String(req.params.userId || '');
+  const { name, phone, email } = req.body || {};
+  if (!userId) return res.status(400).json({ message: 'userId is required' });
+  if (!name || !String(name).trim()) {
+    return res.status(400).json({ message: 'Name is required' });
+  }
+
+  try {
+    const value = {
+      userId,
+      name: String(name).trim(),
+      phone: phone != null ? String(phone).trim() : '',
+      email: email ? String(email).toLowerCase().trim() : undefined,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await SiteSettings.findOneAndUpdate(
+      { key: userProfileKey(userId) },
+      { key: userProfileKey(userId), value },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    return res.json({ data: value });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to save profile' });
+  }
+});
+
 module.exports = router;

@@ -1,15 +1,31 @@
+export const resolveProductPrice = (p) => {
+  if (!p || typeof p !== 'object') return 0;
+  for (const key of ['finalPrice', 'discountPrice', 'salePrice', 'price']) {
+    const value = Number(p[key]);
+    if (Number.isFinite(value) && value > 0) return value;
+  }
+  return 0;
+};
+
+export const resolveProductImage = (p) => {
+  if (!p || typeof p !== 'object') return null;
+  return (
+    p.image ||
+    (typeof p.mainImage === 'string' ? p.mainImage : p.mainImage?.url) ||
+    (typeof p.images?.[0] === 'string' ? p.images[0] : p.images?.[0]?.url) ||
+    null
+  );
+};
+
 export const mapProduct = (p) => ({
   id: p.id || p._id,
   name: p.name || '',
   slug: p.slug || p._id || '',
   description: p.description || '',
-  price: p.finalPrice || p.price || 0,
+  price: resolveProductPrice(p),
   originalPrice: p.isOnSale ? p.price : null,
   discount: p.discountPercentage || 0,
-  image:
-    (typeof p.mainImage === 'string' ? p.mainImage : p.mainImage?.url) ||
-    (typeof p.images?.[0] === 'string' ? p.images[0] : p.images?.[0]?.url) ||
-    null,
+  image: resolveProductImage(p),
   images: (p.images || []).map((img) =>
     typeof img === 'string' ? img : img?.url
   ).filter(Boolean),
@@ -32,7 +48,7 @@ export const mapProduct = (p) => ({
   isFeatured: false,
   tags: p.tags || [],
   verified: true,
-  freeShipping: (p.finalPrice || p.price || 0) > 500,
+  freeShipping: resolveProductPrice(p) > 500,
   governorate: p.brand?.governorate || '',
   customizable: false,
   createdAt: p.createdAt || null,

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Search, Store, Star, Package, MapPin, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useLanguage } from '../context/LanguageContext';
-import { brandsAPI, sellerAPI } from '../services/api';
+import { brandsAPI } from '../services/api';
 import { mapBrand } from '../utils/mappers';
 
 export default function BazaarPage() {
@@ -15,14 +15,29 @@ export default function BazaarPage() {
   const fetchBazaars = useCallback(async (searchQuery = '') => {
     setLoading(true);
     try {
-      let res;
-      if (searchQuery.trim()) {
-        res = await sellerAPI.searchBazaar(searchQuery);
-      } else {
-        res = await brandsAPI.getAll({ limit: 50 });
-      }
+      const res = await brandsAPI.getAll({ limit: 100 });
       const raw = res.data?.data || res.data?.brands || res.data || [];
-      setBrands(Array.isArray(raw) ? raw.map(mapBrand) : []);
+      let list = Array.isArray(raw) ? raw.map(mapBrand) : [];
+
+      const query = searchQuery.trim().toLowerCase();
+      if (query) {
+        list = list.filter((brand) => {
+          const haystack = [
+            brand.name,
+            brand.description,
+            brand.category,
+            brand.location,
+            brand.governorate,
+            ...(brand.tags || []),
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+          return haystack.includes(query);
+        });
+      }
+
+      setBrands(list);
     } catch {
       setBrands([]);
     } finally {

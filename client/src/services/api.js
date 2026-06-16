@@ -3,6 +3,7 @@ import {
   filterHomepageQualityProducts,
   sanitizeFeaturedLocalStorage,
 } from '../utils/productQuality';
+import { resolveProductImage } from '../utils/mappers';
 
 export { sanitizeFeaturedLocalStorage };
 
@@ -49,6 +50,14 @@ const localAuditLog = createMirrorApi('/audit-local', '/audit/log');
 const localPlatform = createMirrorApi('/platform-local', '/platform');
 const localPayment = createMirrorApi('/payment-local', '/payment');
 
+export const companionServices = {
+  payment: Boolean(localPayment),
+  platform: Boolean(localPlatform),
+  payouts: Boolean(localSellerPayouts),
+  support: Boolean(localSupport),
+  productImages: Boolean(localProductImages),
+};
+
 const FEATURED_SLOTS_STORAGE_KEY = 'brandhive_featured_slots';
 const NEWSLETTER_LOCAL_KEY = 'brandhive_newsletter_emails';
 const AD_INQUIRIES_LOCAL_KEY = 'brandhive_ad_inquiries';
@@ -68,19 +77,41 @@ export const subscribeNewsletter = async (email) => {
 };
 
 export const fetchFeaturedSlotIds = async () => {
-  if (!localPlatform) throw mirrorServiceUnavailable();
+  if (localPlatform) {
+    try {
+      const res = await localPlatform.get('/featured-slots');
+      const ids = res.data?.data?.productIds;
+      if (Array.isArray(ids) && ids.length > 0) {
+        const normalized = ids.map(String);
+        localStorage.setItem(FEATURED_SLOTS_STORAGE_KEY, JSON.stringify(normalized));
+        return normalized;
+      }
+    } catch {
+      // fall through to local cache
+    }
+  }
 
-  const res = await localPlatform.get('/featured-slots');
-  const ids = res.data?.data?.productIds;
-  if (!Array.isArray(ids)) return [];
-  return ids.map(String);
+  try {
+    const cached = localStorage.getItem(FEATURED_SLOTS_STORAGE_KEY);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed)) return parsed.map(String);
+    }
+  } catch {
+    // ignore stale cache
+  }
+
+  return [];
 };
 
 export const saveFeaturedSlotIds = async (productIds = []) => {
-  if (!localPlatform) throw mirrorServiceUnavailable();
-
   const ids = productIds.slice(0, 4).map(String);
-  await localPlatform.put('/featured-slots', { productIds: ids });
+  localStorage.setItem(FEATURED_SLOTS_STORAGE_KEY, JSON.stringify(ids));
+
+  if (localPlatform) {
+    await localPlatform.put('/featured-slots', { productIds: ids });
+  }
+
   return ids;
 };
 
@@ -1202,13 +1233,14 @@ export const authAPI = {
   // Response: { success, token, user }
   login: (data) => api.post('/auth/login', data),
 
-  // GET — requires Authorization header
-  // Response: { success, user }
-  // Not in official spec — kept for optional session refresh if backend adds it
+  // GET — requires Authorization header (falls back to localStorage for legacy callers)
   getMe: () => api.get('/auth/me').catch(() => {
     const parsed = getStoredAuth();
     return { data: { data: parsed, user: parsed } };
   }),
+
+  // GET — strict session check; rejects on 401 (use on app load)
+  validateSession: () => api.get('/auth/me'),
 
   // POST { email, otp }
   // Response: { success, ... }
@@ -1520,30 +1552,50 @@ export const loadLocalProductImages = async (productIds = []) => {
 export const enrichProductWithLocalImages = (product) => {
   if (!product) return product;
 
+  const existingImage = resolveProductImage(product);
+  if (existingImage) {
+    return product.image ? product : { ...product, image: existingImage };
+  }
+
   const id = String(product._id || product.id || '');
   const mirror = productImageMirrorCache.get(id);
   if (!mirror) return product;
 
-  const hasApiImage =
-    product.mainImage ||
-    (Array.isArray(product.images) && product.images.length > 0);
-  if (hasApiImage) return product;
-
-  const main = mirror.mainImage || mirror.images?.[0];
+  const main = mirror.mainImage || mirror.images?.[0] || null;
   const images = (mirror.images || []).map((url) =>
     typeof url === 'string' ? { url } : url
   );
+  const resolvedImages = images.length > 0 ? images : main ? [{ url: main }] : [];
 
   return {
     ...product,
     mainImage: main,
-    images: images.length > 0 ? images : main ? [{ url: main }] : [],
+    images: resolvedImages,
+    image: main,
   };
 };
 
 export const enrichProductsWithLocalImages = (products = []) => {
   if (!Array.isArray(products)) return [];
   return products.map(enrichProductWithLocalImages);
+};
+
+export const enrichCatalogWithMirroredImages = async (products = [], { limit } = {}) => {
+  if (!Array.isArray(products) || products.length === 0 || !localProductImages) {
+    return products;
+  }
+
+  const missingImageIds = products
+    .filter((product) => !resolveProductImage(product) && (product.id || product._id))
+    .map((product) => product.id || product._id);
+
+  const fetchLimit = Number.isFinite(limit) ? limit : missingImageIds.length;
+  const idsToFetch = [...new Set(missingImageIds)].slice(0, fetchLimit);
+
+  if (idsToFetch.length === 0) return products;
+
+  await loadLocalProductImages(idsToFetch);
+  return enrichProductsWithLocalImages(products);
 };
 
 const createSellerProductWithFormData = async (payload, mainImage, additionalImages) => {
@@ -2750,9 +2802,52 @@ export const mirrorSellerOrder = async (payload) => {
     const res = await localSellerOrders.post('/', mirrorPayload);
     return res.data?.data || res.data || mirrorPayload;
   } catch (err) {
-    console.warn('[mirrorSellerOrder]', err.response?.data || err.message);
+    const message =
+      err.response?.data?.message ||
+      err.message ||
+      'Failed to mirror seller order';
+    console.warn('[mirrorSellerOrder]', message, err.response?.data || '');
     return null;
   }
+};
+
+export const mirrorCreatedOrderForSellers = async ({
+  orderId,
+  cartItems = [],
+  shippingAddress = {},
+  paymentMethod = 'cod',
+  totalAmount = 0,
+  subtotal = 0,
+  status = 'pending',
+  customerUser = null,
+} = {}) => {
+  if (!orderId || !Array.isArray(cartItems) || cartItems.length === 0) return null;
+
+  const items = cartItems
+    .map((item) => ({
+      productId: String(item.id || item.productId || ''),
+      name: item.name || 'Product',
+      quantity: Number(item.quantity) || 1,
+      price: Number(item.price) || 0,
+      brandId: item.brandId || item.brand?._id || item.brand?.id,
+      brandName: item.brandName || item.brand?.name || '',
+    }))
+    .filter((item) => item.productId);
+
+  if (items.length === 0) return null;
+
+  return mirrorSellerOrder({
+    railwayOrderId: String(orderId),
+    customerUserId: customerUser?.id || customerUser?._id,
+    customerEmail: customerUser?.email,
+    customerName: shippingAddress?.fullName || customerUser?.name,
+    items,
+    subtotal: subtotal || totalAmount,
+    totalAmount: totalAmount || subtotal,
+    paymentMethod,
+    status,
+    shippingAddress,
+  });
 };
 
 const collectSellerBrandIds = async (user) => {
@@ -2792,53 +2887,56 @@ export const fetchSellerOrders = async (user) => {
     console.warn('[fetchSellerOrders]', err.response?.data || err.message);
   }
 
-  if (railwayOrders.length > 0) {
-    const sorted = railwayOrders.sort(
-      (a, b) =>
-        new Date(b.createdAt || 0).getTime() -
-        new Date(a.createdAt || 0).getTime()
-    );
-    return hydrateOrdersWithPaymobPaymentStatus(sorted, { reconcile: true });
-  }
-
   const brandIds = await collectSellerBrandIds(user);
-  if (!localSellerOrders || brandIds.length === 0) {
-    return [];
+  let mirrored = [];
+
+  if (localSellerOrders && brandIds.length > 0) {
+    try {
+      const localRes = await localSellerOrders.get('/', {
+        params: { brandIds: brandIds.join(','), _t: Date.now() },
+      });
+      mirrored = getResponseArray(localRes)
+        .map(normalizeMirroredSellerOrder)
+        .filter((order) => order._id || order.id);
+
+      await Promise.all(
+        mirrored.map(async (order) => {
+          if (order._mirrored) return;
+          const id = order._id || order.id;
+          if (!id) return;
+          try {
+            const res = await sellerAPI.getOrderDetails(id);
+            const live =
+              res.data?.data || res.data?.order || res.data || null;
+            if (live?.status) order.status = live.status;
+          } catch {
+            // mirror-only orders are not on Railway seller API
+          }
+        })
+      );
+    } catch (err) {
+      console.warn('[fetchSellerOrders/mirror]', err.response?.data || err.message);
+    }
   }
 
-  try {
-    const localRes = await localSellerOrders.get('/', {
-      params: { brandIds: brandIds.join(','), _t: Date.now() },
-    });
-    const mirrored = getResponseArray(localRes)
-      .map(normalizeMirroredSellerOrder)
-      .filter((order) => order._id || order.id);
+  const merged = new Map();
+  mirrored.forEach((order) => {
+    const key = String(order.railwayOrderId || order._id || order.id);
+    merged.set(key, order);
+  });
+  railwayOrders.forEach((order) => {
+    const key = String(order._id || order.id);
+    const existing = merged.get(key);
+    merged.set(key, existing ? { ...existing, ...order } : order);
+  });
 
-    await Promise.all(
-      mirrored.map(async (order) => {
-        const id = order._id || order.id;
-        if (!id) return;
-        try {
-          const res = await sellerAPI.getOrderDetails(id);
-          const live =
-            res.data?.data || res.data?.order || res.data || null;
-          if (live?.status) order.status = live.status;
-        } catch {
-          // keep mirror status when Railway detail is unavailable
-        }
-      })
-    );
+  const list = [...merged.values()].sort(
+    (a, b) =>
+      new Date(b.createdAt || 0).getTime() -
+      new Date(a.createdAt || 0).getTime()
+  );
 
-    const sorted = mirrored.sort(
-      (a, b) =>
-        new Date(b.createdAt || 0).getTime() -
-        new Date(a.createdAt || 0).getTime()
-    );
-    return hydrateOrdersWithPaymobPaymentStatus(sorted, { reconcile: true });
-  } catch (err) {
-    console.warn('[fetchSellerOrders/mirror]', err.response?.data || err.message);
-    return [];
-  }
+  return hydrateOrdersWithPaymobPaymentStatus(list, { reconcile: true });
 };
 
 export const fetchSellerReviews = async (user) => {
@@ -3214,18 +3312,95 @@ export const customerAPI = {
 };
 
 // ─── Users ───────────────────────────────────────────────────────────────────
+export const extractProfilePayload = (response) =>
+  response?.data?.data?.user ||
+  response?.data?.user ||
+  response?.data?.data ||
+  response?.data ||
+  {};
+
+export const mergeUserWithMirrorProfile = async (user) => {
+  if (!user || !localPlatform) return user;
+
+  const userId = user.id || user._id;
+  if (!userId) return user;
+
+  try {
+    const res = await localPlatform.get(
+      `/users/${encodeURIComponent(String(userId))}/profile`
+    );
+    const profile = res.data?.data;
+    if (!profile?.name && profile?.phone == null) return user;
+
+    return {
+      ...user,
+      name: profile.name || user.name,
+      phone: profile.phone ?? user.phone,
+    };
+  } catch {
+    return user;
+  }
+};
+
 export const usersAPI = {
-  getProfile: () =>
-    api.get('/customer').catch(() => authAPI.getMe()),
-  updateProfile: (data) => {
+  getProfile: async () => {
+    const railwayRes = await api.get('/customer').catch(() => authAPI.getMe());
     const parsed = getStoredAuth();
-    if (parsed) {
-      const updated = { ...parsed, ...data };
-      localStorage.setItem('brandhive_user', JSON.stringify(updated));
+    const userId = parsed?.id || parsed?._id;
+
+    if (localPlatform && userId) {
+      try {
+        const mirrorRes = await localPlatform.get(
+          `/users/${encodeURIComponent(String(userId))}/profile`
+        );
+        const mirror = mirrorRes.data?.data;
+        const railwayUser = extractProfilePayload(railwayRes);
+        const merged = {
+          ...railwayUser,
+          name: mirror?.name || railwayUser.name,
+          phone: mirror?.phone ?? railwayUser.phone,
+        };
+        return { data: { data: merged, user: merged } };
+      } catch {
+        // mirror offline — fall back to Railway profile
+      }
     }
-    return Promise.resolve({
-      data: { success: true, data: { ...getStoredAuth(), ...data } },
-    });
+
+    return railwayRes;
+  },
+
+  updateProfile: async (data) => {
+    const parsed = getStoredAuth();
+    const userId = parsed?.id || parsed?._id;
+    if (!userId) {
+      const error = new Error('Not signed in');
+      error.response = { data: { message: 'Not signed in' } };
+      throw error;
+    }
+
+    if (!localPlatform) {
+      const error = new Error(
+        'Profile updates need the companion server (npm run dev from project root).'
+      );
+      error.response = { data: { message: error.message } };
+      throw error;
+    }
+
+    const res = await localPlatform.put(
+      `/users/${encodeURIComponent(String(userId))}/profile`,
+      {
+        ...data,
+        email: parsed?.email,
+      }
+    );
+    const profile = res.data?.data || res.data || data;
+    return {
+      data: {
+        success: true,
+        data: profile,
+        user: profile,
+      },
+    };
   },
 };
 
@@ -4336,6 +4511,34 @@ export const initiatePaymobCheckout = async ({
   return isUsablePaymentUrl(paymentUrl) ? paymentUrl : null;
 };
 
+export const fetchPaymobStatus = async () => {
+  if (!localPayment) {
+    return {
+      available: false,
+      configured: false,
+      fawryConfigured: false,
+      reason: 'mirror_unavailable',
+    };
+  }
+
+  try {
+    const res = await localPayment.get('/paymob/status');
+    const data = res.data?.data || res.data || {};
+    return {
+      available: true,
+      configured: Boolean(data.configured),
+      fawryConfigured: Boolean(data.fawryConfigured),
+    };
+  } catch {
+    return {
+      available: false,
+      configured: false,
+      fawryConfigured: false,
+      reason: 'status_unreachable',
+    };
+  }
+};
+
 const PAID_ORDERS_STORAGE_KEY = 'brandhive_paid_orders';
 
 export const parsePaymobReturnSuccess = (params = {}) => {
@@ -4356,6 +4559,15 @@ export const parsePaymobReturnSuccess = (params = {}) => {
   if (read('paid') === 'true') return true;
   return false;
 };
+
+const PAYMENT_PENDING_STATUSES = new Set([
+  'pending',
+  'pending_payment',
+  'payment_failed',
+]);
+
+const isPaymentPendingStatus = (status) =>
+  PAYMENT_PENDING_STATUSES.has(String(status || '').toLowerCase());
 
 export const markOrderPaidLocally = (orderId) => {
   if (!orderId || typeof localStorage === 'undefined') return;
@@ -4382,7 +4594,7 @@ export const applyPaidOrderOverlay = (orders = []) => {
     const id = String(order._id || order.id || order.orderId || '');
     const status = String(order.status || order.orderStatus || '').toLowerCase();
     if (!id || !paidMap[id]) return order;
-    if (!['pending', 'pending_payment', 'payment_failed'].includes(status)) return order;
+    if (!isPaymentPendingStatus(status)) return order;
     return { ...order, status: 'paid' };
   });
 };
@@ -4398,13 +4610,13 @@ export const hydratePaidOrdersFromMirror = async (orders = []) => {
     updated.map(async (order, index) => {
       const id = String(order._id || order.id || order.orderId || '');
       const status = String(order.status || order.orderStatus || '').toLowerCase();
-      if (!id || status === 'paid') return;
+      if (!id || !isPaymentPendingStatus(status)) return;
 
       try {
         const res = await localPayment.get(`/paymob/order/${encodeURIComponent(id)}/status`);
         const sessionStatus = res.data?.data?.status || res.data?.status;
         if (sessionStatus === 'paid') {
-          updated[index] = { ...order, status: 'paid' };
+          updated[index] = { ...order, status: 'paid', orderStatus: 'paid' };
           markOrderPaidLocally(id);
         }
       } catch {
@@ -4539,22 +4751,6 @@ export const syncAdminOrdersAfterPaymob = async (orders = []) => {
   );
 
   return updated;
-};
-
-export const fetchPaymobStatus = async () => {
-  if (!localPayment) {
-    return { configured: false, fawryConfigured: false, available: false };
-  }
-
-  try {
-    const res = await localPayment.get('/paymob/status');
-    return {
-      available: true,
-      ...(res.data?.data || res.data || {}),
-    };
-  } catch {
-    return { configured: false, fawryConfigured: false, available: true };
-  }
 };
 
 export const fetchSellerCoupons = async (userId, brandId) => {

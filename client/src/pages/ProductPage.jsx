@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Star, Heart, ShoppingCart, Share2, Truck, RotateCcw,
   Shield, CheckCircle2, MapPin, Minus, Plus, ChevronRight
 } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
-import { productsAPI, brandsAPI, reviewsAPI, aiAPI, ordersAPI, rememberReviewProduct } from '../services/api';
+import { productsAPI, brandsAPI, reviewsAPI, aiAPI, ordersAPI, rememberReviewProduct, loadLocalProductImages, enrichProductWithLocalImages, enrichProductsWithLocalImages, enrichCatalogWithMirroredImages } from '../services/api';
 import { mapProduct } from '../utils/mappers';
 import { useCart, useWishlist } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -71,8 +71,12 @@ export default function ProductPage() {
         const res = await productsAPI.getOne(slug);
         const raw = res.data?.data || res.data;
         if (!raw) throw new Error('Not found');
-        
-        const mapped = mapProduct(raw);
+
+        const productId = raw.id || raw._id;
+        await loadLocalProductImages([productId]);
+        const withImages = enrichProductWithLocalImages(raw);
+        let mapped = mapProduct(withImages);
+        [mapped] = await enrichCatalogWithMirroredImages([mapped]);
         setProduct(mapped);
 
         let categoryRelated = [];
@@ -80,10 +84,13 @@ export default function ProductPage() {
           try {
             const relRes = await productsAPI.getByCategory(raw.category._id || raw.category.id);
             const relRaw = relRes.data?.data || [];
-            categoryRelated = relRaw
-              .filter(p => (p.id || p._id) !== (raw.id || raw._id))
+            await loadLocalProductImages(relRaw.map((p) => p._id || p.id));
+            const relWithImages = enrichProductsWithLocalImages(relRaw);
+            categoryRelated = relWithImages
+              .filter(p => (p.id || p._id) !== productId)
               .slice(0, 4)
               .map(mapProduct);
+            categoryRelated = await enrichCatalogWithMirroredImages(categoryRelated);
             setRelatedProducts(categoryRelated);
           } catch {
             setRelatedProducts([]);
@@ -104,11 +111,15 @@ export default function ProductPage() {
           const simData = simRes.data?.data ||
             simRes.data?.products ||
             simRes.data || [];
-          setSimilarProducts(
-            Array.isArray(simData)
-              ? simData.slice(0, 4).map(mapProduct)
-              : []
-          );
+          if (Array.isArray(simData) && simData.length > 0) {
+            await loadLocalProductImages(simData.map((p) => p._id || p.id));
+            const similar = enrichProductsWithLocalImages(simData)
+              .map(mapProduct)
+              .slice(0, 4);
+            setSimilarProducts(await enrichCatalogWithMirroredImages(similar));
+          } else {
+            setSimilarProducts([]);
+          }
         } catch {
           setSimilarProducts(categoryRelated.slice(0, 4));
         } finally {
@@ -181,6 +192,29 @@ export default function ProductPage() {
 
     fetchEligibleOrders();
   }, [isAuthenticated, product?.id, hasSellerApiAccess]);
+
+  const displayReviewCount = useMemo(
+    () =>
+      productReviews.length > 0
+        ? productReviews.length
+        : (product?.reviews || 0),
+    [productReviews, product?.reviews]
+  );
+
+  const displayRating = useMemo(() => {
+    if (productReviews.length > 0) {
+      const rated = productReviews.filter((review) => Number(review.rating) > 0);
+      if (rated.length === 0) return product?.rating || 0;
+      return (
+        Math.round(
+          (rated.reduce((sum, review) => sum + Number(review.rating), 0) /
+            rated.length) *
+            10
+        ) / 10
+      );
+    }
+    return product?.rating || 0;
+  }, [productReviews, product?.rating]);
 
   if (loading) {
     return (
@@ -417,11 +451,11 @@ export default function ProductPage() {
             <div className={`flex items-center gap-3 mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
               <div className={`flex ${isRTL ? 'flex-row-reverse' : ''}`}>
                 {[...Array(5)].map((_, i) => (
-                  <Star key={i} size={16} className={i < Math.floor(product.rating) ? 'text-amber-400 fill-amber-400' : 'text-gray-300 dark:text-gray-600'} />
+                  <Star key={i} size={16} className={i < Math.floor(displayRating) ? 'text-amber-400 fill-amber-400' : 'text-gray-300 dark:text-gray-600'} />
                 ))}
               </div>
-              <span className="font-bold text-gray-900 dark:text-dark-text">{product.rating}</span>
-              <span className="text-gray-500 dark:text-dark-muted text-sm">· {product.reviews} {isRTL ? 'تقييم' : 'reviews'}</span>
+              <span className="font-bold text-gray-900 dark:text-dark-text">{displayRating}</span>
+              <span className="text-gray-500 dark:text-dark-muted text-sm">· {displayReviewCount} {isRTL ? 'تقييم' : 'reviews'}</span>
               <span className="text-gray-500 dark:text-dark-muted text-sm">· {product.sold} {isRTL ? 'تم البيع' : 'sold'}</span>
             </div>
 
@@ -575,7 +609,7 @@ export default function ProductPage() {
           <div className={`flex border-b border-gray-100 dark:border-dark-border ${isRTL ? 'flex-row-reverse' : ''}`}>
             {[
               { id: 'description', label: isRTL ? 'الوصف' : 'Description' },
-              { id: 'reviews', label: isRTL ? `التقييمات (${product.reviews})` : `Reviews (${product.reviews})` },
+              { id: 'reviews', label: isRTL ? `التقييمات (${displayReviewCount})` : `Reviews (${displayReviewCount})` },
               { id: 'shipping', label: isRTL ? 'الشحن' : 'Shipping' }
             ].map(tab => (
               <button
@@ -606,13 +640,13 @@ export default function ProductPage() {
               <div>
                 <div className={`flex items-center gap-4 mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
                   <div className="text-center">
-                    <div className="text-4xl font-bold text-gray-900 dark:text-dark-text">{product.rating}</div>
+                    <div className="text-4xl font-bold text-gray-900 dark:text-dark-text">{displayRating}</div>
                     <div className="flex justify-center my-1">
                       {[...Array(5)].map((_, i) => (
-                        <Star key={i} size={14} className={i < Math.floor(product.rating) ? 'text-amber-400 fill-amber-400' : 'text-gray-300 dark:text-gray-600'} />
+                        <Star key={i} size={14} className={i < Math.floor(displayRating) ? 'text-amber-400 fill-amber-400' : 'text-gray-300 dark:text-gray-600'} />
                       ))}
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-dark-muted">{product.reviews} {isRTL ? 'تقييمات' : 'reviews'}</div>
+                    <div className="text-xs text-gray-500 dark:text-dark-muted">{displayReviewCount} {isRTL ? 'تقييمات' : 'reviews'}</div>
                   </div>
                 </div>
 

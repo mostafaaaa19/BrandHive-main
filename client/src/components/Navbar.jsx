@@ -193,6 +193,13 @@ export default function Navbar() {
     return '/account';
   };
 
+  const dashboardMenuItem = isAdmin
+    ? { to: '/admin/dashboard', label: t('nav.adminDashboard'), Icon: Settings }
+    : isSeller
+    ? { to: '/seller/dashboard', label: t('nav.sellerDashboard'), Icon: Store }
+    : { to: '/account', label: isRTL ? 'لوحة التحكم' : 'Dashboard', Icon: LayoutDashboard };
+  const DashboardMenuIcon = dashboardMenuItem.Icon;
+
   // Language Toggle Component
   const LanguageToggle = ({ mobile = false }) => (
     <div className={`flex items-center gap-0.5 ${mobile ? 'px-4 py-3' : ''}`}>
@@ -473,22 +480,10 @@ export default function Navbar() {
                         <p className="text-sm font-semibold text-gray-900 dark:text-dark-text">{user.name}</p>
                         <p className="text-xs text-gray-500 dark:text-dark-muted capitalize">{user.role}</p>
                       </div>
-                      <Link to={getDashboardPath()} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-700 dark:text-dark-text hover:bg-brand-cream dark:hover:bg-dark-bg hover:text-brand-navy dark:hover:text-brand-gold transition-colors">
-                        <LayoutDashboard size={15} />
-                        {isRTL ? 'لوحة التحكم' : 'Dashboard'}
+                      <Link to={dashboardMenuItem.to} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-700 dark:text-dark-text hover:bg-brand-cream dark:hover:bg-dark-bg hover:text-brand-navy dark:hover:text-brand-gold transition-colors">
+                        <DashboardMenuIcon size={15} />
+                        {dashboardMenuItem.label}
                       </Link>
-                      {isAdmin && (
-                        <Link to="/admin/dashboard" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-700 dark:text-dark-text hover:bg-brand-cream dark:hover:bg-dark-bg hover:text-brand-navy dark:hover:text-brand-gold transition-colors">
-                          <Settings size={15} />
-                          {t('nav.adminDashboard')}
-                        </Link>
-                      )}
-                      {isSeller && (
-                        <Link to="/seller/dashboard" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-700 dark:text-dark-text hover:bg-brand-cream dark:hover:bg-dark-bg hover:text-brand-navy dark:hover:text-brand-gold transition-colors">
-                          <Store size={15} />
-                          {t('nav.sellerDashboard')}
-                        </Link>
-                      )}
                       <Link to="/account" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-700 dark:text-dark-text hover:bg-brand-cream dark:hover:bg-dark-bg hover:text-brand-navy dark:hover:text-brand-gold transition-colors">
                         <User size={15} />
                         {t('nav.account')}
@@ -575,8 +570,8 @@ export default function Navbar() {
               <div className="border-t border-gray-100 dark:border-dark-border pt-3 mt-2 space-y-1">
                 {user ? (
                   <>
-                    <Link to={getDashboardPath()} className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-700 dark:text-dark-text hover:bg-brand-cream dark:hover:bg-dark-bg hover:text-brand-navy dark:hover:text-brand-gold">
-                      <LayoutDashboard size={16} /> {isRTL ? 'لوحة التحكم' : 'Dashboard'}
+                    <Link to={dashboardMenuItem.to} className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-700 dark:text-dark-text hover:bg-brand-cream dark:hover:bg-dark-bg hover:text-brand-navy dark:hover:text-brand-gold">
+                      <DashboardMenuIcon size={16} /> {dashboardMenuItem.label}
                     </Link>
                     <button onClick={handleLogout} className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 w-full ${isRTL ? 'text-right' : 'text-left'}`}>
                       <LogOut size={16} /> {t('nav.logout')}

@@ -4,7 +4,7 @@ import { SlidersHorizontal, Grid3X3, LayoutGrid, List, X, ChevronDown, ChevronUp
 import ProductCard from '../components/ProductCard';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
-import { productsAPI, categoriesAPI, searchAPI, aiAPI } from '../services/api';
+import { productsAPI, categoriesAPI, searchAPI, aiAPI, loadLocalProductImages, enrichProductsWithLocalImages, enrichCatalogWithMirroredImages } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import {
   mapProduct,
@@ -104,7 +104,10 @@ export default function ListingPage() {
       console.log('[ListingPage] raw products count:', Array.isArray(raw) ? raw.length : raw);
 
       if (Array.isArray(raw) && raw.length > 0) {
-        const mapped = raw.map(mapProduct);
+        await loadLocalProductImages(raw.map((product) => product._id || product.id));
+        const withImages = enrichProductsWithLocalImages(raw);
+        let mapped = withImages.map(mapProduct);
+        mapped = await enrichCatalogWithMirroredImages(mapped);
         setProducts(deduplicateProducts(mapped));
         setError(null);
         const meta = res.data?.meta || {};

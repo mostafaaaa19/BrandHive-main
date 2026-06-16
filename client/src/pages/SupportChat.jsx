@@ -52,6 +52,7 @@ export default function SupportChat() {
   const [messages, setMessages] = useState([welcomeMessage]);
   const [input, setInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiOffline, setAiOffline] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [chatHistory, setChatHistory] = useState([]);
   const messagesEndRef = useRef(null);
@@ -253,6 +254,10 @@ export default function SupportChat() {
             getInstantSupportReply(currentInput, language)
           : getInstantSupportReply(currentInput, language);
 
+      setAiOffline(
+        aiResult.status === 'fulfilled' ? Boolean(aiResult.value?.offline) : true
+      );
+
       appendAssistantMessage(replyText);
 
       if (ticketResult.status === 'fulfilled' && ticketResult.value) {
@@ -347,9 +352,13 @@ export default function SupportChat() {
                   ? isRTL
                     ? '● سيتم إرسال رسالتك الأولى للماركة'
                     : '● Your first message opens a ticket with this brand'
+                  : aiOffline
+                  ? isRTL
+                    ? '● وضع مساعد أساسي — شغّل npm run dev:all للـ AI'
+                    : '● Basic assistant mode — run npm run dev:all for live AI'
                   : isRTL
-                    ? '● متصل · متوسط الرد 5 دقائق'
-                    : '● Online · avg. reply 5 min'}
+                    ? '● مساعد AI متصل'
+                    : '● AI assistant online'}
               </p>
             </div>
             <div

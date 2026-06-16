@@ -10,9 +10,9 @@ import BrandCard from '../components/BrandCard';
 import { testimonials } from '../data/mockData';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
-import { productsAPI, brandsAPI, categoriesAPI, aiAPI, loadLocalProductImages, enrichProductsWithLocalImages, sanitizeFeaturedLocalStorage, fetchFeaturedSlotIds, fetchPublicStats } from '../services/api';
+import { productsAPI, brandsAPI, categoriesAPI, aiAPI, loadLocalProductImages, enrichProductsWithLocalImages, enrichCatalogWithMirroredImages, sanitizeFeaturedLocalStorage, fetchFeaturedSlotIds, fetchPublicStats } from '../services/api';
 import { mapProduct, mapBrand, mapCategory, hydrateProductImages } from '../utils/mappers';
-import { filterHomepageQualityProducts, buildTrendingDisplayList } from '../utils/productQuality';
+import { filterHomepageQualityProducts, buildTrendingDisplayList, hasProductImage } from '../utils/productQuality';
 import { formatStatNumber } from '../utils/formatStat';
 
 function CountUp({ target, suffix = '', duration = 2000 }) {
@@ -85,17 +85,58 @@ export default function HomePage() {
   };
 
   useEffect(() => {
+    const pickProducts = (response) => {
+      const raw =
+        response?.data?.data ||
+        response?.data?.products ||
+        response?.data?.items ||
+        (Array.isArray(response?.data) ? response.data : []);
+      return Array.isArray(raw) ? raw.map(mapProduct) : [];
+    };
+
+    const hydrateAndEnrich = async (lists) => {
+      const catalogPool = lists[0] || [];
+      let hydrated = lists.map((list) =>
+        hydrateProductImages(list, catalogPool)
+      );
+
+      const missingImageIds = hydrated
+        .flat()
+        .filter((product) => !product.image && product.id)
+        .map((product) => product.id);
+
+      if (missingImageIds.length > 0) {
+        await loadLocalProductImages([...new Set(missingImageIds)]);
+        hydrated = hydrated.map((list) => enrichProductsWithLocalImages(list));
+      }
+
+      return hydrated;
+    };
+
     const fetchData = async () => {
+      setProductsLoading(true);
+      setBrandsLoading(true);
       let catalog = [];
 
+      const secondaryPromise = Promise.all([
+        aiAPI.getTrending().catch(() => null),
+        productsAPI.getTopRated().catch(() => null),
+        productsAPI.getNewArrivals().catch(() => null),
+        brandsAPI.getAll(1, 50).catch(() => null),
+        categoriesAPI.getAll().catch(() => null),
+      ]);
+
       try {
-        setProductsLoading(true);
-        const res = await productsAPI.getAll({ page: 1, limit: 100 });
+        const [productsRes, slotIds] = await Promise.all([
+          productsAPI.getAll({ page: 1, limit: 100 }),
+          fetchFeaturedSlotIds().catch(() => []),
+        ]);
+
         const raw =
-          res.data?.data ||
-          res.data?.products ||
-          res.data?.items ||
-          (Array.isArray(res.data) ? res.data : []);
+          productsRes?.data?.data ||
+          productsRes?.data?.products ||
+          productsRes?.data?.items ||
+          (Array.isArray(productsRes?.data) ? productsRes.data : []);
 
         if (Array.isArray(raw) && raw.length > 0) {
           catalog = raw.map(mapProduct);
@@ -106,7 +147,6 @@ export default function HomePage() {
         );
         sanitizeFeaturedLocalStorage(catalogIds);
 
-        const slotIds = await fetchFeaturedSlotIds();
         if (Array.isArray(slotIds) && slotIds.length > 0) {
           const byId = new Map(
             catalog.map((product) => [String(product.id), product])
@@ -143,57 +183,36 @@ export default function HomePage() {
         }
 
         catalog = filterHomepageQualityProducts(catalog);
+        catalog = hydrateProductImages(catalog, catalog);
+        catalog = await enrichCatalogWithMirroredImages(catalog, { limit: 12 });
+
+        catalog = filterHomepageQualityProducts(catalog);
+        setFeaturedProducts(catalog);
       } catch {
-        catalog = [];
+        setFeaturedProducts([]);
+      } finally {
+        setProductsLoading(false);
       }
 
-      const pickProducts = (response) => {
-        const raw =
-          response?.data?.data ||
-          response?.data?.products ||
-          response?.data?.items ||
-          (Array.isArray(response?.data) ? response.data : []);
-        return Array.isArray(raw) ? raw.map(mapProduct) : [];
-      };
+      const [trendingRes, topRatedRes, newArrivalsRes, brandsRes, categoriesRes] =
+        await secondaryPromise;
 
-      let trending = [];
-      let topRated = [];
-      let newArrivals = [];
+      let trending = pickProducts(trendingRes).slice(0, 8);
+      let topRated = pickProducts(topRatedRes).slice(0, 8);
+      let newArrivals = pickProducts(newArrivalsRes).slice(0, 8);
 
-      try {
-        trending = pickProducts(await aiAPI.getTrending()).slice(0, 8);
-      } catch {
-        trending = [];
-      }
+      [catalog, trending, topRated, newArrivals] = await hydrateAndEnrich([
+        catalog,
+        trending,
+        topRated,
+        newArrivals,
+      ]);
 
-      try {
-        topRated = pickProducts(await productsAPI.getTopRated()).slice(0, 8);
-      } catch {
-        topRated = [];
-      }
-
-      try {
-        newArrivals = pickProducts(await productsAPI.getNewArrivals()).slice(0, 8);
-      } catch {
-        newArrivals = [];
-      }
-
-      catalog = hydrateProductImages(catalog, catalog);
-      trending = hydrateProductImages(trending, catalog);
-      topRated = hydrateProductImages(topRated, catalog);
-      newArrivals = hydrateProductImages(newArrivals, catalog);
-
-      const missingImageIds = [...catalog, ...trending, ...topRated, ...newArrivals]
-        .filter((product) => !product.image && product.id)
-        .map((product) => product.id);
-
-      if (missingImageIds.length > 0) {
-        await loadLocalProductImages([...new Set(missingImageIds)]);
-        catalog = enrichProductsWithLocalImages(catalog);
-        trending = enrichProductsWithLocalImages(trending);
-        topRated = enrichProductsWithLocalImages(topRated);
-        newArrivals = enrichProductsWithLocalImages(newArrivals);
-      }
+      enrichCatalogWithMirroredImages(catalog, { limit: 50 }).then((enriched) => {
+        if (enriched.some((p, i) => p.image !== catalog[i]?.image)) {
+          setFeaturedProducts(filterHomepageQualityProducts(enriched));
+        }
+      }).catch(() => {});
 
       catalog = filterHomepageQualityProducts(catalog);
       trending = filterHomepageQualityProducts(trending);
@@ -216,24 +235,22 @@ export default function HomePage() {
       setTrendingProducts(trending);
       setTopRatedProducts(topRated);
       setNewArrivalProducts(newArrivals);
-      setProductsLoading(false);
 
       try {
-        setBrandsLoading(true);
-        const res = await brandsAPI.getAll(1, 50);
-        const raw = res.data?.data || res.data?.brands || res.data || [];
+        const raw = brandsRes?.data?.data || brandsRes?.data?.brands || brandsRes?.data || [];
         const list = Array.isArray(raw) ? raw : [];
         const brandsData = list.map(mapBrand);
         setTopBrands(brandsData);
-        const globalList = brandsData
-          .filter(b => b.logo || b.brandLogo)
-          .slice(0, 12)
-          .map(b => ({
-            name: b.name,
-            logo: b.logo || b.brandLogo,
-            slug: b.slug,
-          }));
-        setGlobalBrands(globalList);
+        setGlobalBrands(
+          brandsData
+            .filter((b) => b.logo || b.brandLogo)
+            .slice(0, 12)
+            .map((b) => ({
+              name: b.name,
+              logo: b.logo || b.brandLogo,
+              slug: b.slug,
+            }))
+        );
       } catch {
         setTopBrands([]);
       } finally {
@@ -241,8 +258,11 @@ export default function HomePage() {
       }
 
       try {
-        const res = await categoriesAPI.getAll();
-        const raw = res.data?.data || res.data?.categories || res.data || [];
+        const raw =
+          categoriesRes?.data?.data ||
+          categoriesRes?.data?.categories ||
+          categoriesRes?.data ||
+          [];
         const mapped = Array.isArray(raw) && raw.length > 0
           ? raw.map(mapCategory)
           : [];
@@ -256,6 +276,18 @@ export default function HomePage() {
 
   useEffect(() => {
     let cancelled = false;
+
+    try {
+      const cached = localStorage.getItem('brandhive_public_stats');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && typeof parsed === 'object') {
+          setPublicStats(parsed);
+          setStatsLoading(false);
+        }
+      }
+    } catch { /* ignore stale cache */ }
+
     fetchPublicStats()
       .then((data) => {
         if (!cancelled) setPublicStats(data);
@@ -353,21 +385,30 @@ export default function HomePage() {
     { icon: Award, title: t('home.features.bestQuality'), desc: t('home.features.bestQualityDesc'), color: 'text-purple-500' },
   ];
 
-  const heroShowcase = featuredProducts.length >= 4
-    ? featuredProducts.slice(0, 4).map(p => ({
+  const heroFallbackShowcase = useMemo(() => [
+    { cat: isRTL ? 'يدوي' : 'Handmade', name: isRTL ? 'فخار فرعوني' : 'Pharaonic Pottery', from: isRTL ? '350 ج.م' : '350 EGP', icon: '🏺', image: null, slug: null },
+    { cat: isRTL ? 'أزياء' : 'Fashion', name: isRTL ? 'قفطان حرير' : 'Silk Kaftan', from: isRTL ? '780 ج.م' : '780 EGP', icon: '👗', image: null, slug: null },
+    { cat: isRTL ? 'مجوهرات' : 'Jewelry', name: isRTL ? 'قلادة عنخ' : 'Gold Ankh Pendant', from: isRTL ? '1,200 ج.م' : '1,200 EGP', icon: '💍', image: null, slug: null },
+    { cat: isRTL ? 'عضوي' : 'Organic', name: isRTL ? 'عسل طبيعي' : 'Natural Honey', from: isRTL ? '250 ج.م' : '250 EGP', icon: '🍯', image: null, slug: null },
+  ], [isRTL]);
+
+  const heroShowcase = useMemo(() => {
+    const withImages = featuredProducts.filter(hasProductImage);
+    const pool = withImages.length >= 4 ? withImages : featuredProducts;
+
+    if (pool.length >= 4) {
+      return pool.slice(0, 4).map((p) => ({
         cat: p.category || 'Product',
         name: p.name,
         from: `${(p.price || 0).toLocaleString()} ${t('common.egp')}`,
         image: typeof p.image === 'string' ? p.image : (p.image?.url || null),
-        icon: null,
+        icon: '🛍️',
         slug: p.slug,
-      }))
-    : [
-        { cat: isRTL ? 'يدوي' : 'Handmade', name: isRTL ? 'فخار فرعوني' : 'Pharaonic Pottery', from: isRTL ? '350 ج.م' : '350 EGP', icon: '🏺', image: null, slug: null },
-        { cat: isRTL ? 'أزياء' : 'Fashion', name: isRTL ? 'قفطان حرير' : 'Silk Kaftan', from: isRTL ? '780 ج.م' : '780 EGP', icon: '👗', image: null, slug: null },
-        { cat: isRTL ? 'مجوهرات' : 'Jewelry', name: isRTL ? 'قلادة عنخ' : 'Gold Ankh Pendant', from: isRTL ? '1,200 ج.م' : '1,200 EGP', icon: '💍', image: null, slug: null },
-        { cat: isRTL ? 'عضوي' : 'Organic', name: isRTL ? 'عسل طبيعي' : 'Natural Honey', from: isRTL ? '250 ج.م' : '250 EGP', icon: '🍯', image: null, slug: null },
-      ];
+      }));
+    }
+
+    return heroFallbackShowcase;
+  }, [featuredProducts, heroFallbackShowcase, t]);
 
   const renderHeroShowcaseCard = (item, index, size) => {
     const heightClass = size === 'tall' ? 'h-[212px]' : 'h-[148px]';
@@ -383,7 +424,7 @@ export default function HomePage() {
           />
         ) : (
           <div className="text-4xl flex items-center justify-center h-full bg-white/10">
-            {item.icon}
+            {item.icon || '🛍️'}
           </div>
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-black/5 pointer-events-none" />
@@ -743,11 +784,6 @@ export default function HomePage() {
       <section className="py-20 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-purple-900 via-brand-navy to-pink-900"></div>
         <div className="absolute inset-0 bg-pattern opacity-20"></div>
-        {/* Floating elements */}
-        <div className="absolute top-10 left-10 text-6xl opacity-20 animate-float" style={{animationDelay:'0s'}}>🏺</div>
-        <div className="absolute top-1/3 right-16 text-5xl opacity-20 animate-float" style={{animationDelay:'0.5s'}}>💍</div>
-        <div className="absolute bottom-10 left-1/4 text-4xl opacity-20 animate-float" style={{animationDelay:'1s'}}>👗</div>
-        <div className="absolute bottom-1/4 right-1/3 text-5xl opacity-20 animate-float" style={{animationDelay:'1.5s'}}>🎨</div>
 
         <div className="page-container relative z-10">
           <div className="max-w-3xl mx-auto text-center">
@@ -904,21 +940,21 @@ export default function HomePage() {
           </div>
 
           <div className={`grid grid-cols-1 md:grid-cols-3 gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
-            {testimonials.map((t) => (
-              <div key={t.id} className={`card p-6 ${isRTL ? 'text-right' : ''}`}>
+            {testimonials.map((item) => (
+              <div key={item.id} className={`card p-6 ${isRTL ? 'text-right' : ''}`}>
                 <div className={`flex mb-3 ${isRTL ? 'justify-end' : ''}`}>
-                  {[...Array(t.rating)].map((_, i) => (
+                  {[...Array(item.rating)].map((_, i) => (
                     <Star key={i} size={14} className="text-amber-400 fill-amber-400" />
                   ))}
                 </div>
-                <p className="text-gray-700 dark:text-dark-text mb-4 leading-relaxed">"{isRTL && t.arText ? t.arText : t.text}"</p>
+                <p className="text-gray-700 dark:text-dark-text mb-4 leading-relaxed">&quot;{isRTL && item.arText ? item.arText : item.text}&quot;</p>
                 <div className={`flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
                   <div className="w-9 h-9 rounded-full bg-brand-navy dark:bg-brand-gold flex items-center justify-center">
-                    <span className="text-white dark:text-brand-navy text-sm font-bold">{t.name[0]}</span>
+                    <span className="text-white dark:text-brand-navy text-sm font-bold">{item.name[0]}</span>
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-dark-text">{t.name}</p>
-                    <p className="text-xs text-gray-500 dark:text-dark-muted">{isRTL && t.arRole ? t.arRole : t.role}</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-dark-text">{item.name}</p>
+                    <p className="text-xs text-gray-500 dark:text-dark-muted">{isRTL && item.arRole ? item.arRole : item.role}</p>
                   </div>
                 </div>
               </div>

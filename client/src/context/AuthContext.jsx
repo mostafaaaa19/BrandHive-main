@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { authAPI, humanizeApiError, syncSellerBrandNameForUser, syncHomepageStatsFromAdmin, incrementPublicBuyerCount } from '../services/api';
+import { authAPI, humanizeApiError, syncSellerBrandNameForUser, syncHomepageStatsFromAdmin, incrementPublicBuyerCount, mergeUserWithMirrorProfile } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -10,57 +10,125 @@ export const useAuth = () => {
   return context;
 };
 
+const buildUserFromStorage = (parsed) => {
+  const token = parsed?.token || parsed?.accessToken;
+  if (!parsed || !token) return null;
+
+  const serverRole = parsed.serverRole || parsed.role || 'customer';
+  return {
+    ...parsed,
+    token,
+    accessToken: token,
+    serverRole,
+    role: serverRole,
+  };
+};
+
+const buildUserFromAuthResponse = (userData, token, refreshToken) => {
+  const serverRole = userData?.role || 'customer';
+  return {
+    ...userData,
+    serverRole,
+    role: serverRole,
+    token,
+    accessToken: token,
+    refreshToken,
+  };
+};
+
+const persistUser = (userData) => {
+  if (!userData) return;
+  localStorage.setItem('brandhive_user', JSON.stringify(userData));
+};
+
+const clearAuthStorage = () => {
+  localStorage.removeItem('brandhive_user');
+  localStorage.removeItem('brandhive_cart');
+  localStorage.removeItem('brandhive_wishlist');
+  localStorage.removeItem('brandhive_role_override');
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);   // initial hydration loading
-  const [authLoading, setAuthLoading] = useState(false); // async op loading
-  const [error, setError] = useState(null);        // API error message
+  const [loading, setLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  // ── On mount: hydrate from localStorage ──────────────────────────────────────
   useEffect(() => {
-    const stored = localStorage.getItem('brandhive_user');
-    if (!stored) {
-      setLoading(false);
-      return;
-    }
-    try {
-      const parsed = JSON.parse(stored);
-      const token = parsed?.token || parsed?.accessToken;
-      if (parsed && token) {
-        if (!parsed.token) {
-          parsed.token = token;
-        }
-        // Apply role override if exists
-        const roleOverride = localStorage.getItem(
-          'brandhive_role_override'
-        );
-        if (!parsed.serverRole && parsed.role) {
-          parsed.serverRole = parsed.role;
-        }
-        if (roleOverride) {
-          parsed.role = roleOverride;
-        }
-        syncSellerBrandNameForUser(parsed);
-        setUser(parsed);
-        // Also update localStorage with override applied
-        localStorage.setItem(
-          'brandhive_user', 
-          JSON.stringify(parsed)
-        );
-        const role = parsed.serverRole || parsed.role;
-        if (role === 'admin') {
-          syncHomepageStatsFromAdmin().catch(() => {});
-        }
-      } else {
-        localStorage.removeItem('brandhive_user');
+    let cancelled = false;
+
+    const hydrateSession = async () => {
+      const stored = localStorage.getItem('brandhive_user');
+      if (!stored) {
+        if (!cancelled) setLoading(false);
+        return;
       }
-    } catch {
-      localStorage.removeItem('brandhive_user');
-    }
-    setLoading(false);
+
+      let parsed;
+      try {
+        parsed = JSON.parse(stored);
+      } catch {
+        clearAuthStorage();
+        if (!cancelled) setLoading(false);
+        return;
+      }
+
+      const localUser = buildUserFromStorage(parsed);
+      if (!localUser) {
+        clearAuthStorage();
+        if (!cancelled) setLoading(false);
+        return;
+      }
+
+      try {
+        const res = await authAPI.validateSession();
+        const payload = res.data?.data || res.data;
+        const serverUser = payload?.user || payload;
+        const token = localUser.token || serverUser?.token || serverUser?.accessToken;
+        const serverRole = serverUser?.role || localUser.serverRole || 'customer';
+
+        const refreshed = {
+          ...localUser,
+          ...serverUser,
+          id: serverUser?.id || serverUser?._id || localUser.id || localUser._id,
+          _id: serverUser?._id || serverUser?.id || localUser._id || localUser.id,
+          serverRole,
+          role: serverRole,
+          token,
+          accessToken: token,
+          refreshToken: localUser.refreshToken || serverUser?.refreshToken,
+        };
+
+        const merged = await mergeUserWithMirrorProfile(refreshed);
+
+        if (!cancelled) {
+          syncSellerBrandNameForUser(merged);
+          setUser(merged);
+          persistUser(merged);
+          if (serverRole === 'admin') {
+            syncHomepageStatsFromAdmin().catch(() => {});
+          }
+        }
+      } catch (err) {
+        const status = err.response?.status;
+        if (status === 401 || status === 403) {
+          clearAuthStorage();
+          if (!cancelled) setUser(null);
+        } else if (!cancelled) {
+          syncSellerBrandNameForUser(localUser);
+          setUser(localUser);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    hydrateSession();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // ── login ─────────────────────────────────────────────────────────────────
   const login = async (email, password) => {
     setAuthLoading(true);
     setError(null);
@@ -80,26 +148,14 @@ export const AuthProvider = ({ children }) => {
         throw new Error('No token received from server');
       }
 
-      const userToStore = {
-        ...userData,
-        serverRole: userData?.role || 'customer',
-        role: userData?.role || 'customer',
-        token,
-        accessToken: token,
-        refreshToken,
-      };
-      const roleOverride = localStorage.getItem('brandhive_role_override');
-      if (roleOverride) {
-        userToStore.role = roleOverride;
-      }
+      const userToStore = await mergeUserWithMirrorProfile(
+        buildUserFromAuthResponse(userData, token, refreshToken)
+      );
       syncSellerBrandNameForUser(userToStore);
       setUser(userToStore);
-      localStorage.setItem(
-        'brandhive_user',
-        JSON.stringify(userToStore)
-      );
-      const role = userToStore.serverRole || userToStore.role;
-      if (role === 'admin') {
+      persistUser(userToStore);
+
+      if (userToStore.serverRole === 'admin') {
         syncHomepageStatsFromAdmin().catch(() => {});
       }
       return userToStore;
@@ -115,7 +171,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // ── register ──────────────────────────────────────────────────────────────
   const register = async (name, email, password, confirmPassword, extraFields = {}) => {
     setAuthLoading(true);
     setError(null);
@@ -131,23 +186,21 @@ export const AuthProvider = ({ children }) => {
       const userData = responseData?.user || responseData?.data?.user || responseData;
 
       if (token) {
-        const userToStore = {
-          ...userData,
-          email: userData?.email || email,
-          name: userData?.name || name,
-          serverRole: userData?.role || 'customer',
-          role: userData?.role || 'customer',
+        const userToStore = buildUserFromAuthResponse(
+          {
+            ...userData,
+            email: userData?.email || email,
+            name: userData?.name || name,
+          },
           token,
-          accessToken: token,
-          refreshToken,
-        };
+          refreshToken
+        );
         setUser(userToStore);
-        localStorage.setItem('brandhive_user', JSON.stringify(userToStore));
+        persistUser(userToStore);
         incrementPublicBuyerCount().catch(() => {});
         return userToStore;
       }
 
-      // Registration succeeded — verify email before login (no token yet)
       const pendingUser = {
         email: userData?.email || email,
         name: userData?.name || name,
@@ -167,64 +220,52 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // ── logout ────────────────────────────────────────────────────────────────
   const logout = async () => {
     try {
-      const currentUser = JSON.parse(localStorage.getItem('brandhive_user'));
+      const currentUser = JSON.parse(localStorage.getItem('brandhive_user') || 'null');
       if (currentUser?.email) {
         authAPI.logout({ email: currentUser.email }).catch(() => {});
       }
     } catch {
-      // Even if API fails, clear local state
+      // clear local state even if API fails
     } finally {
       setUser(null);
-      localStorage.removeItem('brandhive_user');
-      localStorage.removeItem('brandhive_cart');
-      localStorage.removeItem('brandhive_wishlist');
-      localStorage.removeItem('brandhive_role_override');
+      clearAuthStorage();
     }
   };
 
-  // ── updateUser (local only, for profile edits) ────────────────────────────
   const updateUser = (updates) => {
     const updated = { ...user, ...updates };
     setUser(updated);
-    localStorage.setItem('brandhive_user', JSON.stringify(updated));
+    persistUser(updated);
   };
 
-  // ── upgradeToSeller (after admin approval or local UI access) ─────────────
   const upgradeToSeller = (serverUser = null) => {
     const merged = { ...user, ...(serverUser || {}) };
-    const roleFromServer =
-      serverUser?.role || merged.serverRole || merged.role || 'customer';
-    const isServerSeller =
-      roleFromServer === 'seller' || roleFromServer === 'admin';
+    const serverRole = serverUser?.role || merged.serverRole || merged.role || 'customer';
+
+    if (serverRole !== 'seller' && serverRole !== 'admin') {
+      return user;
+    }
 
     const updated = {
       ...merged,
       id: merged.id || merged._id,
       _id: merged._id || merged.id,
-      role: isServerSeller ? roleFromServer : 'seller',
-      serverRole: isServerSeller ? roleFromServer : (merged.serverRole || merged.role || 'customer'),
+      serverRole,
+      role: serverRole,
       token: merged.token || merged.accessToken,
       accessToken: merged.accessToken || merged.token,
     };
 
-    if (isServerSeller) {
-      localStorage.removeItem('brandhive_role_override');
-    } else {
-      localStorage.setItem('brandhive_role_override', 'seller');
-    }
-
     setUser(updated);
-    localStorage.setItem('brandhive_user', JSON.stringify(updated));
+    persistUser(updated);
     return updated;
   };
 
-  // ── refreshSession — sync role/brand from GET /auth/me ────────────────────
   const refreshSession = async () => {
     try {
-      const res = await authAPI.getMe();
+      const res = await authAPI.validateSession();
       const payload = res.data?.data || res.data;
       const serverUser = payload?.user || payload;
       if (!serverUser?.email && !(serverUser?.id || serverUser?._id)) {
@@ -245,32 +286,26 @@ export const AuthProvider = ({ children }) => {
         refreshToken: user?.refreshToken || serverUser.refreshToken,
       };
 
-      const roleOverride = localStorage.getItem('brandhive_role_override');
-      if (
-        roleOverride &&
-        serverRole !== 'seller' &&
-        serverRole !== 'admin'
-      ) {
-        updated.role = roleOverride;
-      } else if (serverRole === 'seller' || serverRole === 'admin') {
-        localStorage.removeItem('brandhive_role_override');
-        updated.role = serverRole;
-      }
+      const merged = await mergeUserWithMirrorProfile(updated);
 
-      syncSellerBrandNameForUser(updated);
-      setUser(updated);
-      localStorage.setItem('brandhive_user', JSON.stringify(updated));
-      return updated;
-    } catch {
-      return user;
+      syncSellerBrandNameForUser(merged);
+      setUser(merged);
+      persistUser(merged);
+      return merged;
+    } catch (err) {
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        setUser(null);
+        clearAuthStorage();
+      }
+      return null;
     }
   };
 
   const serverRole = user?.serverRole || user?.role || 'customer';
-  const isAuthenticated = !!user;
-  const isAdmin = user?.role === 'admin';
-  const isSeller = user?.role === 'seller';
-  const isCustomer = user?.role === 'customer';
+  const isAuthenticated = !!user?.token;
+  const isAdmin = serverRole === 'admin';
+  const isSeller = serverRole === 'seller';
+  const isCustomer = serverRole === 'customer';
   const hasSellerApiAccess = serverRole === 'seller' || serverRole === 'admin';
 
   return (

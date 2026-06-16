@@ -25,6 +25,7 @@ import {
   addSavedCard,
   removeSavedCard,
   setDefaultSavedCard,
+  extractProfilePayload,
 } from '../../services/api';
 import { mapProduct } from '../../utils/mappers';
 import { showOrderInvoice } from '../../utils/invoice';
@@ -340,15 +341,58 @@ export default function UserDashboard() {
     }
   }, [activeTab, wishlistItems]);
 
+  useEffect(() => {
+    if (activeTab === 'wishlist') {
+      fetchWishlist();
+    }
+  }, [activeTab, fetchWishlist]);
+
+  useEffect(() => {
+    if (activeTab !== 'profile' || !user) return;
+
+    let cancelled = false;
+    const loadProfile = async () => {
+      try {
+        const res = await usersAPI.getProfile();
+        const profile = extractProfilePayload(res);
+        const fullName = profile.name || user.name || '';
+        const nameParts = fullName.split(' ').filter(Boolean);
+        if (!cancelled) {
+          setProfileForm({
+            firstName: nameParts[0] || '',
+            lastName: nameParts.slice(1).join(' ') || '',
+            phone: profile.phone || user.phone || '',
+          });
+        }
+      } catch {
+        // keep existing form values
+      }
+    };
+
+    loadProfile();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, user?.id, user?.email, user?.name, user?.phone]);
+
   const handleProfileSave = async () => {
     setProfileLoading(true);
     try {
       const name = `${profileForm.firstName} ${profileForm.lastName}`.trim();
-      await usersAPI.updateProfile({
+      const res = await usersAPI.updateProfile({
         name,
-        phone: profileForm.phone
+        phone: profileForm.phone,
       });
-      updateUser({ name, phone: profileForm.phone });
+      const profile = extractProfilePayload(res);
+      const savedName = profile.name || name;
+      const savedPhone = profile.phone ?? profileForm.phone;
+      updateUser({ name: savedName, phone: savedPhone });
+      const savedParts = savedName.split(' ').filter(Boolean);
+      setProfileForm({
+        firstName: savedParts[0] || profileForm.firstName,
+        lastName: savedParts.slice(1).join(' ') || profileForm.lastName,
+        phone: savedPhone || '',
+      });
       toast.success(isRTL ? 'تم تحديث الملف الشخصي!' : 'Profile updated!', {
         style: { borderRadius: '12px', fontFamily: isRTL ? 'Cairo' : 'Inter' }
       });
@@ -1226,10 +1270,10 @@ export default function UserDashboard() {
                     </Link>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl">
                     {wishlistItems.map(item => (
                       <div key={item.id} className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-4 hover:shadow-card-hover transition-all flex gap-4">
-                        <div className="w-24 h-24 rounded-xl bg-gray-50 dark:bg-dark-bg flex items-center justify-center flex-shrink-0 overflow-hidden">
+                        <div className="w-28 h-28 rounded-xl bg-gray-50 dark:bg-dark-bg flex items-center justify-center flex-shrink-0 overflow-hidden">
                           {item.image ? (
                             <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
                           ) : (
@@ -1242,7 +1286,7 @@ export default function UserDashboard() {
                             {item.name}
                           </Link>
                           <p className="text-brand-navy dark:text-brand-gold font-bold mt-1">
-                            {(item.price || item.salePrice || item.discountPrice || 0).toLocaleString()} {t('common.egp')}
+                            {(item.price || 0).toLocaleString()} {t('common.egp')}
                           </p>
 
                           <div className={`flex items-center gap-3 mt-auto pt-2 border-t border-gray-50 dark:border-dark-border/50 ${isRTL ? 'flex-row-reverse' : ''}`}>

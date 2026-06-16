@@ -23,6 +23,7 @@ import {
   finalizeBrandRequestApproval,
   syncAdminOrdersAfterPaymob,
   syncHomepageStatsFromAdmin,
+  companionServices,
 } from '../../services/api';
 import { isHomepageQualityProduct } from '../../utils/productQuality';
 import { useTranslation } from 'react-i18next';
@@ -1061,6 +1062,14 @@ function AdminFeaturedSlotsTab({ isRTL, productsAPI }) {
     try {
       const { saveFeaturedSlotIds } = await import('../../services/api');
       await saveFeaturedSlotIds(updated);
+      if (!companionServices?.platform) {
+        toast(
+          isRTL
+            ? 'تم الحفظ محلياً — شغّل السيرفر لمزامنة الـ hero'
+            : 'Saved locally — start the server to sync homepage hero',
+          { icon: 'ℹ️' }
+        );
+      }
     } catch {
       toast.error(isRTL ? 'فشل حفظ المنتجات المميزة' : 'Failed to save featured products');
       setFeaturedIds(featuredIds);

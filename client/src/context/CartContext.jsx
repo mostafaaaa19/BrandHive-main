@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { cartAPI, wishlistAPI, aiAPI } from '../services/api';
 import { useAuth } from './AuthContext';
+import { mapProduct } from '../utils/mappers';
 
 const CartContext = createContext(null);
 
@@ -20,6 +21,47 @@ export const useWishlist = () => {
 const isValidMongoId = (id) => 
   id && typeof id === 'string' && 
   /^[a-f\d]{24}$/i.test(id);
+
+const CART_STORAGE_KEY = 'brandhive_cart';
+const WISHLIST_STORAGE_KEY = 'brandhive_wishlist';
+
+const getScopedStorageKey = (baseKey, userId) =>
+  userId ? `${baseKey}_${userId}` : `${baseKey}_guest`;
+
+const readScopedStorage = (baseKey, userId) => {
+  const scoped = localStorage.getItem(getScopedStorageKey(baseKey, userId));
+  if (scoped) {
+    try {
+      return JSON.parse(scoped);
+    } catch {
+      return [];
+    }
+  }
+
+  if (userId) {
+    const legacy = localStorage.getItem(baseKey);
+    if (legacy) {
+      try {
+        return JSON.parse(legacy);
+      } catch {
+        return [];
+      }
+    }
+  }
+
+  return [];
+};
+
+const writeScopedStorage = (baseKey, userId, items) => {
+  localStorage.setItem(getScopedStorageKey(baseKey, userId), JSON.stringify(items));
+};
+
+const clearScopedStorage = (baseKey, userId) => {
+  if (userId) {
+    localStorage.removeItem(getScopedStorageKey(baseKey, userId));
+  }
+  localStorage.removeItem(baseKey);
+};
 
 const mapApiCartItem = (item) => ({
   key: item.product?.id || item._id || item.productId?._id || item.productId,
@@ -81,18 +123,21 @@ const normalizeCartItems = (items) => {
 
 export const CartProvider = ({ children }) => {
   const [items, setItems] = useState([]);
-  const { isAuthenticated, isCustomer } = useAuth();
+  const { isAuthenticated, isCustomer, user } = useAuth();
+  const userId = user?.id || user?._id || null;
 
   useEffect(() => {
-    const stored = localStorage.getItem('brandhive_cart');
-    if (stored) {
-      try { setItems(JSON.parse(stored)); } catch {}
+    if (!userId) {
+      setItems([]);
+      return;
     }
-  }, []);
+    setItems(readScopedStorage(CART_STORAGE_KEY, userId));
+  }, [userId]);
 
   useEffect(() => {
-    localStorage.setItem('brandhive_cart', JSON.stringify(items));
-  }, [items]);
+    if (!userId) return;
+    writeScopedStorage(CART_STORAGE_KEY, userId, items);
+  }, [items, userId]);
 
   // Fetch cart from API (when logged in)
   const fetchCart = useCallback(async () => {
@@ -112,7 +157,9 @@ export const CartProvider = ({ children }) => {
       if (!Array.isArray(cartItems)) return null;
 
       if (cartItems.length === 0) {
-        return null;
+        setItems([]);
+        clearScopedStorage(CART_STORAGE_KEY, userId);
+        return [];
       }
 
       const mapped = cartItems.map(mapApiCartItem);
@@ -130,15 +177,12 @@ export const CartProvider = ({ children }) => {
       }
 
       setItems(normalized);
-      localStorage.setItem(
-        'brandhive_cart', 
-        JSON.stringify(normalized)
-      );
+      writeScopedStorage(CART_STORAGE_KEY, userId, normalized);
       return normalized;
     } catch {
       return null;
     }
-  }, [isAuthenticated, isCustomer]);
+  }, [isAuthenticated, isCustomer, userId]);
 
   // Fetch cart on mount and when auth changes
   useEffect(() => {
@@ -225,7 +269,7 @@ export const CartProvider = ({ children }) => {
   // clearCart — call API if logged in
   const clearCart = async () => {
     setItems([]);
-    localStorage.removeItem('brandhive_cart');
+    clearScopedStorage(CART_STORAGE_KEY, userId);
     if (isAuthenticated && isCustomer) {
       try {
         await cartAPI.clear();
@@ -253,32 +297,33 @@ export const CartProvider = ({ children }) => {
 export const WishlistProvider = ({ children }) => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
-  const { isAuthenticated, isCustomer } = useAuth();
+  const { isAuthenticated, isCustomer, user } = useAuth();
+  const userId = user?.id || user?._id || null;
+  const prevUserIdRef = useRef(userId);
 
-  // Helper: check if valid MongoDB ID
-  const isValidMongoId = (id) =>
-    id && typeof id === 'string' && 
-    /^[a-f\d]{24}$/i.test(id);
-
-  // Load from localStorage on mount
   useEffect(() => {
-    const stored = localStorage.getItem('brandhive_wishlist');
-    if (stored) {
-      try { setItems(JSON.parse(stored)); } catch {}
+    const previousUserId = prevUserIdRef.current;
+    prevUserIdRef.current = userId;
+
+    if (!userId) {
+      if (previousUserId) {
+        setItems([]);
+        return;
+      }
+      setItems(readScopedStorage(WISHLIST_STORAGE_KEY, null));
+      return;
     }
-  }, []);
 
-  // Sync localStorage when items change
+    setItems(readScopedStorage(WISHLIST_STORAGE_KEY, userId));
+  }, [userId]);
+
   useEffect(() => {
-    localStorage.setItem(
-      'brandhive_wishlist', 
-      JSON.stringify(items)
-    );
-  }, [items]);
+    writeScopedStorage(WISHLIST_STORAGE_KEY, userId, items);
+  }, [items, userId]);
 
   // Fetch wishlist from API when logged in
   const fetchWishlist = useCallback(async () => {
-    if (!isAuthenticated || !isCustomer) return;
+    if (!isAuthenticated || !isCustomer || !userId) return;
     try {
       const res = await wishlistAPI.get();
       const data =
@@ -290,64 +335,59 @@ export const WishlistProvider = ({ children }) => {
         [];
       const list = Array.isArray(data) ? data : [];
 
-      if (list.length === 0) return;
+      if (list.length === 0) {
+        setItems([]);
+        writeScopedStorage(WISHLIST_STORAGE_KEY, userId, []);
+        clearScopedStorage(WISHLIST_STORAGE_KEY, null);
+        return;
+      }
 
       const mapWishlistItem = (item) => {
-        const prod = item.product || item.productId || item;
+        const prod = item.product || item.productId;
         if (!prod || typeof prod !== 'object') return null;
-        const id = prod?._id || prod?.id || item._id || item.id;
-        if (!id) return null;
-        return {
-          id,
-          name: prod?.name || item.name || '',
-          price: Number(
-            prod?.finalPrice || prod?.discountPrice || prod?.price ||
-            item.price || 0
-          ),
-          image: prod?.images?.[0]?.url || prod?.images?.[0] ||
-                 prod?.image || prod?.mainImage || item.image || null,
-          brandName: prod?.brand?.name || item.brandName || '',
-          brandSlug: prod?.brand?.slug || item.brandSlug || '',
-          slug: prod?.slug || item.slug || '',
-          category: prod?.category?.name || item.category || '',
-        };
+        const mapped = mapProduct(prod);
+        return mapped.id ? mapped : null;
+      };
+
+      const extractWishlistProductId = (item) => {
+        const prod = item.product || item.productId;
+        if (prod && typeof prod === 'object') {
+          return prod._id || prod.id || null;
+        }
+        return typeof item.productId === 'string' ? item.productId : null;
       };
 
       const mapped = await Promise.all(
         list.map(async (item) => {
           const quick = mapWishlistItem(item);
-          if (quick?.name) return quick;
+          const productId = extractWishlistProductId(item);
+          const needsFullProduct =
+            !quick?.name || !quick?.price || !quick?.image;
 
-          const productId =
-            typeof item.productId === 'string'
-              ? item.productId
-              : item.product || item._id;
-          if (!productId || typeof productId === 'object') return null;
+          if (!needsFullProduct) return quick;
+          if (!productId || !isValidMongoId(String(productId))) {
+            return quick?.name ? quick : null;
+          }
 
           try {
             const { productsAPI } = await import('../services/api');
             const prodRes = await productsAPI.getOne(productId);
-            const p = prodRes.data?.data || prodRes.data;
-            if (!p) return null;
-            return mapWishlistItem({ product: p, _id: item._id });
+            const p = prodRes.data?.data || prodRes.data?.product || prodRes.data;
+            if (!p) return quick;
+            return mapWishlistItem({ product: p, _id: item._id }) || quick;
           } catch {
-            return null;
+            return quick;
           }
         })
       );
 
       const validItems = mapped.filter(Boolean);
-      if (validItems.length > 0) {
-        setItems(validItems);
-        localStorage.setItem(
-          'brandhive_wishlist',
-          JSON.stringify(validItems)
-        );
-      }
+      setItems(validItems);
+      writeScopedStorage(WISHLIST_STORAGE_KEY, userId, validItems);
     } catch {
-      // Keep localStorage items on failure
+      // Keep this account's cached items on failure
     }
-  }, [isAuthenticated, isCustomer]);
+  }, [isAuthenticated, isCustomer, userId]);
 
   // Fetch on mount and auth change
   useEffect(() => {
@@ -416,7 +456,7 @@ export const WishlistProvider = ({ children }) => {
           items.forEach((item) => addToCartFn(item, 1));
         }
         setItems([]);
-        localStorage.removeItem('brandhive_wishlist');
+        clearScopedStorage(WISHLIST_STORAGE_KEY, userId);
         return;
       } catch {
         // fall through to per-item local move
@@ -428,13 +468,13 @@ export const WishlistProvider = ({ children }) => {
       if (addToCartFn) addToCartFn(item, 1);
     });
     setItems([]);
-    localStorage.removeItem('brandhive_wishlist');
+    clearScopedStorage(WISHLIST_STORAGE_KEY, userId);
   };
 
   // Clear wishlist
   const clearWishlist = async () => {
     setItems([]);
-    localStorage.removeItem('brandhive_wishlist');
+    clearScopedStorage(WISHLIST_STORAGE_KEY, userId);
     if (isAuthenticated && isCustomer) {
       try {
         await wishlistAPI.clear();

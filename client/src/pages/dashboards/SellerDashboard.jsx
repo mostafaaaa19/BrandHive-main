@@ -39,6 +39,7 @@ import {
   saveSellerBazaarProfile,
   saveSellerShopSettings,
   submitAdInquiry,
+  companionServices,
 } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../../context/LanguageContext';
@@ -508,6 +509,14 @@ function SellerPayoutsTab({ user, brandId, orderStats, isRTL }) {
       <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
         {isRTL ? 'المدفوعات' : 'Payouts'}
       </h1>
+
+      {!companionServices.payouts && (
+        <div className={`mb-6 rounded-2xl border border-amber-200 dark:border-amber-900/30 bg-amber-50 dark:bg-amber-900/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-300 ${isRTL ? 'text-right' : ''}`}>
+          {isRTL
+            ? 'الأرصدة معروضة من طلباتك. لحفظ بيانات السحب وإرسال طلبات السحب، شغّل السيرفر المحلي: npm run dev:all'
+            : 'Balances are computed from your orders. To save payout details and submit withdrawals, run the companion server: npm run dev:all'}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         {[

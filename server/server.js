@@ -182,7 +182,11 @@ const startServer = () => {
   });
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
-      console.error(`❌ Port ${PORT} is already in use. Stop the other process or set PORT in server/.env`);
+      console.error(`❌ Port ${PORT} is already in use.`);
+      console.error('   Another BrandHive server is probably still running.');
+      console.error('   Windows: netstat -ano | findstr :' + PORT);
+      console.error('   Then:   taskkill /PID <pid> /F');
+      console.error('   Or set a different PORT in server/.env');
       process.exit(1);
     }
     throw err;

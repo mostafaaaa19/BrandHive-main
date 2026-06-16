@@ -25,7 +25,7 @@ const sellerOrderMirrorSchema = new mongoose.Schema(
     paymentMethod: { type: String, default: 'cod' },
     status: {
       type: String,
-      enum: ['pending', 'processing', 'shipped', 'delivered', 'canceled', 'cancelled'],
+      enum: ['pending', 'processing', 'confirmed', 'paid', 'shipped', 'delivered', 'canceled', 'cancelled'],
       default: 'pending',
     },
     shippingAddress: {

@@ -11,6 +11,23 @@ router.use((req, res, next) => {
 
 const dbReady = () => mongoose.connection.readyState === 1;
 
+const normalizeMirrorStatus = (status) => {
+  const value = String(status || 'pending').toLowerCase();
+  const allowed = new Set([
+    'pending',
+    'processing',
+    'confirmed',
+    'paid',
+    'shipped',
+    'delivered',
+    'canceled',
+    'cancelled',
+  ]);
+  if (allowed.has(value)) return value;
+  if (['completed'].includes(value)) return 'delivered';
+  return 'pending';
+};
+
 router.post('/', async (req, res) => {
   if (!dbReady()) {
     return res.status(503).json({ message: 'Order storage unavailable (database offline)' });
@@ -72,7 +89,7 @@ router.post('/', async (req, res) => {
       subtotal: Number(subtotal) || 0,
       totalAmount: Number(totalAmount) || Number(subtotal) || 0,
       paymentMethod: paymentMethod || 'cod',
-      status: status || 'pending',
+      status: normalizeMirrorStatus(status),
       shippingAddress: shippingAddress || undefined,
     });
 

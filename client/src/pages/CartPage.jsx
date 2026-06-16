@@ -5,7 +5,7 @@ import {
   CreditCard, Smartphone, Banknote, Building2, CheckCircle, Shield
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
-import { ordersAPI, addressesAPI, fetchSafeCrossSell, applyCartCouponCode, computeCartPromoAdjustments, extractOrderPaymentUrl, extractCreatedOrderId, initiateOrderPayment, syncCartBeforeCheckout, prefetchCartBrandOffers, fetchSavedCards } from '../services/api';
+import { ordersAPI, addressesAPI, fetchSafeCrossSell, applyCartCouponCode, computeCartPromoAdjustments, extractOrderPaymentUrl, extractCreatedOrderId, initiateOrderPayment, syncCartBeforeCheckout, prefetchCartBrandOffers, fetchSavedCards, fetchPaymobStatus, mirrorCreatedOrderForSellers } from '../services/api';
 import { mapProduct } from '../utils/mappers';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -32,6 +32,7 @@ export default function CartPage() {
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [selectedPayment, setSelectedPayment] = useState('cod');
   const [orderPlaced, setOrderPlaced] = useState(false);
+  const [paymobStatus, setPaymobStatus] = useState(null);
 
   const [delivery, setDelivery] = useState({
     name: '', phone: '', street: '', governorate: isRTL ? 'القاهرة' : 'Cairo', postalCode: '',
@@ -110,6 +111,13 @@ export default function CartPage() {
     };
     loadCards();
   }, [step, isAuthenticated, user?.id, user?._id]);
+
+  useEffect(() => {
+    if (step !== 2) return;
+    fetchPaymobStatus().then(setPaymobStatus).catch(() => {
+      setPaymobStatus({ available: false, configured: false, fawryConfigured: false });
+    });
+  }, [step]);
 
   useEffect(() => {
     if (step !== 1 || !isAuthenticated) return;
@@ -218,6 +226,7 @@ export default function CartPage() {
     setOrderLoading(true);
     try {
       await syncCartBeforeCheckout(items);
+      const cartSnapshot = items.map((item) => ({ ...item }));
 
       const orderData = {
         shippingAddress: {
@@ -237,7 +246,21 @@ export default function CartPage() {
 
       const res = await ordersAPI.create(orderData);
       const orderId = extractCreatedOrderId(res);
+      const createdOrder = res.data?.data || res.data?.order || res.data || {};
       let paymentUrl = extractOrderPaymentUrl(res);
+
+      if (orderId) {
+        await mirrorCreatedOrderForSellers({
+          orderId,
+          cartItems: cartSnapshot,
+          shippingAddress: orderData.shippingAddress,
+          paymentMethod: selectedPayment,
+          totalAmount: total,
+          subtotal: total,
+          status: createdOrder.status || createdOrder.orderStatus || 'pending',
+          customerUser: user,
+        }).catch(() => {});
+      }
 
       if (
         !paymentUrl &&
@@ -258,8 +281,12 @@ export default function CartPage() {
             },
             customerEmail: user?.email,
           });
-        } catch {
+        } catch (payErr) {
           paymentUrl = null;
+          const payMsg = payErr?.response?.data?.message || payErr?.message;
+          if (payMsg) {
+            toast.error(payMsg, { style: { borderRadius: '12px' }, duration: 6000 });
+          }
         }
       }
 
@@ -756,10 +783,24 @@ export default function CartPage() {
                 ))}
               </div>
               {['paymob', 'fawry'].includes(selectedPayment) && (
-                <p className={`text-xs text-amber-700 dark:text-amber-400 mt-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 rounded-xl p-3 ${isRTL ? 'text-right' : ''}`}>
-                  {isRTL
-                    ? 'الدفع بالفيزا/فوري يحتاج Paymob مفعّل على السيرفر. لو البوابة مش جاهزة، الطلب يتسجل «في انتظار الدفع» — أو اختر الدفع عند الاستلام.'
-                    : 'Card/Fawry payment needs Paymob enabled on the server. If not live yet, the order is saved as pending — or choose cash on delivery.'}
+                <p className={`text-xs mt-4 rounded-xl p-3 border ${isRTL ? 'text-right' : ''} ${
+                  paymobStatus?.configured || paymobStatus?.fawryConfigured
+                    ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-900/30'
+                    : 'text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-900/30'
+                }`}>
+                  {!paymobStatus
+                    ? (isRTL ? 'جاري التحقق من بوابة الدفع...' : 'Checking payment gateway...')
+                    : paymobStatus.configured || paymobStatus.fawryConfigured
+                    ? (isRTL
+                        ? 'بوابة الدفع جاهزة — سيتم تحويلك لـ Paymob بعد تأكيد الطلب.'
+                        : 'Payment gateway is ready — you will be redirected to Paymob after placing the order.')
+                    : !paymobStatus.available
+                    ? (isRTL
+                        ? 'شغّل السيرفر المحلي: npm run dev:all — أو الطلب يُحفظ في انتظار الدفع.'
+                        : 'Start the companion server with npm run dev:all — otherwise the order is saved as pending payment.')
+                    : (isRTL
+                        ? 'Paymob غير مفعّل على السيرفر — الطلب يُحفظ في انتظار الدفع أو اختر الدفع عند الاستلام.'
+                        : 'Paymob is not configured on the server — order saves as pending payment, or choose cash on delivery.')}
                 </p>
               )}
 

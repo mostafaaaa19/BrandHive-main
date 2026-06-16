@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { MapPin, Star, CheckCircle2, MessageSquare, Heart, Share2, ArrowLeft, Truck, RotateCcw, Tag, Gift, Zap } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
-import { productsAPI, brandsAPI, loadLocalProductImages, enrichProductsWithLocalImages, fetchBrandProductReviews, fetchBrandFollowState, toggleBrandFollow, fetchBrandPublicOffers } from '../services/api';
-import { mapProduct, mapBrand } from '../utils/mappers';
+import { mapProduct, mapBrand, hydrateProductImages, deduplicateProducts } from '../utils/mappers';
+import { productsAPI, brandsAPI, loadLocalProductImages, enrichProductsWithLocalImages, enrichCatalogWithMirroredImages, fetchBrandProductReviews, fetchBrandFollowState, toggleBrandFollow, fetchBrandPublicOffers } from '../services/api';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
@@ -83,7 +83,35 @@ export default function BrandPage() {
         await loadLocalProductImages(products.map((product) => product._id || product.id));
         products = enrichProductsWithLocalImages(products);
 
-        const mappedProducts = products.map(mapProduct);
+        const mappedBrand = mapBrand(found);
+
+        let mappedProducts = products.map(mapProduct).map((product) => ({
+          ...product,
+          brandName: product.brandName || mappedBrand.name,
+          brandSlug: product.brandSlug || mappedBrand.slug,
+          brandLogo: product.brandLogo || mappedBrand.logo,
+          verified: product.verified ?? mappedBrand.verified,
+        }));
+
+        try {
+          const catalogRes = await productsAPI.getAll({ limit: 100 });
+          const catalogRaw =
+            catalogRes.data?.data ||
+            catalogRes.data?.products ||
+            catalogRes.data ||
+            [];
+          const catalog = Array.isArray(catalogRaw)
+            ? catalogRaw.map(mapProduct)
+            : [];
+          mappedProducts = hydrateProductImages(mappedProducts, catalog);
+        } catch {
+          // keep brand API data
+        }
+
+        mappedProducts = await enrichCatalogWithMirroredImages(mappedProducts, {
+          limit: 50,
+        });
+        mappedProducts = deduplicateProducts(mappedProducts);
         setBrandProducts(mappedProducts);
 
         const totalSales = products.reduce(
@@ -92,7 +120,6 @@ export default function BrandPage() {
         );
         setLocalSales(totalSales);
 
-        const mappedBrand = mapBrand(found);
         if (mappedProducts.length > 0) {
           mappedBrand.productCount = mappedProducts.length;
           const rated = mappedProducts.filter((p) => (p.rating || 0) > 0);
@@ -680,7 +707,7 @@ export default function BrandPage() {
                 </p>
               </div>
             ) : (
-              <div className={`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
                 {filteredProducts.map(product => (
                   <ProductCard key={product.id} product={product} />
                 ))}

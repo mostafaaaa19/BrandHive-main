@@ -71,7 +71,7 @@ export default function ProductCard({ product, size = 'md', badge }) {
   return (
     <Link to={productPath} className="card-product group flex h-full flex-col">
       {/* Image */}
-      <div className={`relative ${isSmall ? 'h-40' : 'h-44 sm:h-52 md:h-60'} bg-gradient-to-br ${bgGradient} flex items-center justify-center overflow-hidden`}>
+      <div className={`relative ${isSmall ? 'h-40' : 'aspect-[4/5] max-h-52 sm:max-h-56'} rounded-t-2xl bg-gradient-to-br ${bgGradient} flex items-center justify-center overflow-hidden shrink-0`}>
         {product.image ? (
           <img
             src={product.image}

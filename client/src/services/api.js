@@ -1694,6 +1694,10 @@ const sellerBrandStorageKey = (userId) =>
 const sellerBrandSlugStorageKey = (userId) =>
   `brandhive_seller_brand_slug_${userId || 'default'}`;
 
+const storeSettingsCache = new Map();
+const storeSettingsInflight = new Map();
+const lastPersistedSellerBrand = new Map();
+
 export const rememberSellerBrand = (userId, brand) => {
   if (!userId || !brand) return;
   const brandId = brand._id || brand.id;
@@ -1704,21 +1708,58 @@ export const rememberSellerBrand = (userId, brand) => {
     localStorage.setItem(sellerBrandSlugStorageKey(userId), brand.slug);
   }
   if (brand.name) {
-    rememberSellerBrandName(userId, brand.name);
+    rememberSellerBrandName(userId, brand.name, null, { skipMirror: true });
   }
 
-  if (brandId && localPlatform) {
-    const payload = { brandId: String(brandId) };
-    if (brand.name || brand.slug) {
-      payload.bazaar = {
-        ...(brand.name ? { name: brand.name } : {}),
-        ...(brand.slug ? { slug: brand.slug } : {}),
-      };
-    }
-    localPlatform
-      .put(`/users/${encodeURIComponent(String(userId))}/store-settings`, payload)
-      .catch(() => {});
+  if (!brandId || !localPlatform) return;
+
+  const persistKey = `${userId}:${brandId}:${brand.slug || ''}:${brand.name || ''}`;
+  if (lastPersistedSellerBrand.get(userId) === persistKey) return;
+  lastPersistedSellerBrand.set(userId, persistKey);
+
+  const payload = { brandId: String(brandId) };
+  if (brand.name || brand.slug) {
+    payload.bazaar = {
+      ...(brand.name ? { name: brand.name } : {}),
+      ...(brand.slug ? { slug: brand.slug } : {}),
+    };
   }
+  localPlatform
+    .put(`/users/${encodeURIComponent(String(userId))}/store-settings`, payload)
+    .then(() => {
+      storeSettingsCache.delete(String(userId));
+    })
+    .catch(() => {});
+};
+
+const resolveBrandRecordByName = async (brandName) => {
+  const normalized = brandName?.trim().toLowerCase();
+  if (!normalized) return null;
+
+  if (hasAuthToken()) {
+    try {
+      const res = await api.get('/brand', { params: { limit: 100 } });
+      const brands = getResponseArray(res);
+      const match = brands.find(
+        (brand) => String(brand.name || '').trim().toLowerCase() === normalized
+      );
+      if (match) return match;
+    } catch {
+      // fall through
+    }
+  }
+
+  try {
+    const facets = await getBrandsFromFacets();
+    const match = facets.find(
+      (brand) => String(brand.name || '').trim().toLowerCase() === normalized
+    );
+    if (match) return match;
+  } catch {
+    // ignore
+  }
+
+  return null;
 };
 
 const loadMirrorSellerBrandRecord = async (userId) => {
@@ -1726,15 +1767,107 @@ const loadMirrorSellerBrandRecord = async (userId) => {
   try {
     const settings = await fetchSellerStoreSettings(userId);
     const brandId = settings?.brandId;
-    if (!brandId) return null;
     const bazaar = settings?.bazaar || {};
-    return {
-      _id: brandId,
-      id: brandId,
-      name: bazaar.name || null,
-      slug: bazaar.slug || null,
-    };
+    const shop = settings?.shop || {};
+    const name = bazaar.name || shop.storeName || null;
+    const slug = bazaar.slug || null;
+
+    if (brandId) {
+      return {
+        _id: brandId,
+        id: brandId,
+        name,
+        slug,
+      };
+    }
+
+    if (name) {
+      const resolved = await resolveBrandRecordByName(name);
+      const resolvedId = resolved?._id || resolved?.id;
+      if (resolvedId) {
+        const record = {
+          _id: resolvedId,
+          id: resolvedId,
+          name: resolved.name || name,
+          slug: resolved.slug || slug,
+        };
+        rememberSellerBrand(userId, record);
+        return record;
+      }
+    }
   } catch {
+    return null;
+  }
+
+  return null;
+};
+
+export const prefetchSellerBrandHints = async (user) => {
+  const userId = user?.id || user?._id;
+  if (!userId) return collectSellerBrandHints(user);
+
+  if (localPlatform) {
+    try {
+      const settings = await fetchSellerStoreSettings(userId);
+      const mirrorName =
+        settings?.shop?.storeName || settings?.bazaar?.name || null;
+      const mirrorBrandId = settings?.brandId || null;
+      const mirrorSlug = settings?.bazaar?.slug || null;
+
+      if (mirrorName) {
+        localStorage.setItem(sellerBrandNameStorageKey(userId), mirrorName);
+        if (user?.email) {
+          localStorage.setItem(
+            sellerBrandNameByEmailKey(user.email.toLowerCase()),
+            mirrorName
+          );
+        }
+      }
+      if (mirrorBrandId) {
+        localStorage.setItem(sellerBrandStorageKey(userId), String(mirrorBrandId));
+      }
+      if (mirrorSlug) {
+        localStorage.setItem(sellerBrandSlugStorageKey(userId), mirrorSlug);
+      }
+    } catch {
+      // keep local hints
+    }
+  }
+
+  return collectSellerBrandHints(user);
+};
+
+const bootstrapSellerDataFromDashboard = async (user, { addProducts, rememberBrandId }) => {
+  const userId = user?.id || user?._id;
+  try {
+    const dashRes = await sellerAPI.getDashboard();
+    const dashData = dashRes.data?.data || dashRes.data || {};
+    const dashBrand = dashData.brand;
+    const brandId = dashBrand?._id || dashBrand?.id;
+
+    if (brandId) {
+      rememberSellerBrand(userId, dashBrand);
+      rememberBrandId(brandId);
+    }
+
+    const productCandidates = [
+      dashData.products,
+      dashData.recentProducts,
+      dashData.topProducts,
+      dashData.products?.items,
+      dashData.products?.list,
+    ];
+    productCandidates.forEach((list) => {
+      if (Array.isArray(list)) addProducts(list);
+    });
+
+    return { brandId, dashBrand, dashData };
+  } catch (err) {
+    console.warn(
+      '[fetchSellerProducts/dashboard]',
+      err.response?.status,
+      err.response?.data || err.message
+    );
     return null;
   }
 };
@@ -1786,9 +1919,11 @@ const cacheSellerProducts = (userId, products) => {
   }
 };
 
-export const rememberSellerBrandName = (userId, brandName, email) => {
+export const rememberSellerBrandName = (userId, brandName, email, { skipMirror = false } = {}) => {
   const trimmed = brandName?.trim();
   if (!trimmed) return;
+  const existing =
+    userId && localStorage.getItem(sellerBrandNameStorageKey(userId));
   if (userId) {
     localStorage.setItem(sellerBrandNameStorageKey(userId), trimmed);
   }
@@ -1796,6 +1931,21 @@ export const rememberSellerBrandName = (userId, brandName, email) => {
   if (emailKey) {
     localStorage.setItem(sellerBrandNameByEmailKey(emailKey), trimmed);
   }
+
+  if (skipMirror || !userId || !localPlatform || existing === trimmed) return;
+
+  localPlatform
+    .put(`/users/${encodeURIComponent(String(userId))}/store-settings`, {
+      shop: {
+        storeName: trimmed,
+        ...(email ? { email: String(email).toLowerCase().trim() } : {}),
+      },
+      bazaar: { name: trimmed },
+    })
+    .then(() => {
+      storeSettingsCache.delete(String(userId));
+    })
+    .catch(() => {});
 };
 
 export const syncSellerBrandNameForUser = (user) => {
@@ -2134,6 +2284,7 @@ export const linkBrandFromAuthedCatalog = async (user) => {
 export const ensureSellerBrandLinked = async (user) => {
   if (!user) return readCachedSellerBrandForUser(user);
 
+  await prefetchSellerBrandHints(user);
   const cached = readCachedSellerBrandForUser(user);
   const hints = collectSellerBrandHints(user);
   const { userId, savedName } = hints;
@@ -2378,6 +2529,7 @@ export const resolveSellerBrand = async (user) => {
 
 /** Resolve brand/bazaar for seller My Bazaar tab — fast parallel lookups, no heavy resolveSellerBrand. */
 export const resolveSellerBazaarSource = async (user, { brandId, products = [] } = {}) => {
+  await prefetchSellerBrandHints(user);
   const hints = collectSellerBrandHints(user);
   const { userId, savedName, savedSlug } = hints;
 
@@ -2391,6 +2543,32 @@ export const resolveSellerBazaarSource = async (user, { brandId, products = [] }
   const cached = getCachedSellerBrand(userId, savedName, savedSlug);
 
   const attempts = [];
+
+  if (userId) {
+    attempts.push(
+      withRequestTimeout(
+        loadMirrorSellerBrandRecord(userId).then((record) => {
+          const result = toBrandResult(record);
+          if (result) return result;
+          throw new Error('empty mirror brand');
+        }),
+        6000
+      ),
+      withRequestTimeout(
+        ensureSellerBrandLinked(user).then((brand) => {
+          const result = toBrandResult(brand);
+          if (result) return result;
+          throw new Error('brand not linked');
+        }),
+        8000
+      ),
+      withRequestTimeout(linkBrandFromAuthedCatalog(user), 8000).then((brand) => {
+        const result = toBrandResult(brand);
+        if (result) return result;
+        throw new Error('no authed brand match');
+      })
+    );
+  }
 
   if (brandId) {
     attempts.push(
@@ -2448,11 +2626,6 @@ export const resolveSellerBazaarSource = async (user, { brandId, products = [] }
       );
       if (result) return result;
       throw new Error('empty request brand');
-    }),
-    withRequestTimeout(linkBrandFromAuthedCatalog(user), 6000).then((brand) => {
-      const result = toBrandResult(brand);
-      if (result) return result;
-      throw new Error('no authed brand match');
     }),
     withRequestTimeout(linkBrandFromFacets(user), 6000).then((brand) => {
       const result = toBrandResult(brand);
@@ -2571,7 +2744,14 @@ export const fetchSellerProducts = async (user) => {
     if (id) candidateBrandIds.add(String(id));
   };
 
+  await prefetchSellerBrandHints(user);
+  await bootstrapSellerDataFromDashboard(user, { addProducts, rememberBrandId });
   await ensureSellerBrandLinked(user).catch(() => null);
+  await linkBrandFromAuthedCatalog(user).then((brand) => {
+    const brandId = brand?._id || brand?.id;
+    if (brandId) rememberBrandId(brandId);
+  }).catch(() => null);
+
   const resolvedBrandId = await resolveSellerBrandId(user);
   if (resolvedBrandId) rememberBrandId(resolvedBrandId);
 
@@ -2640,6 +2820,25 @@ export const fetchSellerProducts = async (user) => {
         );
       } catch {
         // ignore search fallback errors
+      }
+    }
+
+    if (byId.size === 0 && hasAuthToken()) {
+      try {
+        const authedRes = await getAllAuthedProducts({ limit: 100 });
+        const authedProducts = getResponseArray(authedRes);
+        const brandIdSet = new Set([...candidateBrandIds].map(String));
+        addProducts(
+          authedProducts.filter((product) => {
+            const productBrandId = String(
+              product.brand?._id || product.brand?.id || product.brandId || ''
+            );
+            if (brandIdSet.size > 0) return brandIdSet.has(productBrandId);
+            return brandOwnedByUser(product.brand, userId);
+          })
+        );
+      } catch {
+        // ignore authed catalog errors
       }
     }
 
@@ -2905,6 +3104,9 @@ export const mirrorCreatedOrderForSellers = async ({
 const collectSellerBrandIds = async (user) => {
   const brandIds = new Set();
   const userId = user?.id || user?._id;
+
+  await prefetchSellerBrandHints(user);
+
   if (userId) {
     const cached = localStorage.getItem(sellerBrandStorageKey(userId));
     if (cached) brandIds.add(String(cached));
@@ -2930,6 +3132,7 @@ const collectSellerBrandIds = async (user) => {
 };
 
 export const fetchSellerOrders = async (user) => {
+  const userId = user?.id || user?._id;
   let railwayOrders = [];
 
   try {
@@ -2942,10 +3145,14 @@ export const fetchSellerOrders = async (user) => {
   const brandIds = await collectSellerBrandIds(user);
   let mirrored = [];
 
-  if (localSellerOrders && brandIds.length > 0) {
+  if (localSellerOrders && (brandIds.length > 0 || userId)) {
     try {
       const localRes = await localSellerOrders.get('/', {
-        params: { brandIds: brandIds.join(','), _t: Date.now() },
+        params: {
+          ...(brandIds.length > 0 ? { brandIds: brandIds.join(',') } : {}),
+          ...(userId ? { sellerId: String(userId) } : {}),
+          _t: Date.now(),
+        },
       });
       mirrored = getResponseArray(localRes)
         .map(normalizeMirroredSellerOrder)
@@ -2989,6 +3196,15 @@ export const fetchSellerOrders = async (user) => {
   );
 
   return hydrateOrdersWithPaymobPaymentStatus(list, { reconcile: true });
+};
+
+export const computeReviewAverageRating = (reviews) => {
+  if (!Array.isArray(reviews) || reviews.length === 0) return 0;
+  const rated = reviews.filter((review) => Number(review.rating) > 0);
+  if (rated.length === 0) return 0;
+  return (
+    rated.reduce((sum, review) => sum + Number(review.rating), 0) / rated.length
+  );
 };
 
 export const fetchSellerReviews = async (user) => {
@@ -4962,13 +5178,33 @@ export const setDefaultSavedCard = async (userId, cardId) => {
 
 export const fetchSellerStoreSettings = async (userId, brandId) => {
   if (!userId) return { bazaar: {}, shop: {} };
-  if (!localPlatform) throw mirrorServiceUnavailable();
+  if (!localPlatform) return { bazaar: {}, shop: {} };
 
-  const res = await localPlatform.get(
-    `/users/${encodeURIComponent(String(userId))}/store-settings`,
-    { params: brandId ? { brandId: String(brandId) } : {} }
-  );
-  return res.data?.data || res.data || { bazaar: {}, shop: {} };
+  const key = String(userId);
+  const cached = storeSettingsCache.get(key);
+  if (cached && Date.now() - cached.at < 30_000) {
+    return cached.data;
+  }
+
+  if (storeSettingsInflight.has(key)) {
+    return storeSettingsInflight.get(key);
+  }
+
+  const request = localPlatform
+    .get(`/users/${encodeURIComponent(String(userId))}/store-settings`, {
+      params: brandId ? { brandId: String(brandId) } : {},
+    })
+    .then((res) => {
+      const data = res.data?.data || res.data || { bazaar: {}, shop: {} };
+      storeSettingsCache.set(key, { data, at: Date.now() });
+      return data;
+    })
+    .finally(() => {
+      storeSettingsInflight.delete(key);
+    });
+
+  storeSettingsInflight.set(key, request);
+  return request;
 };
 
 export const saveSellerBazaarProfile = async (userId, brandId, bazaar = {}) => {

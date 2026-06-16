@@ -453,12 +453,12 @@ export default function BrandPage() {
   const formatStat = (value) => (value > 0 ? value : '—');
 
   return (
-    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200 ${isRTL ? 'text-right' : 'text-left'}`}>
+    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200 text-start`}>
       {/* Breadcrumb */}
       <div className="bg-white dark:bg-dark-surface border-b border-gray-100 dark:border-dark-border">
         <div className="page-container py-3">
-          <Link to="/explore" className={`flex items-center gap-1 text-sm text-gray-500 dark:text-dark-muted hover:text-brand-navy dark:hover:text-brand-gold transition-colors ${isRTL ? 'flex-row-reverse' : ''}`}>
-            <ArrowLeft size={14} className={isRTL ? 'rotate-180' : ''} />
+          <Link to="/explore" className={`flex items-center gap-1 text-sm text-gray-500 dark:text-dark-muted hover:text-brand-navy dark:hover:text-brand-gold transition-colors`}>
+            <ArrowLeft size={14} className="rtl-flip" />
             {isRTL ? 'العودة للماركات' : 'Back to Brands'}
           </Link>
         </div>
@@ -467,7 +467,7 @@ export default function BrandPage() {
       {/* Brand Header */}
       <div className={`bg-gradient-to-r ${brand.coverColor || 'from-gray-100 to-gray-50'} dark:from-dark-surface dark:to-dark-surface border-b border-gray-200 dark:border-dark-border`}>
         <div className="page-container py-8">
-          <div className={`flex flex-col md:flex-row gap-6 items-start ${isRTL ? 'md:flex-row-reverse' : ''}`}>
+          <div className={`flex flex-col md:flex-row gap-6 items-start`}>
             {/* Brand Avatar */}
             <div className={`w-20 h-20 rounded-3xl bg-gradient-to-br ${brand.color || 'from-brand-navy to-blue-800'} flex items-center justify-center shadow-lg flex-shrink-0 overflow-hidden`}>
               {brand.logo ? (
@@ -479,21 +479,21 @@ export default function BrandPage() {
 
             {/* Brand Info */}
             <div className="flex-1 min-w-0">
-              <div className={`flex flex-wrap items-center gap-3 mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex flex-wrap items-center gap-3 mb-2`}>
                 <h1 className="text-3xl font-display font-bold text-gray-900 dark:text-dark-text">{brand.name}</h1>
                 {brand.verified && (
-                  <span className={`badge-verified text-sm ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <span className={`badge-verified text-sm`}>
                     <CheckCircle2 size={13} /> {isRTL ? 'موثق' : 'Verified'}
                   </span>
                 )}
               </div>
 
-              <div className={`flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-dark-muted mb-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                <span className={`flex items-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}><MapPin size={13} /> {brand.country}</span>
+              <div className={`flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-dark-muted mb-3`}>
+                <span className={`flex items-center gap-1`}><MapPin size={13} /> {brand.country}</span>
                 <span>· {isRTL ? 'عضو منذ' : 'Member since'} {brand.memberSince}</span>
               </div>
 
-              <div className={`flex flex-wrap gap-2 mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex flex-wrap gap-2 mb-4`}>
                 {brand.tags?.map(tag => (
                   <span key={tag} className="px-3 py-1 bg-white/80 dark:bg-dark-bg/80 rounded-full text-xs font-medium text-gray-700 dark:text-dark-text">
                     {tag}
@@ -510,7 +510,7 @@ export default function BrandPage() {
 
             {/* Stats + Actions */}
             <div className={`flex flex-col items-end gap-4 ${isRTL ? 'items-start' : 'items-end'}`}>
-              <div className={`grid grid-cols-4 gap-4 text-center ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`grid grid-cols-4 gap-4 text-center`}>
                 {[
                   { value: formatStat(productCount), label: isRTL ? 'منتجات' : 'Products' },
                   { value: salesCount > 0 ? salesDisplay : '—', label: isRTL ? 'مبيعات' : 'Sales' },
@@ -529,12 +529,12 @@ export default function BrandPage() {
                 ))}
               </div>
 
-              <div className={`flex gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex gap-2`}>
                 <button
                   type="button"
                   onClick={handleFollow}
                   disabled={followLoading}
-                  className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 ${isRTL ? 'flex-row-reverse' : ''} ${
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 ${
                   isFollowing
                     ? 'bg-gray-100 dark:bg-dark-bg text-gray-700 dark:text-dark-text hover:bg-gray-200 dark:hover:bg-dark-surface'
                     : 'bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy hover:bg-opacity-90'
@@ -542,7 +542,7 @@ export default function BrandPage() {
                   <Heart size={15} fill={isFollowing ? 'currentColor' : 'none'} className={isFollowing ? 'text-red-500' : ''} />
                   {isFollowing ? (isRTL ? 'متابع' : 'Following') : (isRTL ? '+ متابعة' : '+ Follow')}
                 </button>
-                <button type="button" onClick={handleMessage} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm border-2 border-gray-200 dark:border-dark-border hover:border-brand-navy dark:hover:border-brand-gold text-gray-700 dark:text-dark-text hover:text-brand-navy dark:hover:text-brand-navy transition-all ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <button type="button" onClick={handleMessage} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm border-2 border-gray-200 dark:border-dark-border hover:border-brand-navy dark:hover:border-brand-gold text-gray-700 dark:text-dark-text hover:text-brand-navy dark:hover:text-brand-navy transition-all`}>
                   <MessageSquare size={15} />
                   {isRTL ? 'رسالة' : 'Message'}
                 </button>
@@ -557,14 +557,14 @@ export default function BrandPage() {
               </div>
 
               {/* Shipping info */}
-              <div className={`flex gap-4 text-xs text-gray-500 dark:text-dark-muted ${isRTL ? 'flex-row-reverse' : ''}`}>
-                <span className={`flex items-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex gap-4 text-xs text-gray-500 dark:text-dark-muted`}>
+                <span className={`flex items-center gap-1`}>
                   <Truck size={12} />
                   {freeShippingOffer
                     ? freeShippingOffer.label
                     : `${isRTL ? 'توصيل:' : 'Shipping:'} ${brand.shipping}`}
                 </span>
-                <span className={`flex items-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}><RotateCcw size={12} /> {isRTL ? 'استرجاع:' : 'Returns:'} {brand.returns}</span>
+                <span className={`flex items-center gap-1`}><RotateCcw size={12} /> {isRTL ? 'استرجاع:' : 'Returns:'} {brand.returns}</span>
               </div>
             </div>
           </div>
@@ -574,7 +574,7 @@ export default function BrandPage() {
       {/* Tabs */}
       <div className="bg-white dark:bg-dark-surface border-b border-gray-200 dark:border-dark-border sticky top-16 z-30">
         <div className="page-container">
-          <div className={`flex gap-1 overflow-x-auto ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className={`flex gap-1 overflow-x-auto`}>
             {tabs.map(tab => {
               const isActive = activeTab === tab.id;
               return (
@@ -599,7 +599,7 @@ export default function BrandPage() {
           <div>
             {hasActiveOffers && (
               <div className="mb-6 space-y-3">
-                <div className={`flex items-center gap-2 mb-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex items-center gap-2 mb-1`}>
                   <Zap size={16} className="text-brand-gold" />
                   <h3 className="font-bold text-gray-900 dark:text-dark-text">
                     {isRTL ? 'عروض المتجر' : 'Store Offers'}
@@ -607,7 +607,7 @@ export default function BrandPage() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {freeShippingOffer && (
-                    <div className={`flex items-start gap-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-2xl p-4 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+                    <div className={`flex items-start gap-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-2xl p-4`}>
                       <Truck size={18} className="text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
                       <div>
                         <p className="font-semibold text-sm text-gray-900 dark:text-dark-text">
@@ -620,7 +620,7 @@ export default function BrandPage() {
                     </div>
                   )}
                   {bundleOffer && (
-                    <div className={`flex items-start gap-3 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 rounded-2xl p-4 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+                    <div className={`flex items-start gap-3 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 rounded-2xl p-4`}>
                       <Gift size={18} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
                       <div>
                         <p className="font-semibold text-sm text-gray-900 dark:text-dark-text">
@@ -635,9 +635,9 @@ export default function BrandPage() {
                   {brandOffers.coupons.map((coupon) => (
                     <div
                       key={coupon._id || coupon.id || coupon.code}
-                      className={`flex items-center justify-between gap-3 bg-brand-gold-pale dark:bg-brand-gold/10 border border-brand-gold/30 rounded-2xl p-4 ${isRTL ? 'flex-row-reverse' : ''}`}
+                      className={`flex items-center justify-between gap-3 bg-brand-gold-pale dark:bg-brand-gold/10 border border-brand-gold/30 rounded-2xl p-4`}
                     >
-                      <div className={`flex items-start gap-3 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+                      <div className={`flex items-start gap-3`}>
                         <Tag size={18} className="text-brand-navy dark:text-brand-gold flex-shrink-0 mt-0.5" />
                         <div>
                           <p className="font-bold text-brand-navy dark:text-brand-gold tracking-wide">
@@ -667,7 +667,7 @@ export default function BrandPage() {
             )}
 
             {/* Filters bar */}
-            <div className={`flex flex-wrap items-center gap-3 mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`flex flex-wrap items-center gap-3 mb-6`}>
               {[
                 { id: 'All', label: isRTL ? 'الكل' : 'All' },
                 { id: 'On Sale', label: isRTL ? 'عروض' : 'On Sale' },
@@ -707,7 +707,7 @@ export default function BrandPage() {
                 </p>
               </div>
             ) : (
-              <div className={`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4`}>
                 {filteredProducts.map(product => (
                   <ProductCard key={product.id} product={product} />
                 ))}
@@ -733,7 +733,7 @@ export default function BrandPage() {
             ) : (
               <div className="space-y-4">
                 <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
-                  <div className={`flex items-center gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex items-center gap-6`}>
                     <div className="text-center">
                       <div className="text-5xl font-display font-bold text-brand-navy dark:text-brand-gold">
                         {reviewAverage > 0 ? reviewAverage : '—'}
@@ -759,7 +759,7 @@ export default function BrandPage() {
                     key={review._id || review.id || i}
                     className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5 ${isRTL ? 'text-right' : ''}`}
                   >
-                    <div className={`flex items-center gap-3 mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <div className={`flex items-center gap-3 mb-2`}>
                       <div className="w-9 h-9 rounded-full bg-brand-gold flex items-center justify-center text-white text-sm font-bold">
                         {review.user?.name?.[0] || 'U'}
                       </div>
@@ -767,7 +767,7 @@ export default function BrandPage() {
                         <p className="text-sm font-semibold text-gray-900 dark:text-dark-text">
                           {review.user?.name || 'Customer'}
                         </p>
-                        <div className={`flex ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div className={`flex`}>
                           {[...Array(5)].map((_, s) => (
                             <Star
                               key={s}
@@ -781,7 +781,7 @@ export default function BrandPage() {
                           ))}
                         </div>
                       </div>
-                      <span className={`${isRTL ? 'mr-auto ml-0' : 'ml-auto mr-0'} text-xs text-gray-400 dark:text-dark-muted`}>
+                      <span className={`ms-auto text-xs text-gray-400 dark:text-dark-muted`}>
                         {review.createdAt
                           ? new Date(review.createdAt).toLocaleDateString(
                               isRTL ? 'ar-EG' : 'en-US'
@@ -789,11 +789,11 @@ export default function BrandPage() {
                           : ''}
                       </span>
                     </div>
-                    <p className={`text-sm text-gray-700 dark:text-dark-muted ${isRTL ? 'mr-12' : 'ml-12'}`}>
+                    <p className={`text-sm text-gray-700 dark:text-dark-muted ms-12`}>
                       {review.comment || '-'}
                     </p>
                     {review.productName && (
-                      <p className={`text-xs text-brand-gold mt-2 ${isRTL ? 'mr-12' : 'ml-12'}`}>
+                      <p className={`text-xs text-brand-gold mt-2 ms-12`}>
                         {review.productName}
                       </p>
                     )}
@@ -813,10 +813,10 @@ export default function BrandPage() {
               </h3>
               <p className="text-gray-700 dark:text-dark-muted leading-relaxed mb-6">{isRTL && brand.arDescription ? brand.arDescription : brand.longDescription}</p>
 
-              <div className={`grid grid-cols-2 gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`grid grid-cols-2 gap-4`}>
                 <div className="bg-brand-cream dark:bg-dark-bg rounded-xl p-4">
                   <p className="text-sm font-semibold text-gray-700 dark:text-dark-text">{isRTL ? 'الموقع' : 'Location'}</p>
-                  <p className={`text-gray-600 dark:text-dark-muted text-sm mt-1 flex items-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}><MapPin size={13} /> {brand.country}</p>
+                  <p className={`text-gray-600 dark:text-dark-muted text-sm mt-1 flex items-center gap-1`}><MapPin size={13} /> {brand.country}</p>
                 </div>
                 <div className="bg-brand-cream dark:bg-dark-bg rounded-xl p-4">
                   <p className="text-sm font-semibold text-gray-700 dark:text-dark-text">{isRTL ? 'عضو منذ' : 'Member Since'}</p>
@@ -849,7 +849,7 @@ export default function BrandPage() {
                   { title: isRTL ? 'طرق الدفع' : 'Payment Methods', icon: '💳', text: isRTL ? 'نقبل جميع البطاقات الائتمانية الرئيسية، فودافون كاش، فوري، والدفع عند الاستلام.' : 'We accept all major credit cards, Vodafone Cash, Fawry, and Cash on Delivery.' },
                   { title: isRTL ? 'التخصيص' : 'Customization', icon: '✨', text: isRTL ? 'تتوفر طلبات التخصيص لبعض المنتجات. يرجى مراسلتنا قبل تقديم طلب مخصص.' : 'Custom orders available for select products. Please message us before placing a custom order.' },
                 ].map(p => (
-                  <div key={p.title} className={`flex gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div key={p.title} className={`flex gap-4`}>
                     <span className="text-2xl flex-shrink-0">{p.icon}</span>
                     <div className={isRTL ? 'text-right' : ''}>
                       <h4 className="font-semibold text-gray-900 dark:text-dark-text mb-1">{p.title}</h4>

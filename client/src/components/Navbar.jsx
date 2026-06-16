@@ -252,9 +252,9 @@ export default function Navbar() {
       {/* Main Navbar */}
       <header className={`sticky top-0 z-50 bg-white dark:bg-dark-surface/95 dark:backdrop-blur-md transition-shadow duration-300 ${scrolled ? 'shadow-md' : 'border-b border-gray-100 dark:border-dark-border'}`}>
         <div className="page-container">
-          <div className={`flex items-center h-16 gap-4 ${isRTL ? 'flex-row-reverse' : 'flex-row'}`}>
+          <div className="flex items-center h-16 gap-4 flex-row">
             {/* Logo */}
-            <Link to="/" className={`flex items-center gap-2 flex-shrink-0 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <Link to="/" className="flex items-center gap-2 flex-shrink-0">
               <div className="w-9 h-9 bg-brand-navy dark:bg-brand-gold rounded-xl flex items-center justify-center">
                 <span className="text-white dark:text-brand-navy font-display font-bold text-lg">B</span>
               </div>
@@ -262,7 +262,7 @@ export default function Navbar() {
             </Link>
 
             {/* Desktop Nav Links */}
-            <nav className={`hidden lg:flex items-center gap-1 ${isRTL ? 'mr-4' : 'ml-4'}`}>
+            <nav className="hidden lg:flex items-center gap-1 ms-4">
               {NAV_LINKS.map((link) => (
                 link.hasDropdown ? (
                   <div key={link.label} className="relative" ref={dropdownRef}>
@@ -277,7 +277,7 @@ export default function Navbar() {
                       <ChevronDown size={14} className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
                     </button>
                     {dropdownOpen && (
-                      <div className={`absolute top-full ${isRTL ? 'right-0' : 'left-0'} mt-2 w-56 bg-white dark:bg-dark-surface rounded-2xl shadow-card-hover border border-gray-100 dark:border-dark-border p-2 animate-fade-in`}>
+                      <div className={`absolute top-full start-0 mt-2 w-56 bg-white dark:bg-dark-surface rounded-2xl shadow-card-hover border border-gray-100 dark:border-dark-border p-2 animate-fade-in`}>
                         {EXPLORE_MENU.map((item) => (
                           <Link
                             key={item.label}
@@ -311,13 +311,13 @@ export default function Navbar() {
             {/* Search Bar - Desktop */}
             <form onSubmit={handleSearch} className="hidden md:flex flex-1 max-w-md mx-4">
               <div ref={searchRef} className="relative w-full">
-                <Search size={16} className={`absolute ${isRTL ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 text-gray-400 dark:text-dark-muted`} />
+                <Search size={16} className={`absolute start-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-dark-muted`} />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => handleSearchInput(e.target.value)}
                   placeholder={isRTL ? 'ابحث عن ماركات، منتجات...' : 'Search brands, products, artisans...'}
-                  className={`w-full ${isRTL ? 'pr-9 pl-4' : 'pl-9 pr-4'} py-2.5 text-sm border border-gray-200 dark:border-dark-border rounded-xl bg-gray-50 dark:bg-dark-bg text-gray-900 dark:text-dark-text focus:bg-white dark:focus:bg-dark-bg focus:outline-none focus:ring-2 focus:ring-brand-navy/20 dark:focus:ring-brand-gold/20 focus:border-brand-navy dark:focus:border-brand-gold transition-all`}
+                  className={`w-full ps-9 pe-4 py-2.5 text-sm border border-gray-200 dark:border-dark-border rounded-xl bg-gray-50 dark:bg-dark-bg text-gray-900 dark:text-dark-text focus:bg-white dark:focus:bg-dark-bg focus:outline-none focus:ring-2 focus:ring-brand-navy/20 dark:focus:ring-brand-gold/20 focus:border-brand-navy dark:focus:border-brand-gold transition-all`}
                 />
                 {/* Live search dropdown */}
                 {(searchResults.length > 0 || searchLoading) && searchQuery && (
@@ -363,7 +363,7 @@ export default function Navbar() {
             </form>
 
             {/* Right Actions */}
-            <div className={`flex items-center gap-1 ${isRTL ? 'mr-auto' : 'ml-auto'}`}>
+            <div className="flex items-center gap-1 ms-auto">
 
               {/* Mobile Search */}
               <button
@@ -377,7 +377,7 @@ export default function Navbar() {
               <Link to="/account?tab=wishlist" className="relative p-2 rounded-lg text-gray-600 dark:text-dark-muted hover:text-brand-navy dark:hover:text-brand-gold hover:bg-gray-50 dark:hover:bg-dark-bg transition-colors hidden sm:flex items-center">
                 <Heart size={20} />
                 {wishlistCount > 0 && (
-                  <span className={`absolute -top-0.5 ${isRTL ? '-left-0.5' : '-right-0.5'} w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold`}>
+                  <span className={`absolute -top-0.5 -end-0.5 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold`}>
                     {wishlistCount > 9 ? '9+' : wishlistCount}
                   </span>
                 )}
@@ -399,7 +399,7 @@ export default function Navbar() {
                   </button>
 
                   {notifOpen && (
-                    <div className={`absolute top-full ${isRTL ? 'left-0' : 'right-0'} mt-2 w-80 bg-white dark:bg-dark-surface rounded-2xl shadow-card-hover dark:border dark:border-dark-border overflow-hidden z-50`}>
+                    <div className={`absolute top-full end-0 mt-2 w-80 bg-white dark:bg-dark-surface rounded-2xl shadow-card-hover dark:border dark:border-dark-border overflow-hidden z-50`}>
                       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-dark-border">
                         <h3 className="font-semibold text-gray-900 dark:text-dark-text text-sm">
                           {isRTL ? 'الإشعارات' : 'Notifications'}
@@ -426,7 +426,7 @@ export default function Navbar() {
                               key={notif._id || i}
                               className={`px-4 py-3 border-b border-gray-50 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg transition-colors ${!notif.isRead ? 'bg-brand-gold/5' : ''} ${isRTL ? 'text-right' : ''}`}
                             >
-                              <div className={`flex items-start gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                              <div className={`flex items-start gap-2`}>
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm font-medium text-gray-900 dark:text-dark-text">{notif.title || notif.message}</p>
                                   {notif.body && <p className="text-xs text-gray-500 dark:text-dark-muted mt-0.5">{notif.body}</p>}
@@ -454,7 +454,7 @@ export default function Navbar() {
               <Link to="/cart" className="relative p-2 rounded-lg text-gray-600 dark:text-dark-muted hover:text-brand-navy dark:hover:text-brand-gold hover:bg-gray-50 dark:hover:bg-dark-bg transition-colors">
                 <ShoppingCart size={20} />
                 {itemCount > 0 && (
-                  <span className={`absolute -top-0.5 ${isRTL ? '-left-0.5' : '-right-0.5'} w-4 h-4 bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy text-xs rounded-full flex items-center justify-center font-bold`}>
+                  <span className={`absolute -top-0.5 -end-0.5 w-4 h-4 bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy text-xs rounded-full flex items-center justify-center font-bold`}>
                     {itemCount > 9 ? '9+' : itemCount}
                   </span>
                 )}
@@ -475,7 +475,7 @@ export default function Navbar() {
                   </button>
 
                   {userMenuOpen && (
-                    <div className={`absolute ${isRTL ? 'left-0' : 'right-0'} top-full mt-2 w-52 bg-white dark:bg-dark-surface rounded-2xl shadow-card-hover border border-gray-100 dark:border-dark-border p-2 animate-fade-in`}>
+                    <div className={`absolute end-0 top-full mt-2 w-52 bg-white dark:bg-dark-surface rounded-2xl shadow-card-hover border border-gray-100 dark:border-dark-border p-2 animate-fade-in`}>
                       <div className="px-3 py-2 border-b border-gray-100 dark:border-dark-border mb-1">
                         <p className="text-sm font-semibold text-gray-900 dark:text-dark-text">{user.name}</p>
                         <p className="text-xs text-gray-500 dark:text-dark-muted capitalize">{user.role}</p>
@@ -495,7 +495,7 @@ export default function Navbar() {
                       <div className="border-t border-gray-100 dark:border-dark-border mt-1 pt-1">
                         <button
                           onClick={handleLogout}
-                          className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors w-full ${isRTL ? 'text-right' : 'text-left'}`}
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors w-full text-start`}
                         >
                           <LogOut size={15} />
                           {t('nav.logout')}
@@ -521,7 +521,7 @@ export default function Navbar() {
               {/* Mobile Menu Toggle */}
               <button
                 onClick={() => setMobileOpen(!mobileOpen)}
-                className={`lg:hidden p-2 rounded-lg text-gray-600 dark:text-dark-muted hover:text-brand-navy dark:hover:text-brand-gold hover:bg-gray-50 dark:hover:bg-dark-bg transition-colors ${isRTL ? 'mr-1' : 'ml-1'}`}
+                className={`lg:hidden p-2 rounded-lg text-gray-600 dark:text-dark-muted hover:text-brand-navy dark:hover:text-brand-gold hover:bg-gray-50 dark:hover:bg-dark-bg transition-colors ms-1`}
               >
                 {mobileOpen ? <X size={22} /> : <Menu size={22} />}
               </button>
@@ -534,13 +534,13 @@ export default function Navbar() {
           <div className="md:hidden border-t border-gray-100 dark:border-dark-border px-4 py-3 animate-slide-up bg-white dark:bg-dark-surface">
             <form onSubmit={handleSearch}>
               <div className="relative">
-                <Search size={16} className={`absolute ${isRTL ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 text-gray-400 dark:text-dark-muted`} />
+                <Search size={16} className={`absolute start-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-dark-muted`} />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={isRTL ? 'ابحث...' : 'Search brands, products...'}
-                  className={`w-full ${isRTL ? 'pr-9 pl-4' : 'pl-9 pr-4'} py-2.5 text-sm border border-gray-200 dark:border-dark-border rounded-xl bg-gray-50 dark:bg-dark-bg text-gray-900 dark:text-dark-text focus:outline-none focus:ring-2 focus:ring-brand-navy/20 dark:focus:ring-brand-gold/20 focus:border-brand-navy dark:focus:border-brand-gold`}
+                  className={`w-full ps-9 pe-4 py-2.5 text-sm border border-gray-200 dark:border-dark-border rounded-xl bg-gray-50 dark:bg-dark-bg text-gray-900 dark:text-dark-text focus:outline-none focus:ring-2 focus:ring-brand-navy/20 dark:focus:ring-brand-gold/20 focus:border-brand-navy dark:focus:border-brand-gold`}
                   autoFocus
                 />
               </div>
@@ -573,7 +573,7 @@ export default function Navbar() {
                     <Link to={dashboardMenuItem.to} className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-700 dark:text-dark-text hover:bg-brand-cream dark:hover:bg-dark-bg hover:text-brand-navy dark:hover:text-brand-gold">
                       <DashboardMenuIcon size={16} /> {dashboardMenuItem.label}
                     </Link>
-                    <button onClick={handleLogout} className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 w-full ${isRTL ? 'text-right' : 'text-left'}`}>
+                    <button onClick={handleLogout} className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 w-full text-start`}>
                       <LogOut size={16} /> {t('nav.logout')}
                     </button>
                   </>

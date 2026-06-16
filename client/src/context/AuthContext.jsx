@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { authAPI, humanizeApiError, syncSellerBrandNameForUser, syncHomepageStatsFromAdmin, incrementPublicBuyerCount, mergeUserWithMirrorProfile, ensureSellerBrandLinked } from '../services/api';
+import { authAPI, humanizeApiError, syncSellerBrandNameForUser, syncHomepageStatsFromAdmin, incrementPublicBuyerCount, mergeUserWithMirrorProfile, ensureSellerBrandLinked, prefetchSellerBrandHints } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -156,7 +156,9 @@ export const AuthProvider = ({ children }) => {
       persistUser(userToStore);
 
       if (userToStore.serverRole === 'seller' || userToStore.serverRole === 'admin') {
-        ensureSellerBrandLinked(userToStore).catch(() => {});
+        prefetchSellerBrandHints(userToStore)
+          .then(() => ensureSellerBrandLinked(userToStore))
+          .catch(() => {});
       }
 
       if (userToStore.serverRole === 'admin') {
@@ -297,7 +299,9 @@ export const AuthProvider = ({ children }) => {
       persistUser(merged);
 
       if (merged.serverRole === 'seller' || merged.serverRole === 'admin') {
-        ensureSellerBrandLinked(merged).catch(() => {});
+        prefetchSellerBrandHints(merged)
+          .then(() => ensureSellerBrandLinked(merged))
+          .catch(() => {});
       }
 
       return merged;

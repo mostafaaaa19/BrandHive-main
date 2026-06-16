@@ -20,7 +20,7 @@ function FilterSection({ title, children, defaultOpen = true, isRTL }) {
     <div className="border-b border-gray-100 dark:border-dark-border pb-4 mb-4">
       <button
         onClick={() => setOpen(!open)}
-        className={`flex items-center justify-between w-full text-sm font-semibold text-gray-900 dark:text-dark-text mb-3 ${isRTL ? 'flex-row-reverse' : ''}`}
+        className={`flex items-center justify-between w-full text-sm font-semibold text-gray-900 dark:text-dark-text mb-3`}
       >
         {title}
         {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
@@ -325,13 +325,13 @@ export default function ListingPage() {
 
   const SidebarContent = () => (
     <div className={isRTL ? 'text-right' : 'text-left'}>
-      <div className={`flex items-center justify-between mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+      <div className={`flex items-center justify-between mb-4`}>
         <h2 className="font-bold text-gray-900 dark:text-dark-text">{isRTL ? 'الفلاتر' : 'Filters'}</h2>
         <button onClick={clearAll} className="text-xs text-brand-gold hover:underline">{isRTL ? 'مسح الكل' : 'Clear All'}</button>
       </div>
 
       <FilterSection title={isRTL ? 'نطاق السعر' : 'Price Range'} isRTL={isRTL}>
-        <div className={`flex flex-col sm:flex-row items-stretch sm:items-center gap-2 ${isRTL ? 'sm:flex-row-reverse' : ''}`}>
+        <div className={`flex flex-col sm:flex-row items-stretch sm:items-center gap-2`}>
           <input
             type="number"
             value={priceMin}
@@ -348,7 +348,7 @@ export default function ListingPage() {
             className={`input-field py-2 text-sm min-w-0 flex-1 ${isRTL ? 'text-right' : ''}`}
           />
         </div>
-        <div className={`flex gap-2 mt-2 flex-wrap ${isRTL ? 'flex-row-reverse' : ''}`}>
+        <div className={`flex gap-2 mt-2 flex-wrap`}>
           {[['0–200', 0, 200], ['200–500', 200, 500], ['500–1K', 500, 1000], ['1K+', 1000, '']].map(([label, min, max]) => (
             <button
               key={label}
@@ -368,7 +368,7 @@ export default function ListingPage() {
               <Link
                 key={cat.id || cat.slug}
                 to={`/products?category=${cat.slug}`}
-                className={`flex items-center gap-2 text-sm transition-colors ${isRTL ? 'flex-row-reverse text-right' : ''} ${
+                className={`flex items-center gap-2 text-sm transition-colors ${
                   normalizeCategory(categoryParam) === normalizeCategory(cat.slug)
                     ? 'text-brand-gold font-semibold'
                     : 'text-gray-700 dark:text-dark-text hover:text-brand-gold'
@@ -387,7 +387,7 @@ export default function ListingPage() {
         <FilterSection title={isRTL ? 'المحافظة' : 'Governorate'} isRTL={isRTL}>
           <div className="space-y-2 max-h-48 overflow-y-auto">
             {topGovs.map(([gov, count]) => (
-              <label key={gov} className={`flex items-center gap-2 cursor-pointer group ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+              <label key={gov} className={`flex items-center gap-2 cursor-pointer group`}>
                 <input
                   type="checkbox"
                   checked={selectedGovs.includes(gov)}
@@ -405,7 +405,7 @@ export default function ListingPage() {
       <FilterSection title={isRTL ? 'التقييم' : 'Rating'} isRTL={isRTL}>
         <div className="space-y-2">
           {[5, 4, 3].map(r => (
-            <label key={r} className={`flex items-center gap-2 cursor-pointer group ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+            <label key={r} className={`flex items-center gap-2 cursor-pointer group`}>
               <input
                 type="radio"
                 name="rating"
@@ -413,7 +413,7 @@ export default function ListingPage() {
                 onChange={() => setMinRating(r)}
                 className="text-brand-navy dark:text-brand-gold focus:ring-brand-navy dark:bg-dark-surface dark:border-dark-border"
               />
-              <div className={`flex ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex`}>
                 {[...Array(5)].map((_, i) => (
                   <Star key={i} size={12} className={i < r ? 'text-amber-400 fill-amber-400' : 'text-gray-300 dark:text-gray-600'} />
                 ))}
@@ -433,7 +433,7 @@ export default function ListingPage() {
             { key: 'freeShipping', label: isRTL ? '🚚 شحن مجاني' : '🚚 Free Shipping' },
             { key: 'onSale', label: isRTL ? '🏷️ عروض' : '🏷️ On Sale' },
           ].map(({ key, label }) => (
-            <label key={key} className={`flex items-center gap-2 cursor-pointer group ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+            <label key={key} className={`flex items-center gap-2 cursor-pointer group`}>
               <input
                 type="checkbox"
                 checked={filters[key]}
@@ -449,10 +449,10 @@ export default function ListingPage() {
   );
 
   return (
-    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200 ${isRTL ? 'text-right' : 'text-left'}`}>
+    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200 text-start`}>
       {/* Breadcrumb */}
       <div className="bg-white dark:bg-dark-surface border-b border-gray-100 dark:border-dark-border">
-        <div className={`page-container py-3 text-sm text-gray-500 dark:text-dark-muted flex flex-wrap items-center gap-x-2 gap-y-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+        <div className={`page-container py-3 text-sm text-gray-500 dark:text-dark-muted flex flex-wrap items-center gap-x-2 gap-y-1`}>
           <Link to="/" className="hover:text-brand-navy dark:hover:text-brand-gold shrink-0">{isRTL ? 'الرئيسية' : 'Home'}</Link>
           <span className="shrink-0">›</span>
           <Link to="/products" className="hover:text-brand-navy dark:hover:text-brand-gold shrink-0">{isRTL ? 'الفئات' : 'Categories'}</Link>
@@ -474,7 +474,7 @@ export default function ListingPage() {
       </div>
 
       <div className="page-container py-4 sm:py-8">
-        <div className={`flex flex-col lg:flex-row gap-4 lg:gap-8 ${isRTL ? 'lg:flex-row-reverse' : ''}`}>
+        <div className={`flex flex-col lg:flex-row gap-4 lg:gap-8`}>
           {/* Sidebar - Desktop */}
           <aside className="hidden lg:block w-64 flex-shrink-0">
             <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 sticky top-24">
@@ -485,8 +485,8 @@ export default function ListingPage() {
           {/* Main Content */}
           <div className="flex-1 min-w-0">
             {/* Header */}
-            <div className={`flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 mb-6 ${isRTL ? 'sm:flex-row-reverse' : ''}`}>
-              <div className={`min-w-0 ${isRTL ? 'text-right' : 'text-left'}`}>
+            <div className={`flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 mb-6`}>
+              <div className={`min-w-0 text-start`}>
                 <h1 className="text-lg sm:text-xl font-display font-bold text-gray-900 dark:text-dark-text truncate">
                   {searchParam ? (isRTL ? `نتائج البحث عن "${searchParam}"` : `Results for "${searchParam}"`) : activeCategory ? activeCategory : (isRTL ? 'جميع المنتجات' : 'All Products')}
                 </h1>
@@ -499,11 +499,11 @@ export default function ListingPage() {
                 </p>
               </div>
 
-              <div className={`flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto min-w-0 ${isRTL ? 'sm:flex-row-reverse' : ''}`}>
+              <div className={`flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto min-w-0`}>
                 {/* Mobile filter button */}
                 <button
                   onClick={() => setShowMobileFilters(true)}
-                  className={`lg:hidden flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface text-sm font-medium hover:border-brand-navy dark:hover:border-brand-gold transition-colors text-gray-700 dark:text-dark-text ${isRTL ? 'flex-row-reverse' : ''}`}
+                  className={`lg:hidden flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface text-sm font-medium hover:border-brand-navy dark:hover:border-brand-gold transition-colors text-gray-700 dark:text-dark-text`}
                 >
                   <SlidersHorizontal size={15} />
                   {isRTL ? 'الفلاتر' : 'Filters'}
@@ -514,7 +514,7 @@ export default function ListingPage() {
                   type="button"
                   onClick={fetchProducts}
                   disabled={loading}
-                  className={`flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface text-sm font-medium hover:border-brand-navy dark:hover:border-brand-gold transition-colors text-gray-700 dark:text-dark-text disabled:opacity-50 ${isRTL ? 'flex-row-reverse' : ''}`}
+                  className={`flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface text-sm font-medium hover:border-brand-navy dark:hover:border-brand-gold transition-colors text-gray-700 dark:text-dark-text disabled:opacity-50`}
                   title={isRTL ? 'تحديث المنتجات' : 'Refresh products'}
                 >
                   <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
@@ -531,7 +531,7 @@ export default function ListingPage() {
                 </select>
 
                 {/* View */}
-                <div className={`flex items-center justify-center gap-1 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl p-1 shrink-0 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex items-center justify-center gap-1 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl p-1 shrink-0`}>
                   {[
                     { key: 'grid4', icon: <LayoutGrid size={15} /> },
                     { key: 'grid2', icon: <Grid3X3 size={15} /> },
@@ -551,12 +551,12 @@ export default function ListingPage() {
 
             {/* Active filters */}
             {(priceMin || priceMax || selectedGovs.length > 0 || minRating > 0 || Object.values(filters).some(Boolean)) && (
-              <div className={`flex flex-wrap items-center gap-2 mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex flex-wrap items-center gap-2 mb-4`}>
                 <span className="text-xs text-gray-500 dark:text-dark-muted font-medium">{isRTL ? 'نشط:' : 'Active:'}</span>
-                {priceMin && <span className={`flex items-center gap-1 px-3 py-1 bg-brand-navy/10 dark:bg-brand-gold/10 text-brand-navy dark:text-brand-gold rounded-full text-xs font-medium ${isRTL ? 'flex-row-reverse' : ''}`}>{isRTL ? 'من' : 'From'} {priceMin} {t('common.egp')} <button onClick={() => setPriceMin('')}><X size={11} /></button></span>}
-                {priceMax && <span className={`flex items-center gap-1 px-3 py-1 bg-brand-navy/10 dark:bg-brand-gold/10 text-brand-navy dark:text-brand-gold rounded-full text-xs font-medium ${isRTL ? 'flex-row-reverse' : ''}`}>{isRTL ? 'إلى' : 'Up to'} {priceMax} {t('common.egp')} <button onClick={() => setPriceMax('')}><X size={11} /></button></span>}
-                {selectedGovs.map(g => <span key={g} className={`flex items-center gap-1 px-3 py-1 bg-brand-navy/10 dark:bg-brand-gold/10 text-brand-navy dark:text-brand-gold rounded-full text-xs font-medium ${isRTL ? 'flex-row-reverse' : ''}`}>{g} <button onClick={() => toggleGov(g)}><X size={11} /></button></span>)}
-                {minRating > 0 && <span className={`flex items-center gap-1 px-3 py-1 bg-brand-navy/10 dark:bg-brand-gold/10 text-brand-navy dark:text-brand-gold rounded-full text-xs font-medium ${isRTL ? 'flex-row-reverse' : ''}`}>{minRating}★ {isRTL ? 'وأكثر' : '& up'} <button onClick={() => setMinRating(0)}><X size={11} /></button></span>}
+                {priceMin && <span className={`flex items-center gap-1 px-3 py-1 bg-brand-navy/10 dark:bg-brand-gold/10 text-brand-navy dark:text-brand-gold rounded-full text-xs font-medium`}>{isRTL ? 'من' : 'From'} {priceMin} {t('common.egp')} <button onClick={() => setPriceMin('')}><X size={11} /></button></span>}
+                {priceMax && <span className={`flex items-center gap-1 px-3 py-1 bg-brand-navy/10 dark:bg-brand-gold/10 text-brand-navy dark:text-brand-gold rounded-full text-xs font-medium`}>{isRTL ? 'إلى' : 'Up to'} {priceMax} {t('common.egp')} <button onClick={() => setPriceMax('')}><X size={11} /></button></span>}
+                {selectedGovs.map(g => <span key={g} className={`flex items-center gap-1 px-3 py-1 bg-brand-navy/10 dark:bg-brand-gold/10 text-brand-navy dark:text-brand-gold rounded-full text-xs font-medium`}>{g} <button onClick={() => toggleGov(g)}><X size={11} /></button></span>)}
+                {minRating > 0 && <span className={`flex items-center gap-1 px-3 py-1 bg-brand-navy/10 dark:bg-brand-gold/10 text-brand-navy dark:text-brand-gold rounded-full text-xs font-medium`}>{minRating}★ {isRTL ? 'وأكثر' : '& up'} <button onClick={() => setMinRating(0)}><X size={11} /></button></span>}
                 <button onClick={clearAll} className="text-xs text-red-500 hover:underline ml-1">{isRTL ? 'مسح الكل' : 'Clear all'}</button>
               </div>
             )}
@@ -608,8 +608,8 @@ export default function ListingPage() {
       {showMobileFilters && (
         <div className="fixed inset-0 z-50 flex lg:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowMobileFilters(false)} aria-hidden="true" />
-          <div className={`relative ${isRTL ? 'mr-auto animate-slide-in-left' : 'ml-auto animate-slide-in-right'} w-full max-w-sm sm:w-80 h-full bg-white dark:bg-dark-surface p-4 sm:p-6 pb-8 overflow-y-auto shadow-2xl`}>
-            <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className={`relative ms-auto animate-slide-in-right w-full max-w-sm sm:w-80 h-full bg-white dark:bg-dark-surface p-4 sm:p-6 pb-8 overflow-y-auto shadow-2xl`}>
+            <div className={`flex items-center justify-between mb-6`}>
               <h2 className="font-bold text-xl text-gray-900 dark:text-dark-text">{isRTL ? 'الفلاتر' : 'Filters'}</h2>
               <button onClick={() => setShowMobileFilters(false)} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-dark-bg text-gray-600 dark:text-dark-muted">
                 <X size={20} />

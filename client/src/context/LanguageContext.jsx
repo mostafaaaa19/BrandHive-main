@@ -18,12 +18,19 @@ const applyLang = (lang) => {
   } catch {}
 };
 
+const getSavedLang = () => {
+  try {
+    return localStorage.getItem('brandhive_lang') || 'en';
+  } catch {
+    return 'en';
+  }
+};
+
+const initialLanguage = getSavedLang();
+applyLang(initialLanguage);
+
 export function LanguageProvider({ children }) {
-  const [language, setLanguageState] = useState(() => {
-    try {
-      return localStorage.getItem('brandhive_lang') || 'en';
-    } catch { return 'en'; }
-  });
+  const [language, setLanguageState] = useState(initialLanguage);
 
   const setLanguage = useCallback((lang) => {
     applyLang(lang);

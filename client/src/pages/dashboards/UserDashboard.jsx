@@ -89,17 +89,17 @@ const formatOrderProductLabel = (order, items, isRTL) => {
   return label;
 };
 
-function NavItem({ icon: Icon, label, tab, activeTab, setActiveTab, badge, isRTL }) {
+function NavItem({ icon: Icon, label, tab, activeTab, setActiveTab, badge }) {
   const isActive = activeTab === tab;
   return (
     <button
       onClick={() => setActiveTab(tab)}
-      className={`${isActive ? 'sidebar-item-active' : 'sidebar-item'} ${isRTL ? 'flex-row-reverse text-right' : ''}`}
+      className={isActive ? 'sidebar-item-active' : 'sidebar-item'}
     >
       <Icon size={18} />
       <span>{label}</span>
       {badge > 0 && (
-        <span className={`${isRTL ? 'mr-auto ml-0' : 'ml-auto mr-0'} bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center`}>
+        <span className="ms-auto bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
           {badge}
         </span>
       )}
@@ -809,28 +809,30 @@ export default function UserDashboard() {
   const translateStatus = (status) => {
     if (!isRTL) return status;
     const map = {
-      'Shipped': 'تم الشحن',
-      'Delivered': 'تم التوصيل',
-      'Processing': 'جاري المعالجة',
-      'Pending': 'قيد الانتظار',
-      'Paid': 'مدفوع',
-      'paid': 'مدفوع',
-      'Confirmed': 'مؤكد',
-      'Canceled': 'ملغي',
-      'Cancelled': 'ملغي'
+      shipped: 'تم الشحن',
+      delivered: 'تم التوصيل',
+      processing: 'جاري المعالجة',
+      pending: 'قيد الانتظار',
+      paid: 'مدفوع',
+      confirmed: 'مؤكد',
+      canceled: 'ملغي',
+      cancelled: 'ملغي',
     };
-    return map[status] || status;
+    return map[String(status || '').toLowerCase()] || status;
   };
 
   return (
-    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200 ${isRTL ? 'text-right' : 'text-left'}`}>
+    <div
+      dir={isRTL ? 'rtl' : 'ltr'}
+      className="min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200"
+    >
       <div className="page-container py-4 sm:py-8">
-        <div className={`flex flex-col md:flex-row gap-4 md:gap-8 ${isRTL ? 'md:flex-row-reverse' : ''}`}>
+        <div className="flex flex-col md:flex-row gap-4 md:gap-8">
           {/* Sidebar */}
           <aside className="hidden md:block w-60 flex-shrink-0">
             <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-4 sticky top-24">
               {/* User info */}
-              <div className={`flex items-center gap-3 p-3 mb-4 bg-brand-cream dark:bg-dark-bg rounded-2xl ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className="flex items-center gap-3 p-3 mb-4 bg-brand-cream dark:bg-dark-bg rounded-2xl">
                 <div className="w-12 h-12 rounded-2xl bg-brand-navy dark:bg-brand-gold flex items-center justify-center flex-shrink-0 overflow-hidden">
                   {displayAvatar ? (
                     <img src={displayAvatar} alt={displayName} className="w-full h-full object-cover" />
@@ -844,23 +846,23 @@ export default function UserDashboard() {
                 </div>
               </div>
 
-              <p className={`text-xs font-bold text-gray-400 dark:text-dark-muted uppercase tracking-wider px-4 mb-2 ${isRTL ? 'text-right' : ''}`}>
+              <p className="text-xs font-bold text-gray-400 dark:text-dark-muted uppercase tracking-wider px-4 mb-2 text-start">
                 {isRTL ? 'الحساب' : 'Account'}
               </p>
               {TABS.map(t => <NavItem key={t.tab} {...t} activeTab={activeTab} setActiveTab={setActiveTab} isRTL={isRTL} />)}
 
-              <p className={`text-xs font-bold text-gray-400 dark:text-dark-muted uppercase tracking-wider px-4 mb-2 mt-4 ${isRTL ? 'text-right' : ''}`}>
+              <p className="text-xs font-bold text-gray-400 dark:text-dark-muted uppercase tracking-wider px-4 mb-2 mt-4 text-start">
                 {isRTL ? 'الملف الشخصي' : 'Profile'}
               </p>
               {PROFILE_TABS.map(t => <NavItem key={t.tab} {...t} activeTab={activeTab} setActiveTab={setActiveTab} isRTL={isRTL} />)}
 
-              <p className={`text-xs font-bold text-gray-400 dark:text-dark-muted uppercase tracking-wider px-4 mb-2 mt-4 ${isRTL ? 'text-right' : ''}`}>
+              <p className="text-xs font-bold text-gray-400 dark:text-dark-muted uppercase tracking-wider px-4 mb-2 mt-4 text-start">
                 {isRTL ? 'الدعم' : 'Support'}
               </p>
               {SUPPORT_TABS.map(t => <NavItem key={t.tab} {...t} activeTab={activeTab} setActiveTab={setActiveTab} isRTL={isRTL} />)}
 
               <div className="border-t border-gray-100 dark:border-dark-border mt-4 pt-3">
-                <button onClick={handleLogout} className={`sidebar-item text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 w-full ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+                <button onClick={handleLogout} className="sidebar-item text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 w-full">
                   <LogOut size={16} /> {isRTL ? 'تسجيل الخروج' : 'Sign Out'}
                 </button>
               </div>
@@ -870,7 +872,7 @@ export default function UserDashboard() {
           {/* Content + mobile tabs */}
           <div className="flex-1 min-w-0 w-full">
             <div className="md:hidden overflow-x-auto pb-4 mb-2 -mx-1">
-              <div className={`flex gap-2 whitespace-nowrap px-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex gap-2 whitespace-nowrap px-1`}>
                 {[...TABS, ...PROFILE_TABS, ...SUPPORT_TABS].map(t => (
                   <button
                     key={t.tab}
@@ -880,7 +882,7 @@ export default function UserDashboard() {
                       activeTab === t.tab
                         ? 'bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy'
                         : 'bg-white dark:bg-dark-surface text-gray-600 dark:text-dark-text border border-gray-100 dark:border-dark-border'
-                    } ${isRTL ? 'flex-row-reverse' : ''}`}
+                    }`}
                   >
                     <t.icon size={13} /> {t.label}
                   </button>
@@ -892,8 +894,8 @@ export default function UserDashboard() {
             {/* Dashboard Overview */}
             {activeTab === 'dashboard' && (
               <div>
-                <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  <div className={isRTL ? 'text-right' : ''}>
+                <div className="flex items-center justify-between mb-6">
+                  <div>
                     <h1 className="text-2xl font-display font-bold text-gray-900 dark:text-dark-text">
                       {isRTL ? 'حسابي' : 'My Account'}
                     </h1>
@@ -901,21 +903,21 @@ export default function UserDashboard() {
                       {isRTL ? `مرحباً بعودتك، ${displayName?.split(' ')[0]} 👋` : `Welcome back, ${displayName?.split(' ')[0]} 👋`}
                     </p>
                   </div>
-                  <Link to="/products" className={`btn-primary text-sm flex items-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                    {isRTL ? 'مواصلة التسوق ←' : 'Continue Shopping →'}
+                  <Link to="/products" className="btn-primary text-sm flex items-center gap-1">
+                    {isRTL ? '← مواصلة التسوق' : 'Continue Shopping →'}
                   </Link>
                 </div>
 
                 {/* Stats */}
-                <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 mb-8`}>
                   {[
                     { icon: Package, label: isRTL ? 'إجمالي الطلبات' : 'Total Orders', value: orderCount || orders.length, color: 'bg-blue-100 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' },
                     { icon: Heart, label: isRTL ? 'المنتجات المفضلة' : 'Wishlist Items', value: wishlistItems.length, color: 'bg-rose-100 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400' },
                     { icon: Star, label: isRTL ? 'التقييمات المكتوبة' : 'Reviews Written', value: user?.reviewsCount || 0, color: 'bg-amber-100 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400' },
                     { icon: TrendingUp, label: isRTL ? 'ج.م تم توفيرها' : 'EGP Saved', value: (user?.savedAmount || 0).toLocaleString(), color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' },
                   ].map(stat => (
-                    <div key={stat.label} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5 ${isRTL ? 'text-right' : ''}`}>
-                      <div className={`w-10 h-10 rounded-xl ${stat.color} flex items-center justify-center mb-3 ${isRTL ? 'mr-0 ml-auto' : ''}`}>
+                    <div key={stat.label} className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5 text-start">
+                      <div className={`w-10 h-10 rounded-xl ${stat.color} flex items-center justify-center mb-3`}>
                         <stat.icon size={18} />
                       </div>
                       <div className="text-2xl font-display font-bold text-gray-900 dark:text-dark-text">{stat.value}</div>
@@ -924,52 +926,20 @@ export default function UserDashboard() {
                   ))}
                 </div>
 
-                {recommendations.length > 0 && (
-                  <div className="mt-6 mb-8">
-                    <h3 className={`font-display font-bold text-gray-900 dark:text-dark-text text-lg mb-4 flex items-center gap-2 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
-                      <span>🤖</span>
-                      {isRTL ? 'موصى به لك بالذكاء الاصطناعي' : 'AI Recommended for You'}
-                    </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {recommendations.map(product => (
-                        <Link
-                          key={product.id}
-                          to={`/product/${product.slug}`}
-                          className="bg-white dark:bg-dark-surface rounded-2xl shadow-card p-3 hover:shadow-card-hover transition-all block"
-                        >
-                          {product.image && (
-                            <img
-                              src={product.image}
-                              alt={product.name}
-                              className="w-full h-28 object-cover rounded-xl mb-2"
-                            />
-                          )}
-                          <p className="text-xs font-medium text-gray-900 dark:text-dark-text truncate">
-                            {product.name}
-                          </p>
-                          <p className="text-xs text-brand-gold font-bold mt-1">
-                            {(product.price || 0).toLocaleString()} EGP
-                          </p>
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 {/* Recent orders */}
-                <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
-                  <div className={`flex items-center justify-between mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 mb-8">
+                  <div className={`flex items-center justify-between mb-4`}>
                     <h2 className="font-display font-bold text-xl text-gray-900 dark:text-dark-text">
                       {isRTL ? 'الطلبات الأخيرة' : 'Recent Orders'}
                     </h2>
-                    <button onClick={() => setActiveTab('orders')} className={`text-sm text-brand-gold hover:underline flex items-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                      {isRTL ? 'عرض الكل' : 'View All'} <ChevronRight size={14} className={isRTL ? 'rotate-180' : ''} />
+                    <button onClick={() => setActiveTab('orders')} className={`text-sm text-brand-gold hover:underline flex items-center gap-1`}>
+                      {isRTL ? 'عرض الكل' : 'View All'} <ChevronRight size={14} className="rtl-flip" />
                     </button>
                   </div>
                   <div className="overflow-x-auto">
-                    <table className={`w-full text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
+                    <table className="w-full text-sm text-start">
                       <thead>
-                        <tr className={`border-b border-gray-100 dark:border-dark-border ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <tr className={`border-b border-gray-100 dark:border-dark-border`}>
                           {[
                             isRTL ? 'رقم الطلب' : 'Order ID',
                             isRTL ? 'المنتج' : 'Product',
@@ -1008,7 +978,7 @@ export default function UserDashboard() {
                               <td className="py-3 px-2 text-gray-500 dark:text-dark-muted whitespace-nowrap">{date}</td>
                               <td className="py-3 px-2 font-semibold text-gray-900 dark:text-dark-text whitespace-nowrap">{amount.toLocaleString()} {t('common.egp')}</td>
                               <td className="py-3 px-2">
-                                <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${STATUS_COLORS[status] || 'bg-gray-100 text-gray-600'}`}>
+                                <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${STATUS_COLORS[status] || STATUS_COLORS[String(status).toLowerCase()] || 'bg-gray-100 text-gray-600'}`}>
                                   {translateStatus(status)}
                                 </span>
                               </td>
@@ -1019,6 +989,38 @@ export default function UserDashboard() {
                     </table>
                   </div>
                 </div>
+
+                {recommendations.length > 0 && (
+                  <div className="mb-8">
+                    <h3 className={`font-display font-bold text-gray-900 dark:text-dark-text text-lg mb-4 flex items-center gap-2`}>
+                      <span>🤖</span>
+                      {isRTL ? 'موصى به لك بالذكاء الاصطناعي' : 'AI Recommended for You'}
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {recommendations.map(product => (
+                        <Link
+                          key={product.id}
+                          to={`/product/${product.slug}`}
+                          className="bg-white dark:bg-dark-surface rounded-2xl shadow-card p-3 hover:shadow-card-hover transition-all block"
+                        >
+                          {product.image && (
+                            <img
+                              src={product.image}
+                              alt={product.name}
+                              className="w-full h-28 object-cover rounded-xl mb-2"
+                            />
+                          )}
+                          <p className="text-xs font-medium text-gray-900 dark:text-dark-text truncate">
+                            {product.name}
+                          </p>
+                          <p className="text-xs text-brand-gold font-bold mt-1">
+                            {(product.price || 0).toLocaleString()} EGP
+                          </p>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1071,9 +1073,9 @@ export default function UserDashboard() {
                           return (
                             <div
                               key={orderId}
-                              className={`rounded-xl border border-gray-100 dark:border-dark-border p-4 ${isRTL ? 'text-right' : 'text-left'}`}
+                              className={`rounded-xl border border-gray-100 dark:border-dark-border p-4 text-start`}
                             >
-                              <div className={`flex items-start justify-between gap-2 mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                              <div className={`flex items-start justify-between gap-2 mb-2`}>
                                 <span className="font-mono text-xs text-brand-navy dark:text-brand-gold font-semibold">
                                   #{orderId.toString().slice(-6).toUpperCase()}
                                 </span>
@@ -1086,7 +1088,7 @@ export default function UserDashboard() {
                               <p className="font-semibold text-gray-900 dark:text-dark-text mt-2">
                                 {amount.toLocaleString()} {t('common.egp')}
                               </p>
-                              <div className={`flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-50 dark:border-dark-border/50 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                              <div className={`flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-50 dark:border-dark-border/50`}>
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -1134,7 +1136,7 @@ export default function UserDashboard() {
                       </div>
 
                       <div className="hidden md:block overflow-x-auto">
-                        <table className={`w-full text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
+                        <table className="w-full text-sm text-start">
                           <thead>
                             <tr className="border-b border-gray-100 dark:border-dark-border">
                               {[
@@ -1168,12 +1170,12 @@ export default function UserDashboard() {
                                   <td className="py-3 px-2 text-gray-500 dark:text-dark-muted">{date}</td>
                                   <td className="py-3 px-2 font-semibold text-gray-900 dark:text-dark-text">{amount.toLocaleString()} {t('common.egp')}</td>
                                   <td className="py-3 px-2">
-                                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${STATUS_COLORS[status] || 'bg-gray-100 text-gray-600'}`}>
+                                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${STATUS_COLORS[status] || STATUS_COLORS[String(status).toLowerCase()] || 'bg-gray-100 text-gray-600'}`}>
                                       {translateStatus(status)}
                                     </span>
                                   </td>
                                   <td className="py-3 px-2">
-                                    <div className={`flex items-center gap-2 flex-wrap ${isRTL ? 'flex-row-reverse' : ''}`}>
+                                    <div className={`flex items-center gap-2 flex-wrap`}>
                                       <button
                                         type="button"
                                         onClick={() => {
@@ -1239,7 +1241,7 @@ export default function UserDashboard() {
             {/* Wishlist Tab */}
             {activeTab === 'wishlist' && (
               <div>
-                <div className={`flex items-center justify-between gap-3 mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex items-center justify-between gap-3 mb-6`}>
                   <h1 className="text-2xl font-display font-bold text-gray-900 dark:text-dark-text">
                     {isRTL ? 'قائمة المفضلة' : 'My Wishlist'}
                   </h1>
@@ -1280,7 +1282,7 @@ export default function UserDashboard() {
                             <span className="text-3xl">🛍️</span>
                           )}
                         </div>
-                        <div className={`flex-1 min-w-0 flex flex-col ${isRTL ? 'text-right' : 'text-left'}`}>
+                        <div className={`flex-1 min-w-0 flex flex-col text-start`}>
                           <p className="text-xs text-brand-gold font-semibold truncate">{item.brandName || item.brand?.name || ''}</p>
                           <Link to={`/product/${item.slug || item._id || item.id}`} className="text-sm font-bold text-gray-900 dark:text-dark-text line-clamp-1 hover:text-brand-gold">
                             {item.name}
@@ -1289,7 +1291,7 @@ export default function UserDashboard() {
                             {(item.price || 0).toLocaleString()} {t('common.egp')}
                           </p>
 
-                          <div className={`flex items-center gap-3 mt-auto pt-2 border-t border-gray-50 dark:border-dark-border/50 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <div className={`flex items-center gap-3 mt-auto pt-2 border-t border-gray-50 dark:border-dark-border/50`}>
                             <button
                               onClick={() => moveToCart(item.id, addToCart)}
                               className="text-xs font-bold text-brand-navy dark:text-brand-gold hover:underline"
@@ -1341,7 +1343,7 @@ export default function UserDashboard() {
                     </p>
                     {myReviews.map((review, i) => (
                       <div key={review._id || i} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5 ${isRTL ? 'text-right' : ''}`}>
-                        <div className={`flex items-start justify-between gap-3 mb-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div className={`flex items-start justify-between gap-3 mb-3`}>
                           <div>
                             <p className="font-semibold text-gray-900 dark:text-dark-text text-sm">
                               {review.product?.name && (
@@ -1386,7 +1388,7 @@ export default function UserDashboard() {
 
                 {/* Profile Info Card */}
                 <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
-                  <div className={`flex items-center gap-4 mb-6 pb-6 border-b border-gray-100 dark:border-dark-border ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex items-center gap-4 mb-6 pb-6 border-b border-gray-100 dark:border-dark-border`}>
                     <div className="w-16 h-16 rounded-2xl bg-brand-navy dark:bg-brand-gold flex items-center justify-center flex-shrink-0 overflow-hidden">
                       {displayAvatar ? (
                         <img src={displayAvatar} alt={displayName} className="w-full h-full object-cover" />
@@ -1485,7 +1487,7 @@ export default function UserDashboard() {
                         key={ticket._id || ticket.id}
                         className="bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border p-4"
                       >
-                        <div className={`flex items-center justify-between gap-2 mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div className={`flex items-center justify-between gap-2 mb-2`}>
                           <p className="text-xs text-gray-400 dark:text-dark-muted">
                             {ticket.createdAt
                               ? new Date(ticket.createdAt).toLocaleString()
@@ -1541,7 +1543,7 @@ export default function UserDashboard() {
                   {isRTL ? 'عناويني' : 'My Addresses'}
                 </h1>
                 <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
-                  <div className={`flex items-center justify-between mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex items-center justify-between mb-4`}>
                     <h3 className="font-display font-bold text-brand-navy dark:text-white text-lg">
                       {isRTL ? 'عناوين التوصيل' : 'Saved Addresses'}
                     </h3>
@@ -1606,9 +1608,9 @@ export default function UserDashboard() {
                   ) : (
                     <div className="space-y-3">
                       {addresses.map((addr, i) => (
-                        <div key={addr._id || i} className={`flex items-start justify-between p-4 bg-brand-cream dark:bg-dark-bg rounded-xl ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div key={addr._id || i} className={`flex items-start justify-between p-4 bg-brand-cream dark:bg-dark-bg rounded-xl`}>
                           <div className={isRTL ? 'text-right' : ''}>
-                            <div className={`flex items-center gap-2 mb-1 ${isRTL ? 'flex-row-reverse justify-end' : ''}`}>
+                            <div className={`flex items-center gap-2 mb-1 ${isRTL ? 'justify-end' : ''}`}>
                               <p className="font-semibold text-sm text-gray-900 dark:text-dark-text">{addr.fullName}</p>
                               {(addr.isDefault || addr.default || defaultAddressId === addr._id) && (
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-gold/15 text-brand-gold">
@@ -1698,15 +1700,9 @@ export default function UserDashboard() {
                   ].map((method) => (
                     <div
                       key={method.name}
-                      className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5 flex flex-col ${
-                        isRTL ? 'text-right' : ''
-                      }`}
+                      className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5 flex flex-col text-start`}
                     >
-                      <div
-                        className={`flex items-start justify-between gap-2 mb-4 ${
-                          isRTL ? 'flex-row-reverse' : ''
-                        }`}
-                      >
+                      <div className="flex items-start justify-between gap-2 mb-4">
                         <span className="text-3xl" aria-hidden>
                           {method.icon}
                         </span>
@@ -1730,11 +1726,7 @@ export default function UserDashboard() {
                   ))}
                 </div>
 
-                <div
-                  className={`flex gap-3 bg-brand-navy/5 dark:bg-brand-gold/5 border border-brand-navy/10 dark:border-brand-gold/20 rounded-2xl p-4 ${
-                    isRTL ? 'flex-row-reverse text-right' : ''
-                  }`}
-                >
+                <div className="flex gap-3 bg-brand-navy/5 dark:bg-brand-gold/5 border border-brand-navy/10 dark:border-brand-gold/20 rounded-2xl p-4 text-start">
                   <span className="text-xl flex-shrink-0" aria-hidden>
                     🔒
                   </span>
@@ -1754,7 +1746,7 @@ export default function UserDashboard() {
                     {savedCards.map(card => {
                       const cardId = card.id || card._id;
                       return (
-                      <div key={cardId} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-4 flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                      <div key={cardId} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-4 flex items-center gap-4`}>
                         <div className={`w-12 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
                           card.type === 'Visa' ? 'bg-brand-navy' :
                           card.type === 'Mastercard' ? 'bg-purple-700' :
@@ -1863,7 +1855,7 @@ export default function UserDashboard() {
                             {cardErrors.cvv && <p className="text-red-400 text-xs mt-1">{cardErrors.cvv}</p>}
                           </div>
                         </div>
-                        <div className={`flex gap-3 pt-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div className={`flex gap-3 pt-1`}>
                           <button onClick={handleAddCard} className="flex-1 btn-primary text-sm">
                             {isRTL ? 'إضافة الكارت' : 'Add Card'}
                           </button>
@@ -1917,7 +1909,7 @@ export default function UserDashboard() {
                 ) : orderDetail ? (
                   <div className="space-y-6">
                     {/* Timeline */}
-                    <div className={`space-y-4 ${isRTL ? 'text-right' : 'text-left'}`}>
+                    <div className={`space-y-4 text-start`}>
                       {(() => {
                         const status = (orderDetail.status || orderDetail.orderStatus || 'pending').toLowerCase();
                         const steps = [
@@ -1928,7 +1920,7 @@ export default function UserDashboard() {
                           { id: 'delivered', label: isRTL ? 'تم التوصيل' : 'Delivered', done: status === 'delivered' }
                         ];
                         return steps.map((step, idx) => (
-                          <div key={step.id} className={`flex ${isRTL ? 'flex-row-reverse' : 'flex-row'} items-center`}>
+                          <div key={step.id} className="flex-row items-center">
                             <div className="relative flex flex-col items-center">
                               <div className={`w-6 h-6 rounded-full flex items-center justify-center ${step.done ? 'bg-brand-gold text-white' : 'border-2 border-gray-300 dark:border-dark-border text-transparent'}`}>
                                 {step.done && <CheckCircle size={14} />}
@@ -1937,7 +1929,7 @@ export default function UserDashboard() {
                                 <div className={`w-0.5 h-8 ${steps[idx + 1].done ? 'bg-brand-gold' : 'bg-gray-200 dark:bg-dark-border'}`}></div>
                               )}
                             </div>
-                            <div className={`${isRTL ? 'mr-4' : 'ml-4'} pb-8`}>
+                            <div className={`ms-4 pb-8`}>
                               <p className={`text-sm font-medium ${step.done ? 'text-gray-900 dark:text-dark-text' : 'text-gray-400 dark:text-dark-muted'}`}>{step.label}</p>
                             </div>
                           </div>
@@ -1946,7 +1938,7 @@ export default function UserDashboard() {
                     </div>
 
                     {/* Items */}
-                    <div className={`border-t border-gray-100 dark:border-dark-border pt-4 ${isRTL ? 'text-right' : 'text-left'}`}>
+                    <div className={`border-t border-gray-100 dark:border-dark-border pt-4 text-start`}>
                       <h3 className="font-semibold text-gray-900 dark:text-dark-text mb-3">{isRTL ? 'المنتجات' : 'Order Items'}</h3>
                       <div className="space-y-3">
                         {(orderDetail.items || orderDetail.products || []).map((item, idx) => {
@@ -1956,7 +1948,7 @@ export default function UserDashboard() {
                             item.image || null;
                           const unitPrice = item.unitPrice || item.price || 0;
                           return (
-                          <div key={idx} className={`flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <div key={idx} className={`flex items-center gap-3`}>
                             <div className="w-10 h-10 bg-gray-50 dark:bg-dark-bg rounded-lg flex items-center justify-center text-xl overflow-hidden flex-shrink-0">
                               {imageSrc ? (
                                 <img
@@ -1968,7 +1960,7 @@ export default function UserDashboard() {
                                 '📦'
                               )}
                             </div>
-                            <div className={`flex-1 ${isRTL ? 'text-right' : 'text-left'}`}>
+                            <div className={`flex-1 text-start`}>
                               <p className="text-sm font-medium text-gray-900 dark:text-dark-text">
                                 {item.productName || item.product?.name || item.name || 'Product'}
                               </p>
@@ -1986,8 +1978,8 @@ export default function UserDashboard() {
                     </div>
 
                     {/* Address */}
-                    <div className={`border-t border-gray-100 dark:border-dark-border pt-4 ${isRTL ? 'text-right' : 'text-left'}`}>
-                      <div className={`flex items-start gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <div className={`border-t border-gray-100 dark:border-dark-border pt-4 text-start`}>
+                      <div className={`flex items-start gap-2`}>
                         <MapPin size={18} className="text-gray-400 mt-0.5 flex-shrink-0" />
                         <div className="flex-1">
                           <h3 className="font-semibold text-gray-900 dark:text-dark-text mb-1">{isRTL ? 'عنوان التوصيل' : 'Shipping Address'}</h3>
@@ -2006,7 +1998,7 @@ export default function UserDashboard() {
                     </div>
 
                     {/* Payment */}
-                    <div className={`border-t border-gray-100 dark:border-dark-border pt-4 flex justify-between items-center ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <div className={`border-t border-gray-100 dark:border-dark-border pt-4 flex justify-between items-center`}>
                       <div className="flex flex-col">
                         <span className="text-xs text-gray-500 mb-1">{isRTL ? 'الإجمالي' : 'Total Amount'}</span>
                         <span className="font-bold text-lg text-gray-900 dark:text-dark-text">
@@ -2021,7 +2013,7 @@ export default function UserDashboard() {
                     </div>
 
                     {/* Actions */}
-                    <div className={`border-t border-gray-100 dark:border-dark-border pt-4 flex gap-2 flex-wrap ${isRTL ? 'justify-start flex-row-reverse' : 'justify-end'}`}>
+                    <div className={`border-t border-gray-100 dark:border-dark-border pt-4 flex gap-2 flex-wrap ${isRTL ? 'justify-start' : 'justify-end'}`}>
                       <button
                         type="button"
                         onClick={() =>

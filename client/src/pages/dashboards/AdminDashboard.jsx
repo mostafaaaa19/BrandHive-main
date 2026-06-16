@@ -104,11 +104,11 @@ const COLORS = ['#1A2040', '#C8922A', '#7C3AED', '#06B6D4', '#84CC16'];
 
 function SidebarItem({ icon: Icon, label, tab, activeTab, setActiveTab, badge, isRTL }) {
   return (
-    <button onClick={() => setActiveTab(tab)} className={`${activeTab === tab ? 'sidebar-item-active' : 'sidebar-item'} ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+    <button onClick={() => setActiveTab(tab)} className={`${activeTab === tab ? 'sidebar-item-active' : 'sidebar-item'}`}>
       <Icon size={16} />
       <span>{label}</span>
       {badge > 0 && (
-        <span className={`${isRTL ? 'mr-auto ml-0' : 'ml-auto mr-0'} bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full`}>{badge}</span>
+        <span className={`ms-auto bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full`}>{badge}</span>
       )}
     </button>
   );
@@ -210,7 +210,7 @@ function AdminUsersTab({ adminAPI, isRTL, toast }) {
       </h1>
 
       <div className={`flex gap-2 mb-4 flex-wrap
-        ${isRTL ? 'flex-row-reverse' : ''}`}>
+       `}>
         {ROLE_FILTERS.map(f => (
           <button key={f.value}
             onClick={() => {
@@ -243,7 +243,7 @@ function AdminUsersTab({ adminAPI, isRTL, toast }) {
           </div>
         ) : (
           <table className={`w-full text-sm 
-            ${isRTL ? 'text-right' : 'text-left'}`}>
+            text-start`}>
             <thead className="bg-gray-50 dark:bg-dark-bg">
               <tr>
                 {[
@@ -300,7 +300,7 @@ function AdminUsersTab({ adminAPI, isRTL, toast }) {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <div className={`flex gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <div className={`flex gap-2`}>
                       <button
                         onClick={() => 
                           handleToggle(u._id || u.id)
@@ -398,7 +398,7 @@ function AdminOrdersTab({ adminAPI, isRTL }) {
           </div>
         ) : (
           <table className={`w-full text-sm 
-            ${isRTL ? 'text-right' : 'text-left'}`}>
+            text-start`}>
             <thead>
               <tr className="border-b border-gray-100 
                 dark:border-dark-border">
@@ -592,7 +592,7 @@ function AdminProductsTab({ adminAPI, isRTL }) {
 
   return (
     <div>
-      <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+      <div className={`flex items-center justify-between mb-6`}>
         <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text ${isRTL ? 'text-right' : ''}`}>
           {isRTL ? 'إدارة المنتجات' : 'Products Management'}
           <span className="mx-2 text-sm font-normal text-gray-400">({products.length})</span>
@@ -643,7 +643,7 @@ function AdminProductsTab({ adminAPI, isRTL }) {
                   <p className="text-xs text-gray-400 dark:text-dark-muted mt-0.5 truncate">
                     {product.brand?.name || '—'}
                   </p>
-                  <div className={`flex gap-2 mt-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex gap-2 mt-3`}>
                     <button
                       onClick={() => handleToggle(product)}
                       disabled={actionLoading === id + '_toggle'}
@@ -843,7 +843,7 @@ function AdminCouponsTab({ isRTL, toast }) {
 
   return (
     <div>
-      <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+      <div className={`flex items-center justify-between mb-6`}>
         <h1 className="text-2xl font-display font-bold text-gray-900 dark:text-dark-text">
           {isRTL ? 'إدارة الكوبونات' : 'Coupons Management'}
         </h1>
@@ -906,7 +906,7 @@ function AdminCouponsTab({ isRTL, toast }) {
               />
             </div>
           </div>
-          <div className={`flex gap-3 mt-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className={`flex gap-3 mt-4`}>
             <button
               onClick={handleCreate}
               disabled={creating}
@@ -939,7 +939,7 @@ function AdminCouponsTab({ isRTL, toast }) {
             </p>
           </div>
         ) : (
-          <table className={`w-full text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
+          <table className={`w-full text-sm text-start`}>
             <thead className="bg-gray-50 dark:bg-dark-bg">
               <tr>
                 {[
@@ -1095,7 +1095,7 @@ function AdminFeaturedSlotsTab({ isRTL, productsAPI }) {
       </p>
 
       <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 mb-6">
-        <h3 className={`font-bold text-gray-900 dark:text-dark-text mb-4 flex items-center gap-2 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+        <h3 className={`font-bold text-gray-900 dark:text-dark-text mb-4 flex items-center gap-2`}>
           ⭐ {isRTL ? 'المنتجات المميزة حالياً' : 'Currently Featured'}
           <span className="text-xs bg-brand-gold/10 text-brand-gold px-2 py-0.5 rounded-full font-semibold">
             {featuredIds.length}/{MAX_SLOTS}
@@ -1144,7 +1144,7 @@ function AdminFeaturedSlotsTab({ isRTL, productsAPI }) {
       </div>
 
       <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
-        <div className={`flex items-center justify-between gap-4 mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+        <div className={`flex items-center justify-between gap-4 mb-4`}>
           <h3 className="font-bold text-gray-900 dark:text-dark-text">
             {isRTL ? 'اختر من المنتجات' : 'Pick from Products'}
           </h3>
@@ -1271,7 +1271,7 @@ function AdminAuditTab({ isRTL }) {
 
   return (
     <div>
-      <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+      <div className={`flex items-center justify-between mb-6`}>
         <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text ${isRTL ? 'text-right' : ''}`}>
           {isRTL ? 'سجل العمليات' : 'Audit Log'}
         </h1>
@@ -1280,7 +1280,7 @@ function AdminAuditTab({ isRTL }) {
         </button>
       </div>
 
-      <div className={`flex gap-2 mb-4 flex-wrap ${isRTL ? 'flex-row-reverse' : ''}`}>
+      <div className={`flex gap-2 mb-4 flex-wrap`}>
         {filters.map((item) => (
           <button
             key={item.value}
@@ -1308,7 +1308,7 @@ function AdminAuditTab({ isRTL }) {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className={`w-full text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
+            <table className={`w-full text-sm text-start`}>
               <thead className="bg-gray-50 dark:bg-dark-bg">
                 <tr>
                   {[
@@ -1428,7 +1428,7 @@ function AdminPayoutsTab({ isRTL, toast }) {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className={`w-full text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
+            <table className={`w-full text-sm text-start`}>
               <thead className="bg-gray-50 dark:bg-dark-bg">
                 <tr>
                   {[
@@ -1625,7 +1625,7 @@ function AdminSupportTab({ isRTL, toast }) {
                     selected?._id === msg._id ? 'bg-brand-gold/5 border-l-2 border-brand-gold' : ''
                   } ${isRTL ? 'text-right' : ''}`}
                 >
-                  <div className={`flex items-center justify-between mb-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex items-center justify-between mb-1`}>
                     <p className="font-medium text-sm text-gray-900 dark:text-dark-text">
                       {msg.fullName || 'Customer'}
                     </p>
@@ -1692,7 +1692,7 @@ function AdminSupportTab({ isRTL, toast }) {
               <p className={`text-xs mt-1 ${replyLength >= MIN_SUPPORT_REPLY_LENGTH ? 'text-emerald-600' : 'text-gray-400 dark:text-dark-muted'} ${isRTL ? 'text-right' : ''}`}>
                 {replyLength}/{MIN_SUPPORT_REPLY_LENGTH} {isRTL ? 'أحرف' : 'characters'}
               </p>
-              <div className={`flex gap-3 mt-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex gap-3 mt-3`}>
                 <button
                   onClick={handleReply}
                   disabled={replying || replyLength < MIN_SUPPORT_REPLY_LENGTH}
@@ -2111,14 +2111,17 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200 ${isRTL ? 'text-right' : 'text-left'}`}>
+    <div
+      dir={isRTL ? 'rtl' : 'ltr'}
+      className="min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200"
+    >
       <div className="page-container py-8">
-        <div className={`flex gap-8 ${isRTL ? 'flex-row-reverse' : ''}`}>
+        <div className="flex flex-col md:flex-row gap-4 md:gap-8">
           {/* Sidebar */}
           <aside className="hidden md:block w-56 flex-shrink-0">
             <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-4 sticky top-24">
               {/* Admin badge */}
-              <div className={`flex items-center gap-2 p-3 mb-4 bg-brand-navy/5 dark:bg-brand-gold/5 rounded-2xl ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex items-center gap-2 p-3 mb-4 bg-brand-navy/5 dark:bg-brand-gold/5 rounded-2xl`}>
                 <div className="w-9 h-9 rounded-xl bg-brand-navy dark:bg-brand-gold flex items-center justify-center flex-shrink-0">
                   <span className="text-white dark:text-brand-navy font-bold text-sm">A</span>
                 </div>
@@ -2138,7 +2141,7 @@ export default function AdminDashboard() {
               ))}
 
               <div className="border-t border-gray-100 dark:border-dark-border pt-3">
-                <button onClick={async () => { await logout(); navigate('/'); }} className={`sidebar-item text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 w-full ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+                <button onClick={async () => { await logout(); navigate('/'); }} className={`sidebar-item text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 w-full`}>
                   <LogOut size={16} /> {isRTL ? 'تسجيل الخروج' : 'Sign Out'}
                 </button>
               </div>
@@ -2174,7 +2177,7 @@ export default function AdminDashboard() {
 
               return (
               <div>
-                <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex items-center justify-between mb-6`}>
                   <div className={isRTL ? 'text-right' : ''}>
                     <h1 className="text-2xl font-display font-bold text-gray-900 dark:text-dark-text">{isRTL ? 'لوحة تحكم المشرف' : 'Admin Console'}</h1>
                     <p className="text-gray-500 dark:text-dark-muted mt-0.5">
@@ -2184,7 +2187,7 @@ export default function AdminDashboard() {
                       }
                     </p>
                   </div>
-                  <div className={`flex gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex gap-2`}>
                     <button
                       type="button"
                       onClick={() => {
@@ -2214,7 +2217,7 @@ export default function AdminDashboard() {
                 </div>
 
                 {/* Stats */}
-                <div className={`grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8`}>
                   {[
                     { icon: Users, label: isRTL ? 'المستخدمون' : 'Registered Users', value: (stats?.totalUsers || 0).toLocaleString(), change: '+0%', color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400', trend: '↑' },
                     { icon: Store, label: isRTL ? 'البائعون النشطون' : 'Active Sellers', value: (stats?.totalSellers || 0).toLocaleString(), change: '+0', color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400', trend: '↑' },
@@ -2222,7 +2225,7 @@ export default function AdminDashboard() {
                     { icon: Package, label: isRTL ? 'إجمالي الطلبات' : 'Total Orders', value: (stats?.totalOrders || 0).toLocaleString(), change: '+0%', color: 'bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400', trend: '↑' },
                   ].map(stat => (
                     <div key={stat.label} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5 ${isRTL ? 'text-right' : ''}`}>
-                      <div className={`w-10 h-10 rounded-xl ${stat.color} flex items-center justify-center mb-3 ${isRTL ? 'mr-0 ml-auto' : ''}`}>
+                      <div className={`w-10 h-10 rounded-xl ${stat.color} flex items-center justify-center mb-3 `}>
                         <stat.icon size={18} />
                       </div>
                       <div className="text-2xl font-display font-bold text-gray-900 dark:text-dark-text">{stat.value}</div>
@@ -2257,7 +2260,7 @@ export default function AdminDashboard() {
                 )}
 
                 {/* Charts Row */}
-                <div className={`grid lg:grid-cols-3 gap-6 mb-6 ${isRTL ? 'lg:flex-row-reverse' : ''}`}>
+                <div className={`grid lg:grid-cols-3 gap-6 mb-6`}>
                   {/* GMV Chart */}
                   <div className="lg:col-span-2 bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
                     <h3 className={`font-display font-bold text-gray-900 dark:text-dark-text mb-4 ${isRTL ? 'text-right' : ''}`}>
@@ -2266,7 +2269,7 @@ export default function AdminDashboard() {
                     <div className="space-y-4">
                       {orderStatuses.map(s => (
                         <div key={s.label} className={`space-y-1 ${isRTL ? 'text-right' : ''}`}>
-                          <div className={`flex items-center justify-between text-sm ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <div className={`flex items-center justify-between text-sm`}>
                             <span className="text-gray-600 dark:text-dark-muted">{s.label}</span>
                             <span className="font-bold dark:text-dark-text">{s.value}</span>
                           </div>
@@ -2291,9 +2294,9 @@ export default function AdminDashboard() {
                         categoryBreakdown.map(cat => (
                           <div
                             key={cat.name}
-                            className={`flex items-center justify-between text-sm ${isRTL ? 'flex-row-reverse' : ''}`}
+                            className={`flex items-center justify-between text-sm`}
                           >
-                            <div className={`flex items-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className={`flex items-center gap-2`}>
                               <div className={`w-3 h-3 rounded-full ${cat.color}`} />
                               <span className="text-gray-600 dark:text-dark-muted">{cat.name}</span>
                             </div>
@@ -2311,7 +2314,7 @@ export default function AdminDashboard() {
 
                 {/* Pending Seller Approvals */}
                 <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
-                  <div className={`flex items-center justify-between mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex items-center justify-between mb-4`}>
                     <h3 className="font-display font-bold text-gray-900 dark:text-dark-text">
                       {isRTL ? 'طلبات انضمام بائعين قيد المراجعة' : 'Pending Seller Approvals'}
                       <span className={`mx-2 px-2 py-0.5 bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-[10px] rounded-full font-bold`}>
@@ -2327,7 +2330,7 @@ export default function AdminDashboard() {
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
-                      <table className={`w-full text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
+                      <table className={`w-full text-sm text-start`}>
                         <thead>
                           <tr className="border-b border-gray-100 dark:border-dark-border">
                             {[
@@ -2359,7 +2362,7 @@ export default function AdminDashboard() {
                               <td className="py-3 px-2 text-gray-500 dark:text-dark-muted">{brand.location || 'Egypt'}</td>
                               <td className="py-3 px-2 text-gray-500 dark:text-dark-muted">{new Date(brand.createdAt).toLocaleDateString()}</td>
                               <td className="py-3 px-2">
-                                <div className={`flex gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                                <div className={`flex gap-2`}>
                                   <button
                                     onClick={() => approveSeller(brand._id || brand.id)}
                                     className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/20 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1"
@@ -2433,7 +2436,7 @@ export default function AdminDashboard() {
                   {isRTL ? 'طلبات البائعين' : 'Seller Requests'}
                 </h2>
                 <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
-                  <div className={`flex items-center justify-between mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex items-center justify-between mb-4`}>
                     <h3 className="font-display font-bold text-gray-900 dark:text-dark-text">
                       {isRTL ? 'طلبات انضمام بائعين قيد المراجعة' : 'Pending Seller Approvals'}
                       <span className="mx-2 px-2 py-0.5 bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-[10px] rounded-full font-bold">
@@ -2451,7 +2454,7 @@ export default function AdminDashboard() {
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
-                      <table className={`w-full text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
+                      <table className={`w-full text-sm text-start`}>
                         <thead>
                           <tr className="border-b border-gray-100 dark:border-dark-border">
                             {[
@@ -2488,7 +2491,7 @@ export default function AdminDashboard() {
                                 {brand.createdAt ? new Date(brand.createdAt).toLocaleDateString(isRTL ? 'ar-EG' : 'en-US') : '—'}
                               </td>
                               <td className="py-3 px-2">
-                                <div className={`flex gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                                <div className={`flex gap-2`}>
                                   <button
                                     onClick={() => approveSeller(brand._id || brand.id)}
                                     className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/20 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1"
@@ -2597,7 +2600,7 @@ export default function AdminDashboard() {
                           const topProducts = adminAnalytics.topProducts;
                           const imageUrl = p.image?.url || p.images?.[0]?.url || null;
                           return (
-                            <div key={p._id || i} className={`flex items-center gap-3 mb-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div key={p._id || i} className={`flex items-center gap-3 mb-3`}>
                               <span className="text-xs text-gray-400 dark:text-dark-muted w-4 flex-shrink-0">{i + 1}</span>
                               {imageUrl && (
                                 <img
@@ -2650,7 +2653,7 @@ export default function AdminDashboard() {
                           const orderCount = c.ordersCount || c.totalOrders || c.orders || 0;
                           const customerRevenue = c.totalSpent || c.totalPurchases || c.revenue || 0;
                           return (
-                          <div key={c._id || i} className={`flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <div key={c._id || i} className={`flex items-center gap-3`}>
                             <div className="w-8 h-8 rounded-full bg-brand-navy dark:bg-brand-gold flex items-center justify-center flex-shrink-0">
                               <span className="text-white dark:text-brand-navy text-xs font-bold">
                                 {(displayName || '?')[0]?.toUpperCase()}
@@ -2732,7 +2735,7 @@ export default function AdminDashboard() {
                         type="button"
                         onClick={item.handler}
                         disabled={exportLoading[item.key]}
-                        className={`flex items-center gap-2 px-4 py-2 bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 ${isRTL ? 'flex-row-reverse' : ''}`}
+                        className={`flex items-center gap-2 px-4 py-2 bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50`}
                       >
                         {exportLoading[item.key] ? (
                           <>
@@ -2786,7 +2789,7 @@ export default function AdminDashboard() {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 px-4">
           <div className={`bg-white dark:bg-dark-surface rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto ${isRTL ? 'text-right' : ''}`}>
 
-            <div className={`flex items-center justify-between p-6 border-b border-gray-100 dark:border-dark-border ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`flex items-center justify-between p-6 border-b border-gray-100 dark:border-dark-border`}>
               <h3 className="text-xl font-display font-bold text-gray-900 dark:text-dark-text">
                 {isRTL ? 'مراجعة طلب البائع' : 'Review Seller Application'}
               </h3>
@@ -2800,7 +2803,7 @@ export default function AdminDashboard() {
             </div>
 
             <div className="p-6 space-y-4">
-              <div className={`flex items-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex items-center gap-4`}>
                 <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-dark-bg overflow-hidden flex-shrink-0 flex items-center justify-center">
                   {reviewModal.brand.logo?.url ? (
                     <img src={reviewModal.brand.logo.url} alt={reviewModal.brand.name} className="w-full h-full object-cover" />
@@ -2833,7 +2836,7 @@ export default function AdminDashboard() {
                 { label: isRTL ? 'الموقع الإلكتروني' : 'Website', value: reviewModal.brand.website || '—' },
                 { label: isRTL ? 'تاريخ التقديم' : 'Submitted', value: reviewModal.brand.createdAt ? new Date(reviewModal.brand.createdAt).toLocaleDateString(isRTL ? 'ar-EG' : 'en-US') : '—' },
               ].map(item => (
-                <div key={item.label} className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div key={item.label} className={`flex gap-3`}>
                   <span className="text-sm font-semibold text-gray-500 dark:text-dark-muted w-28 flex-shrink-0">{item.label}:</span>
                   <span className="text-sm text-gray-900 dark:text-dark-text">{item.value}</span>
                 </div>
@@ -2841,7 +2844,7 @@ export default function AdminDashboard() {
             </div>
 
             {reviewModal.brand.status === 'pending' && (
-              <div className={`flex gap-3 p-6 pt-0 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex gap-3 p-6 pt-0`}>
                 <button
                   type="button"
                   onClick={() => {
@@ -2910,7 +2913,7 @@ export default function AdminDashboard() {
               </p>
             </div>
 
-            <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`flex gap-3`}>
               <button
                 onClick={() => setRejectModal({ open: false, brandId: null, brandName: '' })}
                 className="flex-1 btn-outline text-sm"

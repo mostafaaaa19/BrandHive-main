@@ -96,7 +96,7 @@ export default function VerifyResetPage() {
   if (!email) return null;
 
   return (
-    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg flex transition-colors duration-200 ${isRTL ? 'flex-row-reverse' : ''}`}>
+    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg flex transition-colors duration-200`}>
 
       {/* ── Left Panel ── */}
       <div className="hidden lg:flex flex-1 bg-brand-navy dark:bg-[#0f172a] items-center justify-center relative overflow-hidden transition-colors duration-200">
@@ -151,7 +151,7 @@ export default function VerifyResetPage() {
           className="w-full max-w-md"
         >
           {/* Logo */}
-          <Link to="/" className={`flex items-center gap-2 mb-10 ${isRTL ? 'flex-row-reverse justify-end' : ''}`}>
+          <Link to="/" className={`flex items-center gap-2 mb-10 ${isRTL ? 'justify-end' : ''}`}>
             <div className="w-10 h-10 bg-brand-navy dark:bg-brand-gold rounded-xl flex items-center justify-center transition-colors">
               <span className="text-white dark:text-brand-navy font-display font-bold text-xl">B</span>
             </div>
@@ -202,7 +202,7 @@ export default function VerifyResetPage() {
                     initial={{ opacity: 0, y: -6 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -6 }}
-                    className={`flex items-start gap-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/20 text-red-700 dark:text-red-400 rounded-xl px-4 py-3 mb-6 text-sm ${isRTL ? 'flex-row-reverse text-right' : ''}`}
+                    className={`flex items-start gap-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/20 text-red-700 dark:text-red-400 rounded-xl px-4 py-3 mb-6 text-sm`}
                   >
                     <AlertCircle size={16} className="mt-0.5 shrink-0 text-red-500" />
                     <span>{error}</span>
@@ -229,7 +229,7 @@ export default function VerifyResetPage() {
                   className="w-full btn-primary py-4 text-base disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {loading ? (
-                    <span className={`flex items-center justify-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <span className={`flex items-center justify-center gap-2`}>
                       <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       {isRTL ? 'جاري التحقق...' : 'Verifying…'}
                     </span>
@@ -251,7 +251,7 @@ export default function VerifyResetPage() {
                       id="verify-reset-resend"
                       onClick={handleResend}
                       disabled={resendLoading}
-                      className={`text-brand-gold font-semibold hover:underline disabled:opacity-60 inline-flex items-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}
+                      className={`text-brand-gold font-semibold hover:underline disabled:opacity-60 inline-flex items-center gap-1`}
                     >
                       {resendLoading && <RefreshCw size={13} className="animate-spin" />}
                       {isRTL ? 'إعادة إرسال الرمز' : 'Resend Code'}
@@ -261,7 +261,7 @@ export default function VerifyResetPage() {
               </form>
 
               <p className={`text-center text-sm text-gray-500 dark:text-dark-muted mt-6 ${isRTL ? 'text-right' : ''}`}>
-                <Link to="/forgot-password" className={`text-brand-navy dark:text-brand-gold font-semibold hover:underline flex items-center justify-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <Link to="/forgot-password" className={`text-brand-navy dark:text-brand-gold font-semibold hover:underline flex items-center justify-center gap-1`}>
                   {isRTL ? '← عودة' : '← Back'}
                 </Link>
               </p>

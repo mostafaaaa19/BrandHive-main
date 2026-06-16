@@ -412,7 +412,7 @@ export default function HomePage() {
 
   const renderHeroShowcaseCard = (item, index, size) => {
     const heightClass = size === 'tall' ? 'h-[212px]' : 'h-[148px]';
-    const cardClass = `relative ${heightClass} w-full bg-white/10 backdrop-blur-sm rounded-3xl overflow-hidden border border-white/15 hover:border-brand-gold/50 hover:shadow-xl hover:shadow-black/20 transition-all duration-300 hover:-translate-y-1 cursor-pointer animate-fade-in block ${isRTL ? 'text-right' : 'text-left'}`;
+    const cardClass = `relative ${heightClass} w-full bg-white/10 backdrop-blur-sm rounded-3xl overflow-hidden border border-white/15 hover:border-brand-gold/50 hover:shadow-xl hover:shadow-black/20 transition-all duration-300 hover:-translate-y-1 cursor-pointer animate-fade-in block text-start`;
 
     const cardContent = (
       <>
@@ -428,7 +428,7 @@ export default function HomePage() {
           </div>
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-black/5 pointer-events-none" />
-        <div className={`absolute bottom-0 left-0 right-0 p-3.5 ${isRTL ? 'text-right' : 'text-left'}`}>
+        <div className={`absolute bottom-0 left-0 right-0 p-3.5 text-start`}>
           <p className="text-brand-gold/90 text-[10px] font-bold uppercase tracking-[0.14em] mb-1">
             {item.cat}
           </p>
@@ -484,15 +484,15 @@ export default function HomePage() {
       <section className="relative bg-brand-navy overflow-hidden min-h-[85vh] flex items-center">
         {/* Background decoration */}
         <div className="absolute inset-0 bg-pattern opacity-30"></div>
-        <div className={`absolute top-0 ${isRTL ? 'left-0' : 'right-0'} w-1/2 h-full bg-gradient-to-${isRTL ? 'r' : 'l'} from-white/5 to-transparent`}></div>
+        <div className={`absolute top-0 end-0 w-1/2 h-full bg-gradient-to-${isRTL ? 'r' : 'l'} from-white/5 to-transparent`}></div>
         <div className="absolute bottom-0 left-0 w-64 h-64 bg-brand-gold/10 rounded-full blur-3xl"></div>
         <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl"></div>
 
         <div className="page-container relative z-10 py-16 md:py-20">
-          <div className={`grid lg:grid-cols-2 gap-12 items-center ${isRTL ? 'lg:flex-row-reverse' : ''}`}>
+          <div className={`grid lg:grid-cols-2 gap-12 items-center`}>
             {/* Left - Content */}
-            <div className={`animate-slide-up ${isRTL ? 'text-right' : 'text-left'}`}>
-              <div className={`inline-flex items-center gap-2 px-4 py-2 bg-brand-gold/20 text-brand-gold rounded-full text-sm font-semibold mb-6 border border-brand-gold/30 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`animate-slide-up text-start`}>
+              <div className={`inline-flex items-center gap-2 px-4 py-2 bg-brand-gold/20 text-brand-gold rounded-full text-sm font-semibold mb-6 border border-brand-gold/30`}>
                 <Sparkles size={14} />
                 {isRTL ? 'السوق المحلي الأول في مصر' : "Egypt's #1 Local Marketplace"}
               </div>
@@ -512,13 +512,13 @@ export default function HomePage() {
                 )}
               </h1>
 
-              <p className={`text-gray-300 text-lg leading-relaxed mb-8 max-w-lg ${isRTL ? 'mr-0 ml-auto' : ''}`}>
+              <p className={`text-gray-300 text-lg leading-relaxed mb-8 max-w-lg `}>
                 {t('home.hero.subtitle', { count: heroBrandCountLabel })}
               </p>
 
-              <div className={`flex flex-wrap gap-3 mb-10 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex flex-wrap gap-3 mb-10`}>
                 <Link to="/products" className="btn-gold text-base px-8 py-4">
-                  {t('home.hero.shopNow')} <ArrowRight size={18} className={isRTL ? 'rotate-180' : ''} />
+                  {t('home.hero.shopNow')} <ArrowRight size={18} className="rtl-flip" />
                 </Link>
                 <Link to="/sell" className="btn-outline border-white text-white hover:bg-white hover:text-brand-navy text-base px-8 py-4">
                   {t('home.hero.startSelling')}
@@ -526,7 +526,7 @@ export default function HomePage() {
               </div>
 
               {/* Stats */}
-              <div className={`flex flex-wrap gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex flex-wrap gap-6`}>
                 {statsLoading ? (
                   Array.from({ length: 4 }).map((_, index) => (
                     <div key={index} className={isRTL ? 'text-right' : 'text-left'}>
@@ -549,7 +549,7 @@ export default function HomePage() {
 
             {/* Right - Bento showcase: col1 tall→short, col2 short→tall */}
             <div className="relative hidden lg:flex justify-end">
-              <div className={`flex gap-3.5 w-full max-w-[400px] ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex gap-3.5 w-full max-w-[400px]`}>
                 {productsLoading ? (
                   heroShowcaseColumns.map((column, colIdx) => (
                     <div key={colIdx} className="flex flex-col gap-3.5 flex-1 min-w-0">
@@ -583,9 +583,9 @@ export default function HomePage() {
       {/* ===== FEATURES STRIP ===== */}
       <section className="bg-white dark:bg-dark-surface border-y border-gray-100 dark:border-dark-border">
         <div className="page-container py-6">
-          <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className={`grid grid-cols-2 md:grid-cols-4 gap-4`}>
             {features.map(({ icon: Icon, title, desc, color }) => (
-              <div key={title} className={`flex items-start gap-3 p-3 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+              <div key={title} className={`flex items-start gap-3 p-3`}>
                 <div className={`p-2 rounded-xl bg-gray-50 dark:bg-dark-bg ${color} flex-shrink-0`}>
                   <Icon size={18} />
                 </div>
@@ -602,13 +602,13 @@ export default function HomePage() {
       {/* ===== CATEGORIES ===== */}
       <section className="py-16 bg-brand-cream dark:bg-dark-bg">
         <div className="page-container">
-          <div className={`flex items-center justify-between mb-10 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className={`flex items-center justify-between mb-10`}>
             <div className={isRTL ? 'text-right' : ''}>
               <p className="text-brand-gold font-semibold text-sm uppercase tracking-wider mb-1">{isRTL ? 'تصفح' : 'Browse'}</p>
               <h2 className="section-heading">{isRTL ? 'تسوق حسب الفئة' : 'Shop by Category'}</h2>
             </div>
-            <Link to="/products" className={`btn-ghost text-sm hidden sm:flex ${isRTL ? 'flex-row-reverse' : ''}`}>
-              {isRTL ? 'عرض جميع الفئات' : 'View all categories'} <ChevronRight size={16} className={isRTL ? 'rotate-180' : ''} />
+            <Link to="/products" className={`btn-ghost text-sm hidden sm:flex`}>
+              {isRTL ? 'عرض جميع الفئات' : 'View all categories'} <ChevronRight size={16} className="rtl-flip" />
             </Link>
           </div>
 
@@ -633,12 +633,12 @@ export default function HomePage() {
       {/* ===== TRENDING PRODUCTS ===== */}
       <section className="py-16 bg-white dark:bg-dark-surface">
         <div className="page-container">
-          <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 ${isRTL ? 'sm:flex-row-reverse' : ''}`}>
+          <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8`}>
             <div className={isRTL ? 'text-right' : ''}>
               <p className="text-brand-gold font-semibold text-sm uppercase tracking-wider mb-1">{isRTL ? 'مختاراتنا' : 'Curated'}</p>
               <h2 className="section-heading">{t('home.featuredProducts')}</h2>
             </div>
-            <div className={`flex items-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`flex items-center gap-2`}>
               {tabs.map(tab => (
                 <button
                   key={tab.id}
@@ -652,13 +652,13 @@ export default function HomePage() {
                   {tab.label}
                 </button>
               ))}
-              <Link to="/products" className={`btn-ghost text-sm hidden md:flex ${isRTL ? 'flex-row-reverse' : ''}`}>
-                {isRTL ? 'الكل' : 'See all'} <ArrowRight size={14} className={isRTL ? 'rotate-180' : ''} />
+              <Link to="/products" className={`btn-ghost text-sm hidden md:flex`}>
+                {isRTL ? 'الكل' : 'See all'} <ArrowRight size={14} className="rtl-flip" />
               </Link>
             </div>
           </div>
 
-          <div className={`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className={`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6`}>
             {productsLoading ? (
               [...Array(4)].map((_, i) => (
                 <div key={i} className="bg-gray-100 dark:bg-dark-surface rounded-2xl h-64 animate-pulse" />
@@ -672,7 +672,7 @@ export default function HomePage() {
 
           <div className="text-center mt-8">
             <Link to="/products" className="btn-outline">
-              {isRTL ? 'تصفح جميع المنتجات' : 'Browse All Products'} <ArrowRight size={16} className={isRTL ? 'rotate-180' : ''} />
+              {isRTL ? 'تصفح جميع المنتجات' : 'Browse All Products'} <ArrowRight size={16} className="rtl-flip" />
             </Link>
           </div>
         </div>
@@ -681,9 +681,9 @@ export default function HomePage() {
       {displayTrendingProducts.length > 0 && (
         <section className="py-16 bg-white dark:bg-dark-surface">
           <div className="page-container">
-            <div className={`flex items-center justify-between mb-8 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`flex items-center justify-between mb-8`}>
               <div className={isRTL ? 'text-right' : ''}>
-                <div className={`flex items-center gap-2 mb-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex items-center gap-2 mb-1`}>
                   <span className="text-2xl">🔥</span>
                   <span className="text-xs font-semibold text-brand-gold uppercase tracking-wider">
                     {isRTL ? 'مدعوم بالذكاء الاصطناعي' : 'AI Powered'}
@@ -718,13 +718,13 @@ export default function HomePage() {
       {/* ===== BRAND BAZAARS ===== */}
       <section className="py-16 bg-brand-cream dark:bg-dark-bg">
         <div className="page-container">
-          <div className={`flex items-center justify-between mb-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className={`flex items-center justify-between mb-3`}>
             <div className={isRTL ? 'text-right' : ''}>
               <p className="text-brand-gold font-semibold text-sm uppercase tracking-wider mb-1">{isRTL ? 'ميزة جديدة' : 'New Feature'}</p>
               <h2 className="section-heading">{isRTL ? 'بازارات الماركات' : 'Brand Bazaars'}</h2>
             </div>
-            <Link to="/brands" className={`btn-ghost text-sm hidden sm:flex ${isRTL ? 'flex-row-reverse' : ''}`}>
-              {isRTL ? 'استكشف البازارات' : 'Explore all bazaars'} <ChevronRight size={16} className={isRTL ? 'rotate-180' : ''} />
+            <Link to="/brands" className={`btn-ghost text-sm hidden sm:flex`}>
+              {isRTL ? 'استكشف البازارات' : 'Explore all bazaars'} <ChevronRight size={16} className="rtl-flip" />
             </Link>
           </div>
           <p className={`text-gray-500 dark:text-dark-muted mb-8 max-w-xl ${isRTL ? 'text-right mr-auto ml-0' : ''}`}>
@@ -733,7 +733,7 @@ export default function HomePage() {
               : 'Every brand has its own mini-marketplace. Browse, follow, and shop their full collection.'}
           </p>
 
-          <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6`}>
             {brandsLoading ? (
               [...Array(4)].map((_, i) => (
                 <div key={i} className="bg-gray-100 dark:bg-dark-surface rounded-2xl h-64 animate-pulse" />
@@ -743,18 +743,18 @@ export default function HomePage() {
                 <div key={brand.id} className="card overflow-hidden">
                   {/* Brand Header */}
                   <div className={`p-4 bg-gradient-to-br from-gray-100 to-gray-50 dark:from-dark-surface dark:to-dark-surface ${isRTL ? 'text-right' : ''}`}>
-                    <div className={`flex items-center justify-between mb-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <div className={`flex items-center justify-between mb-3`}>
                       <div className={`w-12 h-12 rounded-2xl bg-brand-navy dark:bg-brand-gold flex items-center justify-center shadow`}>
                         <span className="text-white dark:text-brand-navy font-bold">{brand.name?.[0]}</span>
                       </div>
                       {brand.verified && <span className="badge-verified"><CheckCircle2 size={10} /> {isRTL ? 'موثق' : 'Verified'}</span>}
                     </div>
                     <h3 className="font-bold text-gray-900 dark:text-dark-text">{brand.name}</h3>
-                    <div className={`flex items-center gap-1 text-xs text-gray-500 dark:text-dark-muted ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <div className={`flex items-center gap-1 text-xs text-gray-500 dark:text-dark-muted`}>
                       <MapPin size={10} />
                       {brand.country}
                     </div>
-                    <div className={`flex gap-3 mt-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <div className={`flex gap-3 mt-2`}>
                       <span className="text-xs">
                         <span className="font-bold text-gray-900 dark:text-dark-text">{brand.productCount}</span> 
                         <span className="text-gray-500 dark:text-dark-muted"> {isRTL ? 'منتج' : 'Products'}</span>
@@ -787,7 +787,7 @@ export default function HomePage() {
 
         <div className="page-container relative z-10">
           <div className="max-w-3xl mx-auto text-center">
-            <div className={`inline-flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-full text-sm font-semibold mb-6 border border-white/20 backdrop-blur-sm ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`inline-flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-full text-sm font-semibold mb-6 border border-white/20 backdrop-blur-sm`}>
               <Sparkles size={14} className="text-yellow-400" />
               {isRTL ? 'من أجل الثقافة ✨' : 'For the Culture ✨'}
             </div>
@@ -812,7 +812,7 @@ export default function HomePage() {
                 : "We're not just a marketplace. We're a movement. Supporting Egyptian creators, celebrating our culture, and making local shopping the vibe."}
             </p>
 
-            <div className={`grid grid-cols-3 gap-4 mb-10 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`grid grid-cols-3 gap-4 mb-10`}>
               {movementStats.map((item) => (
                 <div key={item.key} className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
                   <div className="text-3xl mb-2">{item.emoji}</div>
@@ -829,7 +829,7 @@ export default function HomePage() {
             </div>
 
             {/* Category Tags - Gen Z style */}
-            <div className={`flex flex-wrap justify-center gap-3 mb-10 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`flex flex-wrap justify-center gap-3 mb-10`}>
               {['#MadeInEgypt', '#LocalFirst', '#SupportSmallBiz', '#EgyptianArtisans', '#BrandHive', '#ShopLocal'].map(tag => (
                 <span
                   key={tag}
@@ -840,7 +840,7 @@ export default function HomePage() {
               ))}
             </div>
 
-            <div className={`flex flex-wrap justify-center gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`flex flex-wrap justify-center gap-4`}>
               <Link to="/explore" className="btn-gold px-8 py-4 text-base">
                 {isRTL ? 'استكشف الماركات 🏪' : 'Explore Brands 🏪'}
               </Link>
@@ -855,17 +855,17 @@ export default function HomePage() {
       {/* ===== TOP BRANDS ===== */}
       <section className="py-16 bg-white dark:bg-dark-surface">
         <div className="page-container">
-          <div className={`flex items-center justify-between mb-10 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className={`flex items-center justify-between mb-10`}>
             <div className={isRTL ? 'text-right' : ''}>
               <p className="text-brand-gold font-semibold text-sm uppercase tracking-wider mb-1">{isRTL ? 'بائعون موثوقون' : 'Trusted Sellers'}</p>
               <h2 className="section-heading">{t('home.topBrands')}</h2>
             </div>
-            <Link to="/explore" className={`btn-ghost text-sm hidden sm:flex ${isRTL ? 'flex-row-reverse' : ''}`}>
-              {isRTL ? 'جميع الماركات' : 'All brands'} <ChevronRight size={16} className={isRTL ? 'rotate-180' : ''} />
+            <Link to="/explore" className={`btn-ghost text-sm hidden sm:flex`}>
+              {isRTL ? 'جميع الماركات' : 'All brands'} <ChevronRight size={16} className="rtl-flip" />
             </Link>
           </div>
 
-          <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6`}>
             {brandsLoading ? (
               [...Array(4)].map((_, i) => (
                 <div key={i} className="bg-gray-100 dark:bg-dark-surface rounded-2xl h-64 animate-pulse" />
@@ -890,7 +890,7 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className={`grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className={`grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4`}>
             {globalBrands.length > 0
               ? globalBrands.map((brand, i) => (
                   <div
@@ -939,7 +939,7 @@ export default function HomePage() {
             <h2 className="section-heading">{t('home.testimonials')}</h2>
           </div>
 
-          <div className={`grid grid-cols-1 md:grid-cols-3 gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className={`grid grid-cols-1 md:grid-cols-3 gap-6`}>
             {testimonials.map((item) => (
               <div key={item.id} className={`card p-6 ${isRTL ? 'text-right' : ''}`}>
                 <div className={`flex mb-3 ${isRTL ? 'justify-end' : ''}`}>
@@ -948,7 +948,7 @@ export default function HomePage() {
                   ))}
                 </div>
                 <p className="text-gray-700 dark:text-dark-text mb-4 leading-relaxed">&quot;{isRTL && item.arText ? item.arText : item.text}&quot;</p>
-                <div className={`flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex items-center gap-3`}>
                   <div className="w-9 h-9 rounded-full bg-brand-navy dark:bg-brand-gold flex items-center justify-center">
                     <span className="text-white dark:text-brand-navy text-sm font-bold">{item.name[0]}</span>
                   </div>
@@ -966,16 +966,16 @@ export default function HomePage() {
       {/* ===== SELL ON BRANDHIVE CTA ===== */}
       <section className="py-16 bg-brand-navy">
         <div className="page-container">
-          <div className={`flex flex-col lg:flex-row items-center justify-between gap-8 ${isRTL ? 'lg:flex-row-reverse' : ''}`}>
+          <div className={`flex flex-col lg:flex-row items-center justify-between gap-8`}>
             <div className={isRTL ? 'text-right' : 'text-left'}>
               <h2 className="text-3xl md:text-4xl font-display font-bold text-white mb-3">
                 {isRTL ? 'مستعد لتنمية ماركتك؟' : 'Ready to grow your brand?'}
               </h2>
-              <p className={`text-gray-300 max-w-lg ${isRTL ? 'mr-auto ml-0' : ''}`}>
+              <p className={`text-gray-300 max-w-lg ms-auto`}>
                 {t('home.sellCta.subtitle')}
               </p>
             </div>
-            <div className={`flex flex-col sm:flex-row gap-4 flex-shrink-0 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`flex flex-col sm:flex-row gap-4 flex-shrink-0`}>
               <Link to="/sell" className="btn-gold px-8 py-4 text-base">
                 {isRTL ? 'ابدأ البيع مجاناً' : 'Start Selling Free'}
               </Link>

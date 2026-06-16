@@ -361,22 +361,22 @@ export default function ProductPage() {
   };
 
   return (
-    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200 ${isRTL ? 'text-right' : 'text-left'}`}>
+    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200 text-start`}>
       {/* Breadcrumb */}
       <div className="bg-white dark:bg-dark-surface border-b border-gray-100 dark:border-dark-border">
-        <div className={`page-container py-3 text-sm text-gray-500 dark:text-dark-muted flex items-center gap-1 flex-wrap ${isRTL ? 'flex-row-reverse' : ''}`}>
+        <div className={`page-container py-3 text-sm text-gray-500 dark:text-dark-muted flex items-center gap-1 flex-wrap`}>
           <Link to="/" className="hover:text-brand-navy dark:hover:text-brand-gold">{isRTL ? 'الرئيسية' : 'Home'}</Link>
-          <ChevronRight size={13} className={isRTL ? 'rotate-180' : ''} />
+          <ChevronRight size={13} className="rtl-flip" />
           <Link to={`/products?category=${product.category.toLowerCase().replace(' ', '-')}`} className="hover:text-brand-navy dark:hover:text-brand-gold capitalize">
             {isRTL ? product.category : product.category}
           </Link>
-          <ChevronRight size={13} className={isRTL ? 'rotate-180' : ''} />
+          <ChevronRight size={13} className="rtl-flip" />
           <span className="text-gray-900 dark:text-dark-text font-medium truncate max-w-xs">{product.name}</span>
         </div>
       </div>
 
       <div className="page-container py-8">
-        <div className={`grid lg:grid-cols-2 gap-10 xl:gap-14 mb-12 ${isRTL ? 'lg:flex-row-reverse' : ''}`}>
+        <div className={`grid lg:grid-cols-2 gap-10 xl:gap-14 mb-12`}>
           {/* Image Gallery */}
           <div className={isRTL ? 'order-2 lg:order-1' : ''}>
             {/* Main image */}
@@ -396,13 +396,13 @@ export default function ProductPage() {
                 <span className="text-9xl">{icon}</span>
               )}
               {product.discount > 0 && (
-                <div className={`absolute top-4 ${isRTL ? 'right-4' : 'left-4'} bg-red-500 text-white px-3 py-1 rounded-full font-bold text-sm`}>
+                <div className={`absolute top-4 start-4 bg-red-500 text-white px-3 py-1 rounded-full font-bold text-sm`}>
                   -{product.discount}%
                 </div>
               )}
               <button
                 onClick={handleWishlist}
-                className={`absolute top-4 ${isRTL ? 'left-4' : 'right-4'} p-3 rounded-full shadow-lg transition-all ${
+                className={`absolute top-4 end-4 p-3 rounded-full shadow-lg transition-all ${
                   wishlisted ? 'bg-red-500 text-white' : 'bg-white dark:bg-dark-surface text-gray-500 dark:text-dark-muted hover:text-red-500'
                 }`}
               >
@@ -412,7 +412,7 @@ export default function ProductPage() {
 
             {/* Thumbnails */}
             {images.length > 1 && (
-              <div className={`flex gap-2 overflow-x-auto pb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex gap-2 overflow-x-auto pb-2`}>
                 {images.map((img, i) => (
                   <button
                     key={i}
@@ -433,7 +433,7 @@ export default function ProductPage() {
           {/* Product Info */}
           <div className={`flex flex-col ${isRTL ? 'order-1 lg:order-2' : ''}`}>
             {/* Brand */}
-            <Link to={`/brand/${product.brandSlug}`} className={`flex items-center gap-2 mb-3 group ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <Link to={`/brand/${product.brandSlug}`} className={`flex items-center gap-2 mb-3 group`}>
               <div className="w-8 h-8 rounded-xl bg-brand-navy dark:bg-brand-gold flex items-center justify-center">
                 <span className="text-white dark:text-brand-navy text-xs font-bold">{product.brandName[0]}</span>
               </div>
@@ -448,8 +448,8 @@ export default function ProductPage() {
             </h1>
 
             {/* Rating */}
-            <div className={`flex items-center gap-3 mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-              <div className={`flex ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`flex items-center gap-3 mb-4`}>
+              <div className={`flex`}>
                 {[...Array(5)].map((_, i) => (
                   <Star key={i} size={16} className={i < Math.floor(displayRating) ? 'text-amber-400 fill-amber-400' : 'text-gray-300 dark:text-gray-600'} />
                 ))}
@@ -460,7 +460,7 @@ export default function ProductPage() {
             </div>
 
             {/* Price */}
-            <div className={`flex items-baseline gap-3 mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`flex items-baseline gap-3 mb-6`}>
               <span className="text-3xl font-display font-bold text-brand-navy dark:text-brand-gold">
                 {product.price.toLocaleString()} {t('common.egp')}
               </span>
@@ -478,7 +478,7 @@ export default function ProductPage() {
             {product.sizes.length > 0 && (
               <div className="mb-5">
                 <p className="text-sm font-semibold text-gray-700 dark:text-dark-text mb-2">{isRTL ? 'المقاس' : 'Size'}</p>
-                <div className={`flex flex-wrap gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex flex-wrap gap-2`}>
                   {product.sizes.map((size, i) => (
                     <button
                       key={size}
@@ -502,7 +502,7 @@ export default function ProductPage() {
                 <p className={`text-sm font-semibold text-gray-700 dark:text-dark-text mb-2 ${isRTL ? 'text-right' : ''}`}>
                   {isRTL ? 'اللون:' : 'Color:'} <span className="font-normal text-gray-600 dark:text-dark-muted">{product.colors[selectedColor]}</span>
                 </p>
-                <div className={`flex flex-wrap gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex flex-wrap gap-2`}>
                   {product.colors.map((color, i) => (
                     <button
                       key={color}
@@ -523,8 +523,8 @@ export default function ProductPage() {
             {/* Quantity */}
             <div className="mb-6">
               <p className="text-sm font-semibold text-gray-700 dark:text-dark-text mb-2">{isRTL ? 'الكمية' : 'Quantity'}</p>
-              <div className={`flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                <div className={`flex items-center border-2 border-gray-200 dark:border-dark-border rounded-xl overflow-hidden ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex items-center gap-3`}>
+                <div className={`flex items-center border-2 border-gray-200 dark:border-dark-border rounded-xl overflow-hidden`}>
                   <button
                     onClick={() => setQuantity(Math.max(1, quantity - 1))}
                     className="px-4 py-2.5 text-gray-600 dark:text-dark-muted hover:bg-gray-50 dark:hover:bg-dark-bg font-bold transition-colors"
@@ -546,11 +546,11 @@ export default function ProductPage() {
             </div>
 
             {/* CTAs */}
-            <div className={`flex gap-3 mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`flex gap-3 mb-6`}>
               <button
                 onClick={handleAddToCart}
                 disabled={cartAdding}
-                className={`flex-1 btn-outline flex items-center justify-center gap-2 py-3.5 disabled:opacity-60 ${isRTL ? 'flex-row-reverse' : ''}`}
+                className={`flex-1 btn-outline flex items-center justify-center gap-2 py-3.5 disabled:opacity-60`}
               >
                 <ShoppingCart size={18} />
                 {cartAdding ? (isRTL ? 'جاري الإضافة...' : 'Adding...') : t('products.addToCart')}
@@ -565,7 +565,7 @@ export default function ProductPage() {
             </div>
 
             {/* Trust badges */}
-            <div className={`grid grid-cols-3 gap-3 mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`grid grid-cols-3 gap-3 mb-6`}>
               {[
                 { icon: Truck, label: isRTL ? 'توصيل مجاني' : 'Free delivery', sub: isRTL ? 'لطلبات +500 ج.م' : '500+ EGP', color: 'text-emerald-500 dark:text-emerald-400' },
                 { icon: RotateCcw, label: isRTL ? 'استرجاع 14 يوم' : '14-day returns', sub: isRTL ? 'سهولة الاسترجاع' : 'Easy returns', color: 'text-blue-500 dark:text-blue-400' },
@@ -580,16 +580,16 @@ export default function ProductPage() {
             </div>
 
             {/* Seller info */}
-            <Link to={`/brand/${product.brandSlug}`} className={`flex items-center gap-3 p-4 bg-white dark:bg-dark-surface rounded-2xl shadow-sm dark:border dark:border-dark-border hover:shadow-card transition-shadow ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <Link to={`/brand/${product.brandSlug}`} className={`flex items-center gap-3 p-4 bg-white dark:bg-dark-surface rounded-2xl shadow-sm dark:border dark:border-dark-border hover:shadow-card transition-shadow`}>
               <div className="w-12 h-12 rounded-2xl bg-brand-navy dark:bg-brand-gold flex items-center justify-center flex-shrink-0">
                 <span className="text-white dark:text-brand-navy font-bold">{product.brandName[0]}</span>
               </div>
               <div className={`flex-1 min-w-0 ${isRTL ? 'text-right' : ''}`}>
-                <div className={`flex items-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex items-center gap-2`}>
                   <span className="font-semibold text-gray-900 dark:text-dark-text">{product.brandName}</span>
                   {product.verified && <CheckCircle2 size={13} className="text-emerald-500" />}
                 </div>
-                <div className={`flex items-center gap-1 text-xs text-gray-500 dark:text-dark-muted ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex items-center gap-1 text-xs text-gray-500 dark:text-dark-muted`}>
                   <MapPin size={11} />
                   <span>{product.governorate}</span>
                   <span>·</span>
@@ -606,7 +606,7 @@ export default function ProductPage() {
 
         {/* Tabs */}
         <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border overflow-hidden mb-10">
-          <div className={`flex border-b border-gray-100 dark:border-dark-border ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className={`flex border-b border-gray-100 dark:border-dark-border`}>
             {[
               { id: 'description', label: isRTL ? 'الوصف' : 'Description' },
               { id: 'reviews', label: isRTL ? `التقييمات (${displayReviewCount})` : `Reviews (${displayReviewCount})` },
@@ -628,7 +628,7 @@ export default function ProductPage() {
             {activeTab === 'description' && (
               <div>
                 <p className="text-gray-700 dark:text-dark-muted leading-relaxed">{product.description}</p>
-                <div className={`mt-4 flex flex-wrap gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`mt-4 flex flex-wrap gap-2`}>
                   {product.tags.map(tag => (
                     <span key={tag} className="px-3 py-1 bg-brand-cream dark:bg-dark-bg text-brand-navy dark:text-brand-gold text-sm rounded-full font-medium">#{tag}</span>
                   ))}
@@ -638,7 +638,7 @@ export default function ProductPage() {
 
             {activeTab === 'reviews' && (
               <div>
-                <div className={`flex items-center gap-4 mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex items-center gap-4 mb-6`}>
                   <div className="text-center">
                     <div className="text-4xl font-bold text-gray-900 dark:text-dark-text">{displayRating}</div>
                     <div className="flex justify-center my-1">
@@ -654,23 +654,23 @@ export default function ProductPage() {
                   {productReviews.length > 0 ? (
                     productReviews.map((review, i) => (
                       <div key={review._id || i} className="border-b dark:border-dark-border pb-4">
-                        <div className={`flex items-center gap-3 mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div className={`flex items-center gap-3 mb-2`}>
                           <div className="w-8 h-8 rounded-full bg-brand-gold flex items-center justify-center text-white text-sm font-bold">
                             {review.user?.name?.[0] || 'U'}
                           </div>
                           <div className={isRTL ? 'text-right' : ''}>
                             <p className="text-sm font-semibold text-gray-900 dark:text-dark-text">{review.user?.name || 'Customer'}</p>
-                            <div className={`flex ${isRTL ? 'flex-row-reverse' : ''}`}>
+                            <div className={`flex`}>
                               {[...Array(5)].map((_, s) => (
                                 <Star key={s} size={10} className={s < review.rating ? 'text-amber-400 fill-amber-400' : 'text-gray-300 dark:text-gray-600'} />
                               ))}
                             </div>
                           </div>
-                          <span className={`${isRTL ? 'mr-auto ml-0' : 'ml-auto mr-0'} text-xs text-gray-400 dark:text-dark-muted`}>
+                          <span className={`ms-auto text-xs text-gray-400 dark:text-dark-muted`}>
                             {review.createdAt ? new Date(review.createdAt).toLocaleDateString(isRTL ? 'ar-EG' : 'en-US') : ''}
                           </span>
                         </div>
-                        <p className={`text-sm text-gray-700 dark:text-dark-muted ${isRTL ? 'mr-11' : 'ml-11'}`}>{review.comment}</p>
+                        <p className={`text-sm text-gray-700 dark:text-dark-muted ms-11`}>{review.comment}</p>
                       </div>
                     ))
                   ) : (
@@ -721,7 +721,7 @@ export default function ProductPage() {
                       </div>
                     ) : null}
                     {/* Star selector */}
-                    <div className={`flex gap-1 mb-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <div className={`flex gap-1 mb-3`}>
                       {[1,2,3,4,5].map(s => (
                         <button key={s} onClick={() => setReviewForm(p => ({ ...p, rating: s }))} type="button">
                           <Star size={24} className={s <= reviewForm.rating ? 'text-amber-400 fill-amber-400' : 'text-gray-300 dark:text-gray-600'} />
@@ -771,7 +771,7 @@ export default function ProductPage() {
                   { title: isRTL ? 'الاسترجاع' : 'Returns', icon: '↩️', text: isRTL ? 'سياسة استرجاع لمدة 14 يوماً. يجب أن تكون المنتجات غير مستخدمة وفي تغليفها الأصلي.' : '14-day return policy. Items must be unused and in original packaging.' },
                   { title: isRTL ? 'الدفع' : 'Payment', icon: '💳', text: isRTL ? 'نقبل البطاقات الائتمانية، فودافون كاش، فوري، والدفع عند الاستلام.' : 'Credit/debit cards, Vodafone Cash, Fawry, and Cash on Delivery accepted.' },
                 ].map(item => (
-                  <div key={item.title} className={`flex gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div key={item.title} className={`flex gap-4`}>
                     <span className="text-2xl">{item.icon}</span>
                     <div className={isRTL ? 'text-right' : 'text-left'}>
                       <h4 className="font-semibold text-gray-900 dark:text-dark-text mb-1">{item.title}</h4>
@@ -800,15 +800,15 @@ export default function ProductPage() {
         {/* Related Products */}
         {relatedProducts.length > 0 && (
           <div>
-            <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`flex items-center justify-between mb-6`}>
               <h2 className="text-2xl font-display font-bold text-gray-900 dark:text-dark-text">
                 {isRTL ? 'قد يعجبك أيضاً' : 'You May Also Like'}
               </h2>
-              <Link to={`/products?category=${product.category.toLowerCase()}`} className={`btn-ghost text-sm flex items-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                {isRTL ? 'عرض الكل' : 'See all'} <ChevronRight size={15} className={isRTL ? 'rotate-180' : ''} />
+              <Link to={`/products?category=${product.category.toLowerCase()}`} className={`btn-ghost text-sm flex items-center gap-1`}>
+                {isRTL ? 'عرض الكل' : 'See all'} <ChevronRight size={15} className="rtl-flip" />
               </Link>
             </div>
-            <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`grid grid-cols-2 md:grid-cols-4 gap-4`}>
               {relatedProducts.map(p => (
                 <ProductCard key={p.id} product={p} />
               ))}

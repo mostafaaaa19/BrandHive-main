@@ -70,7 +70,7 @@ export default function Footer() {
       {/* Newsletter Bar */}
       <div className="bg-brand-navy/80 border-b border-white/10">
         <div className="page-container py-8">
-          <div className={`flex flex-col md:flex-row items-center justify-between gap-6 ${isRTL ? 'md:flex-row-reverse' : ''}`}>
+          <div className={`flex flex-col md:flex-row items-center justify-between gap-6`}>
             <div className={isRTL ? 'text-right' : 'text-left'}>
               <h3 className="text-white font-display font-bold text-xl">
                 {isRTL ? 'ابق على اطلاع 🐝' : 'Stay in the loop 🐝'}
@@ -82,7 +82,7 @@ export default function Footer() {
               </p>
             </div>
             <form
-              className={`flex gap-2 w-full md:w-auto ${isRTL ? 'flex-row-reverse' : ''}`}
+              className={`flex gap-2 w-full md:w-auto`}
               onSubmit={handleNewsletterSubmit}
             >
               <input
@@ -91,7 +91,7 @@ export default function Footer() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="your@email.com"
                 disabled={submitting}
-                className={`flex-1 md:w-72 px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-brand-gold text-sm disabled:opacity-60 ${isRTL ? 'text-right' : 'text-left'}`}
+                className={`flex-1 md:w-72 px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-brand-gold text-sm disabled:opacity-60 text-start`}
               />
               <button
                 type="submit"
@@ -109,9 +109,9 @@ export default function Footer() {
 
       {/* Main Footer */}
       <div className="page-container py-12">
-        <div className={`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-8 mb-10 ${isRTL ? 'text-right' : 'text-left'}`}>
+        <div className={`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-8 mb-10 text-start`}>
           <div className="col-span-2 md:col-span-3 lg:col-span-1">
-            <Link to="/" className={`flex items-center gap-2 mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <Link to="/" className={`flex items-center gap-2 mb-4`}>
               <div className="w-9 h-9 bg-brand-gold rounded-xl flex items-center justify-center">
                 <span className="text-white font-display font-bold text-lg">B</span>
               </div>
@@ -161,10 +161,10 @@ export default function Footer() {
         </div>
 
         <div className="border-t border-white/10 pt-8 mb-8">
-          <p className={`text-gray-500 text-xs mb-3 uppercase tracking-wider ${isRTL ? 'text-right' : 'text-left'}`}>
+          <p className={`text-gray-500 text-xs mb-3 uppercase tracking-wider text-start`}>
             {isRTL ? 'تصفح حسب الفئة' : 'Browse by category'}
           </p>
-          <div className={`flex flex-wrap gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className={`flex flex-wrap gap-2`}>
             {categories.map((cat) => (
               <Link
                 key={cat.label}
@@ -178,7 +178,7 @@ export default function Footer() {
         </div>
 
         <div className="border-t border-white/10 pt-8 mb-8">
-          <div className={`flex flex-wrap gap-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className={`flex flex-wrap gap-6`}>
             <a href="mailto:support@brandhive.eg" className="flex items-center gap-2 text-gray-400 text-sm hover:text-brand-gold transition-colors">
               <Mail size={14} />
               support@brandhive.eg
@@ -194,7 +194,7 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className={`border-t border-white/10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 ${isRTL ? 'sm:flex-row-reverse' : ''}`}>
+        <div className={`border-t border-white/10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4`}>
           <p className="text-gray-500 text-xs">
             © 2025 BrandHive Inc. {t('footer.rights')}. &nbsp;
             <span className="text-brand-gold">{isRTL ? '🇪🇬 صنع في مصر' : '🇪🇬 Made in Egypt'}</span>

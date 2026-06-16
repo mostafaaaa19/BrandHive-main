@@ -59,11 +59,11 @@ export default function RegisterPage() {
   ];
 
   return (
-    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg flex transition-colors duration-200 ${isRTL ? 'flex-row-reverse' : ''}`}>
+    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg flex transition-colors duration-200`}>
       {/* Left - Visual */}
       <div className="hidden lg:flex flex-1 bg-gradient-to-br from-brand-navy to-blue-900 dark:from-[#0f172a] dark:to-brand-navy items-center justify-center relative overflow-hidden transition-colors duration-200">
         <div className="absolute inset-0 bg-pattern opacity-20"></div>
-        <div className={`relative z-10 text-white p-12 max-w-md ${isRTL ? 'text-right' : 'text-left'}`}>
+        <div className={`relative z-10 text-white p-12 max-w-md text-start`}>
           <div className="text-7xl mb-6 animate-float">🛍️</div>
           <h2 className={`text-4xl font-display font-bold mb-4 ${isRTL ? 'leading-relaxed' : ''}`}>
             {isRTL ? 'انضم إلى' : 'Join'}<br />
@@ -76,7 +76,7 @@ export default function RegisterPage() {
           </p>
           <div className="space-y-3">
             {perks.map(perk => (
-              <div key={perk} className={`flex items-center gap-2 text-sm text-gray-300 dark:text-gray-400 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div key={perk} className={`flex items-center gap-2 text-sm text-gray-300 dark:text-gray-400`}>
                 <span>{perk}</span>
               </div>
             ))}
@@ -86,8 +86,8 @@ export default function RegisterPage() {
 
       {/* Right - Form */}
       <div className="flex-1 flex items-center justify-center px-6 py-12 overflow-y-auto">
-        <div className={`w-full max-w-md ${isRTL ? 'text-right' : 'text-left'}`}>
-          <Link to="/" className={`flex items-center gap-2 mb-8 ${isRTL ? 'flex-row-reverse justify-end' : ''}`}>
+        <div className={`w-full max-w-md text-start`}>
+          <Link to="/" className={`flex items-center gap-2 mb-8 ${isRTL ? 'justify-end' : ''}`}>
             <div className="w-10 h-10 bg-brand-navy dark:bg-brand-gold rounded-xl flex items-center justify-center transition-colors">
               <span className="text-white dark:text-brand-navy font-display font-bold text-xl">B</span>
             </div>
@@ -103,7 +103,7 @@ export default function RegisterPage() {
 
           {/* API Error Banner */}
           {error && (
-            <div className={`flex items-start gap-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/20 text-red-700 dark:text-red-400 rounded-xl px-4 py-3 mb-6 text-sm ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+            <div className={`flex items-start gap-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/20 text-red-700 dark:text-red-400 rounded-xl px-4 py-3 mb-6 text-sm`}>
               <AlertCircle size={16} className={`mt-0.5 shrink-0 text-red-500 ${isRTL ? 'ml-0 mr-0' : ''}`} />
               <span>{error}</span>
             </div>
@@ -116,7 +116,7 @@ export default function RegisterPage() {
                 value={form.name}
                 onChange={e => { update('name', e.target.value); setError(null); }}
                 placeholder={isRTL ? 'الاسم الكامل' : t('auth.namePlaceholder')}
-                className={`input-field ${isRTL ? 'text-right' : 'text-left'}`}
+                className={`input-field text-start`}
               />
             </div>
 
@@ -127,7 +127,7 @@ export default function RegisterPage() {
                 value={form.email}
                 onChange={e => { update('email', e.target.value); setError(null); }}
                 placeholder={t('auth.emailPlaceholder')}
-                className={`input-field ${isRTL ? 'text-right' : 'text-left'}`}
+                className={`input-field text-start`}
               />
             </div>
 
@@ -139,12 +139,12 @@ export default function RegisterPage() {
                   value={form.password}
                   onChange={e => { update('password', e.target.value); setError(null); }}
                   placeholder={t('auth.passwordPlaceholder')}
-                  className={`input-field ${isRTL ? 'pl-11 pr-4 text-right' : 'pr-11 pl-4'}`}
+                  className={`input-field pe-11 ps-4 text-start`}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPw(!showPw)}
-                  className={`absolute ${isRTL ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 text-gray-400 dark:text-dark-muted hover:text-gray-600 dark:hover:text-dark-text`}
+                  className={`absolute end-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-dark-muted hover:text-gray-600 dark:hover:text-dark-text`}
                 >
                   {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -158,7 +158,7 @@ export default function RegisterPage() {
                 value={form.confirmPassword}
                 onChange={e => update('confirmPassword', e.target.value)}
                 placeholder={isRTL ? 'كرر كلمة المرور' : 'Repeat your password'}
-                className={`input-field ${isRTL ? 'text-right' : 'text-left'} ${form.confirmPassword && form.password !== form.confirmPassword ? 'border-red-300 dark:border-red-500 focus:border-red-400' : ''}`}
+                className={`input-field text-start ${form.confirmPassword && form.password !== form.confirmPassword ? 'border-red-300 dark:border-red-500 focus:border-red-400' : ''}`}
               />
               {form.confirmPassword && form.password !== form.confirmPassword && (
                 <p className={`text-xs text-red-500 mt-1 ${isRTL ? 'text-right' : ''}`}>
@@ -167,7 +167,7 @@ export default function RegisterPage() {
               )}
             </div>
 
-            <label className={`flex items-start gap-2 cursor-pointer ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+            <label className={`flex items-start gap-2 cursor-pointer`}>
               <input
                 type="checkbox"
                 checked={form.agreeTerms}
@@ -192,19 +192,19 @@ export default function RegisterPage() {
               className="w-full btn-primary py-4 text-base disabled:opacity-70"
             >
               {authLoading ? (
-                <span className={`flex items-center justify-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <span className={`flex items-center justify-center gap-2`}>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   {isRTL ? 'جاري إنشاء الحساب...' : 'Creating account...'}
                 </span>
               ) : (
-                <span className={`flex items-center justify-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  {isRTL ? 'إنشاء حساب' : t('auth.register')} <ArrowRight size={18} className={isRTL ? 'rotate-180' : ''} />
+                <span className={`flex items-center justify-center gap-2`}>
+                  {isRTL ? 'إنشاء حساب' : t('auth.register')} <ArrowRight size={18} className="rtl-flip" />
                 </span>
               )}
             </button>
           </form>
 
-          <p className={`text-center text-sm text-gray-600 dark:text-dark-muted mt-6 ${isRTL ? 'text-right flex justify-center gap-1 flex-row-reverse' : ''}`}>
+          <p className="text-center text-sm text-gray-600 dark:text-dark-muted mt-6 flex justify-center gap-1">
             {t('auth.hasAccount')}{' '}
             <Link to="/login" className="text-brand-navy dark:text-brand-gold font-semibold hover:underline">
               {t('auth.signIn')}

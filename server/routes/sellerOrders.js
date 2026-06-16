@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const SellerOrderMirror = require('../models/SellerOrderMirror');
+const SellerStoreSettings = require('../models/SellerStoreSettings');
 
 const router = express.Router();
 
@@ -104,20 +105,59 @@ router.get('/', async (req, res) => {
     return res.status(503).json({ message: 'Order storage unavailable (database offline)' });
   }
 
-  const { brandId, brandIds } = req.query;
+  const { brandId, brandIds, sellerId } = req.query;
   const ids = [
     ...(brandId ? [String(brandId)] : []),
     ...(brandIds ? String(brandIds).split(',').map((id) => id.trim()).filter(Boolean) : []),
   ];
 
-  if (ids.length === 0) {
-    return res.status(400).json({ message: 'brandId is required' });
+  if (ids.length === 0 && sellerId) {
+    try {
+      const settings = await SellerStoreSettings.findOne({
+        userId: String(sellerId),
+      }).lean();
+      if (settings?.brandId) {
+        ids.push(String(settings.brandId));
+      }
+    } catch {
+      // fall through to validation
+    }
+  }
+
+  if (ids.length === 0 && !sellerId) {
+    return res.status(400).json({ message: 'brandId or sellerId is required' });
   }
 
   try {
-    const orders = await SellerOrderMirror.find({
-      brandIds: { $in: ids },
-    }).sort({ createdAt: -1 });
+    const filters = [];
+    if (ids.length > 0) {
+      filters.push({ brandIds: { $in: ids } });
+    }
+
+    if (sellerId) {
+      const settings = await SellerStoreSettings.findOne({
+        userId: String(sellerId),
+      }).lean();
+      const brandName =
+        settings?.shop?.storeName || settings?.bazaar?.name || null;
+      if (brandName) {
+        filters.push({
+          'items.brandName': {
+            $regex: new RegExp(
+              `^${String(brandName).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`,
+              'i'
+            ),
+          },
+        });
+      }
+    }
+
+    if (filters.length === 0) {
+      return res.json({ data: [] });
+    }
+
+    const query = filters.length > 1 ? { $or: filters } : filters[0];
+    const orders = await SellerOrderMirror.find(query).sort({ createdAt: -1 });
 
     return res.json({ data: orders });
   } catch (err) {

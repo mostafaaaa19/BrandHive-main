@@ -107,18 +107,18 @@ export const buildOrderInvoiceHtml = (
   <title>${escapeHtml(labels.title)} — ${escapeHtml(orderNumber)}</title>
   <style>
     * { box-sizing: border-box; }
-    body { font-family: ${isRTL ? 'Tahoma, Arial' : 'Segoe UI, Arial'}, sans-serif; margin: 0; padding: 32px; color: #111; background: #fff; }
+    body { font-family: ${isRTL ? 'Tahoma, Arial' : 'Segoe UI, Arial'}, sans-serif; margin: 0; padding: 32px; color: #111; background: #fff; direction: ${isRTL ? 'rtl' : 'ltr'}; }
     .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; border-bottom: 2px solid #c9a227; padding-bottom: 16px; }
     .brand { font-size: 28px; font-weight: 800; color: #0f172a; }
     .brand span { color: #c9a227; }
-    .meta { text-align: ${isRTL ? 'left' : 'right'}; font-size: 13px; line-height: 1.6; }
+    .meta { text-align: start; font-size: 13px; line-height: 1.6; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
     .card { background: #f8f7f4; border-radius: 12px; padding: 14px 16px; font-size: 13px; line-height: 1.6; }
     .card h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #666; }
     table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }
-    th, td { border-bottom: 1px solid #e5e7eb; padding: 10px 8px; text-align: ${isRTL ? 'right' : 'left'}; }
+    th, td { border-bottom: 1px solid #e5e7eb; padding: 10px 8px; text-align: start; }
     th { background: #0f172a; color: #fff; font-size: 12px; }
-    .totals { max-width: 320px; margin-${isRTL ? 'right' : 'left'}: auto; font-size: 14px; }
+    .totals { max-width: 320px; margin-inline-start: auto; font-size: 14px; }
     .totals div { display: flex; justify-content: space-between; padding: 6px 0; }
     .totals .grand { font-size: 18px; font-weight: 800; border-top: 2px solid #0f172a; margin-top: 8px; padding-top: 10px; }
     .note { margin-top: 24px; font-size: 12px; color: #666; }

@@ -17,6 +17,7 @@ import {
   adjustSellerStock,
   fetchSellerOrders,
   fetchSellerReviews,
+  computeReviewAverageRating,
   fetchSellerBrandMessages,
   replyToSellerCustomer,
   readCachedSellerProducts,
@@ -25,10 +26,12 @@ import {
   saveSellerPayoutProfile,
   requestSellerWithdrawal,
   resolveSellerBrand,
+  resolveSellerBrandId,
   resolveSellerBazaarSource,
   rememberSellerBrand,
   readCachedSellerBrandForUser,
   ensureSellerBrandLinked,
+  prefetchSellerBrandHints,
   fetchSellerCoupons,
   createSellerCoupon,
   deleteSellerCoupon,
@@ -197,7 +200,7 @@ const pickTopProducts = (orderStats, analytics, products = []) => {
 function SidebarItem({ icon: Icon, label, tab, activeTab, setActiveTab, isRTL }) {
   const isActive = activeTab === tab;
   return (
-    <button onClick={() => setActiveTab(tab)} className={`${isActive ? 'sidebar-item-active' : 'sidebar-item'} ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+    <button onClick={() => setActiveTab(tab)} className={`${isActive ? 'sidebar-item-active' : 'sidebar-item'}`}>
       <Icon size={17} />
       <span>{label}</span>
     </button>
@@ -260,7 +263,7 @@ function SellerOrdersTab({ orders, isRTL, t }) {
 
       {/* Filter tabs */}
       <div className={`flex gap-2 mb-4 flex-wrap 
-        ${isRTL ? 'flex-row-reverse' : ''}`}>
+       `}>
         {STATUS_FILTERS.map(f => (
           <button
             key={f.value}
@@ -289,7 +292,7 @@ function SellerOrdersTab({ orders, isRTL, t }) {
           </div>
         ) : (
           <table className={`w-full text-sm 
-            ${isRTL ? 'text-right' : 'text-left'}`}>
+            text-start`}>
             <thead className="bg-gray-50 dark:bg-dark-bg">
               <tr>
                 {[
@@ -676,7 +679,7 @@ function SellerPayoutsTab({ user, brandId, orderStats, isRTL }) {
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className={`w-full text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
+            <table className={`w-full text-sm text-start`}>
               <thead>
                 <tr className="border-b border-gray-100 dark:border-dark-border">
                   {[
@@ -997,7 +1000,7 @@ function SellerPromotionsTab({ isRTL, user, brandId, products, onProductsChange 
         {isRTL ? 'العروض والخصومات' : 'Promotions & Discounts'}
       </h1>
 
-      <div className={`flex flex-wrap gap-2 mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+      <div className={`flex flex-wrap gap-2 mb-6`}>
         {tools.map((tool) => (
           <button
             key={tool.id}
@@ -1079,7 +1082,7 @@ function SellerPromotionsTab({ isRTL, user, brandId, products, onProductsChange 
                     {coupons.map((coupon) => (
                       <div
                         key={coupon._id || coupon.id || coupon.code}
-                        className={`flex items-center justify-between gap-3 p-3 bg-brand-cream dark:bg-dark-bg rounded-xl ${isRTL ? 'flex-row-reverse' : ''}`}
+                        className={`flex items-center justify-between gap-3 p-3 bg-brand-cream dark:bg-dark-bg rounded-xl`}
                       >
                         <div className={isRTL ? 'text-right' : ''}>
                           <p className="font-bold text-brand-navy dark:text-brand-gold">{coupon.code}</p>
@@ -1293,7 +1296,7 @@ function SellerMessagesTab({ isRTL, brandId, brandName }) {
                   key={messageId}
                   className={`border-b border-gray-100 dark:border-dark-border pb-4 last:border-0 ${isRTL ? 'text-right' : ''}`}
                 >
-                  <div className={`flex items-center justify-between mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex items-center justify-between mb-2`}>
                     <span className="font-medium text-sm dark:text-dark-text">
                       {msg.fullName || 'Customer'}
                     </span>
@@ -1367,11 +1370,17 @@ function SellerMessagesTab({ isRTL, brandId, brandName }) {
   );
 }
 
-function SellerReviewsTab({ isRTL, user }) {
-  const [reviews, setReviews] = useState([]);
-  const [loading, setLoading] = useState(true);
+function SellerReviewsTab({ isRTL, user, reviews: initialReviews = null }) {
+  const [reviews, setReviews] = useState(initialReviews || []);
+  const [loading, setLoading] = useState(!initialReviews);
 
   useEffect(() => {
+    if (Array.isArray(initialReviews)) {
+      setReviews(initialReviews);
+      setLoading(false);
+      return;
+    }
+
     const fetchReviews = async () => {
       setLoading(true);
       try {
@@ -1384,7 +1393,7 @@ function SellerReviewsTab({ isRTL, user }) {
       }
     };
     fetchReviews();
-  }, [user]);
+  }, [user, initialReviews]);
 
   return (
     <div>
@@ -1418,9 +1427,9 @@ function SellerReviewsTab({ isRTL, user }) {
                   ${isRTL ? 'text-right' : ''}`}>
                 <div className={`flex items-center 
                   justify-between mb-2
-                  ${isRTL ? 'flex-row-reverse' : ''}`}>
+                 `}>
                   <div className={`flex items-center gap-2
-                    ${isRTL ? 'flex-row-reverse' : ''}`}>
+                   `}>
                     <div className="w-8 h-8 rounded-full 
                       bg-brand-navy dark:bg-brand-gold 
                       flex items-center justify-center 
@@ -1466,7 +1475,7 @@ function SellerReviewsTab({ isRTL, user }) {
   );
 }
 
-function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats }) {
+function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats, dashboard, avgReviewRating = 0 }) {
   const [bazaar, setBazaar] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notifying, setNotifying] = useState(false);
@@ -1501,7 +1510,7 @@ function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats
     facebookLink: serverProfile.facebookLink || brand.facebookLink || brand.facebook || '',
     followersCount: brand.followers || brand.followersCount || 0,
     viewsCount: brand.views || brand.viewsCount || 0,
-    averageRating: brand.rating || brand.averageRating || 0,
+    averageRating: avgReviewRating || brand.rating || brand.averageRating || 0,
     productCount: Array.isArray(products) ? products.length : 0,
     ordersCount: orderStats?.totalCount || 0,
     _fromBrand: true,
@@ -1525,7 +1534,31 @@ function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats
       setLoading(true);
     }
 
+    if (dashboard?.brand) {
+      setBazaar(buildBazaarFromBrand(dashboard.brand, serverProfile));
+      setLoading(false);
+    }
+
     try {
+      await prefetchSellerBrandHints(user);
+
+      const settings = userId ? await fetchSellerStoreSettings(userId, brandId) : {};
+      const storeBrandName =
+        settings?.shop?.storeName || settings?.bazaar?.name || null;
+      if (storeBrandName && !dashboard?.brand && !cachedBrand) {
+        setBazaar(
+          buildBazaarFromBrand(
+            {
+              _id: settings.brandId || brandId,
+              id: settings.brandId || brandId,
+              name: storeBrandName,
+              slug: settings.bazaar?.slug,
+            },
+            settings.bazaar || serverProfile
+          )
+        );
+      }
+
       await ensureSellerBrandLinked(user);
       const source = await resolveSellerBazaarSource(user, { brandId, products });
       if (source?.kind === 'bazaar') {
@@ -1536,13 +1569,13 @@ function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats
         setBazaar(buildBazaarFromBrand(source.payload, serverProfile));
         return;
       }
-      if (!cachedBrand) setBazaar(null);
+      if (!cachedBrand && !dashboard?.brand && !storeBrandName) setBazaar(null);
     } catch {
-      if (!cachedBrand) setBazaar(null);
+      if (!cachedBrand && !dashboard?.brand) setBazaar(null);
     } finally {
       setLoading(false);
     }
-  }, [user, products, brandId, orderStats?.totalCount]);
+  }, [user, products, brandId, orderStats?.totalCount, dashboard?.brand, avgReviewRating]);
 
   useEffect(() => {
     loadBazaar();
@@ -1631,13 +1664,13 @@ function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats
   return (
     <div>
       <div className={`flex items-center justify-between mb-6
-        ${isRTL ? 'flex-row-reverse' : ''}`}>
+       `}>
         <h1 className={`text-2xl font-display font-bold 
           text-gray-900 dark:text-dark-text
           ${isRTL ? 'text-right' : ''}`}>
           {isRTL ? 'بازاري' : 'My Bazaar'}
         </h1>
-        <div className={`flex gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+        <div className={`flex gap-2`}>
           {bazaar && (
             <button
               onClick={() => setEditing(!editing)}
@@ -1666,7 +1699,7 @@ function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats
         </div>
       ) : bazaar ? (
         <div className="space-y-4">
-          <div className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5 flex items-center justify-between gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5 flex items-center justify-between gap-4`}>
             <div className={isRTL ? 'text-right' : ''}>
               <h2 className="text-lg font-display font-bold text-gray-900 dark:text-dark-text">{bazaar.name}</h2>
               {bazaar._fromBrand && (
@@ -1758,7 +1791,7 @@ function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats
                     className={`w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-4 py-2.5 text-sm outline-none focus:border-brand-gold dark:text-white ${isRTL ? 'text-right' : ''}`}
                   />
                 </div>
-                <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex gap-3`}>
                   <button
                     onClick={handleSave}
                     disabled={saving}
@@ -1799,19 +1832,19 @@ function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats
               <div className="space-y-2">
                 {bazaar.whatsappLink && (
                   <a href={bazaar.whatsappLink} target="_blank" rel="noreferrer"
-                    className={`flex items-center gap-2 text-sm text-emerald-600 hover:underline ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    className={`flex items-center gap-2 text-sm text-emerald-600 hover:underline`}>
                     📱 WhatsApp
                   </a>
                 )}
                 {bazaar.instagramLink && (
                   <a href={bazaar.instagramLink} target="_blank" rel="noreferrer"
-                    className={`flex items-center gap-2 text-sm text-pink-600 hover:underline ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    className={`flex items-center gap-2 text-sm text-pink-600 hover:underline`}>
                     📸 Instagram
                   </a>
                 )}
                 {bazaar.facebookLink && (
                   <a href={bazaar.facebookLink} target="_blank" rel="noreferrer"
-                    className={`flex items-center gap-2 text-sm text-blue-600 hover:underline ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    className={`flex items-center gap-2 text-sm text-blue-600 hover:underline`}>
                     👥 Facebook
                   </a>
                 )}
@@ -1863,7 +1896,7 @@ function SellerProductsTab({ products, isRTL, navigate, t }) {
   return (
     <div>
       <div className={`flex items-center justify-between mb-6
-        ${isRTL ? 'flex-row-reverse' : ''}`}>
+       `}>
         <h1 className="text-2xl font-display font-bold 
           text-gray-900 dark:text-dark-text">
           {isRTL ? 'منتجاتي' : 'My Products'}
@@ -1930,7 +1963,7 @@ function SellerProductsTab({ products, isRTL, navigate, t }) {
                 </p>
                 <div className={`flex items-center 
                   justify-between mt-2
-                  ${isRTL ? 'flex-row-reverse' : ''}`}>
+                 `}>
                   <span className="text-xs text-gray-400 
                     dark:text-dark-muted">
                     {isRTL ? 'المخزون:' : 'Stock:'} {product.stock || 0}
@@ -2056,7 +2089,7 @@ function SellerInventoryTab({ isRTL, t }) {
 
   return (
     <div>
-      <div className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 ${isRTL ? 'sm:flex-row-reverse' : ''}`}>
+      <div className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6`}>
         <h1 className={`text-xl sm:text-2xl font-display font-bold text-gray-900 dark:text-dark-text ${isRTL ? 'text-right' : ''}`}>
           {isRTL ? 'إدارة المخزون' : 'Inventory Management'}
         </h1>
@@ -2082,7 +2115,7 @@ function SellerInventoryTab({ isRTL, t }) {
 
       {lowStockProducts.length > 0 && (
         <div className={`mb-6 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-2xl p-4 ${isRTL ? 'text-right' : ''}`}>
-          <p className={`font-bold text-red-700 dark:text-red-400 text-sm mb-2 flex items-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <p className={`font-bold text-red-700 dark:text-red-400 text-sm mb-2 flex items-center gap-2`}>
             ⚠️ {isRTL ? 'منتجات بمخزون منخفض' : 'Low Stock Products'}
           </p>
           <div className="flex flex-wrap gap-2">
@@ -2122,7 +2155,7 @@ function SellerInventoryTab({ isRTL, t }) {
           </div>
         ) : (
           <div className="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
-            <table className={`w-full min-w-[32rem] text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
+            <table className={`w-full min-w-[32rem] text-sm text-start`}>
               <thead>
                 <tr className="border-b border-gray-100 dark:border-dark-border">
                   {[
@@ -2174,7 +2207,7 @@ function SellerInventoryTab({ isRTL, t }) {
       {adjustModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 px-4">
           <div className={`bg-white dark:bg-dark-surface rounded-3xl shadow-2xl p-8 w-full max-w-md ${isRTL ? 'text-right' : ''}`}>
-            <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`flex items-center justify-between mb-6`}>
               <h3 className="text-xl font-display font-bold text-gray-900 dark:text-dark-text">
                 {isRTL ? 'تعديل المخزون' : 'Adjust Stock'}
               </h3>
@@ -2242,7 +2275,7 @@ function SellerInventoryTab({ isRTL, t }) {
                 />
               </div>
 
-              <div className={`flex gap-3 pt-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex gap-3 pt-2`}>
                 <button
                   onClick={handleAdjust}
                   disabled={adjustLoading || !adjustForm.productId || !adjustForm.quantity}
@@ -2395,7 +2428,7 @@ function SellerShopSettingsTab({ isRTL, t, dashboard, user, brandId }) {
                 desc: isRTL ? 'تأكيد الطلبات الجديدة تلقائياً دون مراجعة' : 'Automatically confirm new orders without review',
               },
             ].map(item => (
-              <div key={item.key} className={`flex items-center justify-between gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div key={item.key} className={`flex items-center justify-between gap-4`}>
                 <div className={isRTL ? 'text-right' : ''}>
                   <p className="text-sm font-semibold text-gray-900 dark:text-dark-text">{item.label}</p>
                   <p className="text-xs text-gray-500 dark:text-dark-muted">{item.desc}</p>
@@ -2467,6 +2500,7 @@ export default function SellerDashboard() {
   const [loading, setLoading] = useState(true);
   const [analytics, setAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [sellerReviews, setSellerReviews] = useState([]);
   const [stockAlerts, setStockAlerts] = useState([]);
   const [adSubmitting, setAdSubmitting] = useState(null);
 
@@ -2493,6 +2527,12 @@ export default function SellerDashboard() {
     () => pickTopProducts(orderStats, analytics, products),
     [orderStats, analytics, products]
   );
+
+  const avgReviewRating = useMemo(() => {
+    const fromReviews = computeReviewAverageRating(sellerReviews);
+    if (fromReviews > 0) return fromReviews;
+    return Number(dashboard?.reviews?.averageRating) || 0;
+  }, [sellerReviews, dashboard?.reviews?.averageRating]);
 
   const handleAdRequest = async (adType, title) => {
     setAdSubmitting(adType);
@@ -2524,14 +2564,23 @@ export default function SellerDashboard() {
     try {
       const prodData = await fetchSellerProducts(user);
       setProducts(Array.isArray(prodData) ? prodData : []);
+      const resolvedBrandId = await resolveSellerBrandId(user);
       const brandId =
+        resolvedBrandId ||
         localStorage.getItem(
           `brandhive_seller_brand_${user?.id || user?._id || 'default'}`
-        ) || null;
-      if (brandId) setMyBrandId(brandId);
+        ) ||
+        null;
+      if (brandId) setMyBrandId(String(brandId));
     } catch {
       const cached = readCachedSellerProducts(user);
       if (cached.length > 0) setProducts(cached);
+      try {
+        const resolvedBrandId = await resolveSellerBrandId(user);
+        if (resolvedBrandId) setMyBrandId(String(resolvedBrandId));
+      } catch {
+        // ignore brand resolution errors
+      }
     }
   }, [user]);
 
@@ -2558,9 +2607,10 @@ export default function SellerDashboard() {
         setProducts((prev) => (prev.length > 0 ? prev : cachedProducts));
       }
 
-      const [dashResult, analyticsResult] = await Promise.allSettled([
+      const [dashResult, analyticsResult, reviewsResult] = await Promise.allSettled([
         sellerAPI.getDashboard(),
         sellerAPI.getAnalytics(),
+        fetchSellerReviews(user),
         loadSellerOrders(),
         loadSellerProducts(),
         ensureSellerBrandLinked(user),
@@ -2581,6 +2631,21 @@ export default function SellerDashboard() {
         }
       } else {
         setDashboard(null);
+      }
+
+      if (reviewsResult.status === 'fulfilled') {
+        setSellerReviews(
+          Array.isArray(reviewsResult.value) ? reviewsResult.value : []
+        );
+      } else {
+        setSellerReviews([]);
+      }
+
+      try {
+        const linkedId = await resolveSellerBrandId(user);
+        if (linkedId) setMyBrandId(String(linkedId));
+      } catch {
+        // keep dashboard/local brand id
       }
 
       if (analyticsResult.status === 'fulfilled') {
@@ -2670,15 +2735,18 @@ export default function SellerDashboard() {
   };
 
   return (
-    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200 ${isRTL ? 'text-right' : 'text-left'}`}>
+    <div
+      dir={isRTL ? 'rtl' : 'ltr'}
+      className="min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200"
+    >
       <div className="page-container py-4 sm:py-8">
-        <div className={`flex flex-col md:flex-row gap-4 md:gap-8 ${isRTL ? 'md:flex-row-reverse' : ''}`}>
+        <div className="flex flex-col md:flex-row gap-4 md:gap-8">
           {/* Sidebar */}
           <aside className="hidden md:block w-56 flex-shrink-0">
             <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-4 sticky top-24">
               {/* Brand info */}
               <div className="p-3 mb-4 bg-brand-cream dark:bg-dark-bg rounded-2xl">
-                <div className={`flex items-center gap-2 mb-1 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+                <div className={`flex items-center gap-2 mb-1`}>
                   <div className="w-8 h-8 rounded-xl bg-brand-navy dark:bg-brand-gold flex items-center justify-center flex-shrink-0">
                     <span className="text-white dark:text-brand-navy text-xs font-bold">{brandName?.[0]}</span>
                   </div>
@@ -2700,7 +2768,7 @@ export default function SellerDashboard() {
               ))}
 
               <div className="border-t border-gray-100 dark:border-dark-border pt-3">
-                <button onClick={handleLogout} className={`sidebar-item text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 w-full ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+                <button onClick={handleLogout} className={`sidebar-item text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 w-full`}>
                   <LogOut size={16} /> {isRTL ? 'تسجيل الخروج' : 'Sign Out'}
                 </button>
               </div>
@@ -2711,7 +2779,7 @@ export default function SellerDashboard() {
           <div className="flex-1 min-w-0 w-full">
             {/* Mobile navigation */}
             <div className="md:hidden overflow-x-auto pb-4 mb-2 -mx-1">
-              <div className={`flex gap-2 whitespace-nowrap px-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex gap-2 whitespace-nowrap px-1`}>
                 {mobileNavItems.map(item => (
                   <button
                     key={item.tab}
@@ -2721,7 +2789,7 @@ export default function SellerDashboard() {
                       activeTab === item.tab
                         ? 'bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy'
                         : 'bg-white dark:bg-dark-surface text-gray-600 dark:text-dark-text border border-gray-100 dark:border-dark-border'
-                    } ${isRTL ? 'flex-row-reverse' : ''}`}
+                    }`}
                   >
                     <item.icon size={13} />
                     {item.label}
@@ -2733,12 +2801,12 @@ export default function SellerDashboard() {
             {/* Dashboard */}
             {activeTab === 'dashboard' && (
               <div>
-                <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex items-center justify-between mb-6`}>
                   <div className={isRTL ? 'text-right' : ''}>
                     <h1 className="text-2xl font-display font-bold text-gray-900 dark:text-dark-text">{isRTL ? 'بوابة البائع' : 'Seller Portal'}</h1>
                     <p className="text-gray-500 dark:text-dark-muted mt-0.5">{isRTL ? 'الأداء — مارس 2025' : 'Performance — March 2025'}</p>
                   </div>
-                  <div className={`flex gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex gap-2`}>
                     <button
                       onClick={() => toast(isRTL ? 'فتح البازار...' : 'Opening bazaar...', { icon: '🏪', style: { borderRadius: '12px', fontFamily: isRTL ? 'Cairo' : 'Inter' } })}
                       className="btn-ghost text-sm"
@@ -2747,7 +2815,7 @@ export default function SellerDashboard() {
                     </button>
                     <button
                       onClick={() => setActiveTab('products')}
-                      className={`btn-primary text-sm flex items-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}
+                      className={`btn-primary text-sm flex items-center gap-1`}
                     >
                       <Plus size={14} /> {isRTL ? 'إضافة منتج' : 'Add Product'}
                     </button>
@@ -2756,7 +2824,7 @@ export default function SellerDashboard() {
 
                 {stockAlerts.length > 0 && (
                   <div className={`mb-6 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-2xl p-4 ${isRTL ? 'text-right' : ''}`}>
-                    <div className={`flex items-center gap-2 mb-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <div className={`flex items-center gap-2 mb-3`}>
                       <span className="text-red-500">⚠️</span>
                       <h3 className="font-bold text-red-700 dark:text-red-400 text-sm">
                         {isRTL ? `تحذير: ${stockAlerts.length} منتج بمخزون منخفض` : `Warning: ${stockAlerts.length} product${stockAlerts.length > 1 ? 's' : ''} with low stock`}
@@ -2764,7 +2832,7 @@ export default function SellerDashboard() {
                     </div>
                     <div className="space-y-2">
                       {stockAlerts.slice(0, 3).map((alert, i) => (
-                        <div key={alert._id || i} className={`flex items-center justify-between gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div key={alert._id || i} className={`flex items-center justify-between gap-3`}>
                           <span className="text-sm text-gray-700 dark:text-dark-text truncate">
                             {alert.name || alert.productName || 'Product'}
                           </span>
@@ -2790,16 +2858,16 @@ export default function SellerDashboard() {
                 )}
 
                 {/* Stat cards */}
-                <div className={`grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8`}>
                   {[
                     { icon: DollarSign, label: isRTL ? 'الأرباح (ج.م)' : 'Revenue (EGP)', value: pickMetricNumber(orderStats.totalRevenue, dashboard?.totalRevenue, dashboard?.revenue?.total).toLocaleString(), change: '+0%', color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' },
                     { icon: Package, label: isRTL ? 'إجمالي الطلبات' : 'Total Orders', value: pickMetricNumber(orderStats.totalCount, orders.length, dashboard?.orders?.total).toString(), change: '+0%', color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' },
                     { icon: ShoppingBag, label: isRTL ? 'المنتجات النشطة' : 'Active Products', value: activeProductCount.toString(), change: '+0', color: 'bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400' },
-                    { icon: Star, label: isRTL ? 'متوسط التقييم' : 'Avg Rating', value: (dashboard?.reviews?.averageRating || 0).toFixed(1), change: '+0', color: 'bg-rose-100 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400' },
+                    { icon: Star, label: isRTL ? 'متوسط التقييم' : 'Avg Rating', value: avgReviewRating.toFixed(1), change: '+0', color: 'bg-rose-100 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400' },
                     { icon: Users, label: isRTL ? 'طلبات معلقة' : 'Pending Orders', value: pickMetricNumber(orderStats.pendingCount, dashboard?.orders?.pending).toString(), change: '+0', color: 'bg-amber-100 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400' },
                   ].map(stat => (
                     <div key={stat.label} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-4 ${isRTL ? 'text-right' : ''}`}>
-                      <div className={`w-9 h-9 rounded-xl ${stat.color} flex items-center justify-center mb-3 ${isRTL ? 'mr-0 ml-auto' : ''}`}>
+                      <div className={`w-9 h-9 rounded-xl ${stat.color} flex items-center justify-center mb-3 `}>
                         <stat.icon size={16} />
                       </div>
                       <div className="text-xl font-display font-bold text-gray-900 dark:text-dark-text">{stat.value}</div>
@@ -2809,10 +2877,10 @@ export default function SellerDashboard() {
                   ))}
                 </div>
 
-                <div className={`grid lg:grid-cols-3 gap-6 mb-6 ${isRTL ? 'lg:flex-row-reverse' : ''}`}>
+                <div className={`grid lg:grid-cols-3 gap-6 mb-6`}>
                   {/* Revenue Chart */}
                   <div className="lg:col-span-2 bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
-                    <div className={`flex items-center justify-between mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <div className={`flex items-center justify-between mb-4`}>
                       <h3 className="font-display font-bold text-gray-900 dark:text-dark-text">
                         {isRTL ? 'الأرباح — آخر 7 أشهر' : 'Revenue — Last 7 Months'}
                       </h3>
@@ -2856,7 +2924,7 @@ export default function SellerDashboard() {
                     <div className="space-y-4 mb-6">
                       {bazaarHealth.map((metric) => (
                         <div key={metric.label}>
-                          <div className={`flex justify-between text-sm mb-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <div className={`flex justify-between text-sm mb-1`}>
                             <span className="text-gray-600 dark:text-dark-muted">{metric.label}</span>
                             <span className="font-semibold text-gray-900 dark:text-dark-text">{metric.value}</span>
                           </div>
@@ -2877,7 +2945,7 @@ export default function SellerDashboard() {
                         const sales = product.totalSales || product.sales || 0;
                         const percent = maxSales > 0 ? Math.round((sales / maxSales) * 100) : 0;
                         return (
-                          <div key={product._id || product.productId || index} className={`flex items-center gap-2 mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <div key={product._id || product.productId || index} className={`flex items-center gap-2 mb-2`}>
                             <span className="text-xs text-gray-600 dark:text-dark-muted flex-1 truncate">
                               {product.productName || product.name || 'Product'}
                             </span>
@@ -2902,12 +2970,12 @@ export default function SellerDashboard() {
 
                 {/* Recent Orders */}
                 <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6">
-                  <div className={`flex items-center justify-between mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex items-center justify-between mb-4`}>
                     <h3 className="font-display font-bold text-gray-900 dark:text-dark-text">{isRTL ? 'الطلبات الأخيرة' : 'Recent Orders'}</h3>
                     <button onClick={() => setActiveTab('orders')} className="text-sm text-brand-gold hover:underline">{isRTL ? 'عرض الكل' : 'View All'}</button>
                   </div>
                   <div className="overflow-x-auto">
-                    <table className={`w-full text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
+                    <table className={`w-full text-sm text-start`}>
                       <thead>
                         <tr className="border-b border-gray-100 dark:border-dark-border">
                           {[
@@ -2975,6 +3043,7 @@ export default function SellerDashboard() {
               <SellerReviewsTab 
                 isRTL={isRTL}
                 user={user}
+                reviews={sellerReviews}
               />
             )}
 
@@ -2987,6 +3056,8 @@ export default function SellerDashboard() {
                 products={products}
                 brandId={myBrandId}
                 orderStats={orderStats}
+                dashboard={dashboard}
+                avgReviewRating={avgReviewRating}
               />
             )}
 
@@ -3056,7 +3127,7 @@ export default function SellerDashboard() {
                       <div className="text-3xl mb-3">{item.icon}</div>
                       <h3 className="font-bold text-gray-900 dark:text-dark-text mb-2">{item.title}</h3>
                       <p className="text-sm text-gray-500 dark:text-dark-muted mb-4">{item.desc}</p>
-                      <div className={`flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                      <div className={`flex items-center justify-between`}>
                         <span className="text-brand-gold font-bold text-sm">{item.price}</span>
                         <button
                           type="button"
@@ -3072,7 +3143,7 @@ export default function SellerDashboard() {
                     </div>
                   ))}
                 </div>
-                <div className={`flex items-start gap-3 bg-brand-navy/5 dark:bg-brand-navy/20 rounded-2xl p-5 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+                <div className={`flex items-start gap-3 bg-brand-navy/5 dark:bg-brand-navy/20 rounded-2xl p-5`}>
                   <span className="text-2xl">📩</span>
                   <div>
                     <p className="font-semibold text-gray-900 dark:text-dark-text text-sm mb-1">

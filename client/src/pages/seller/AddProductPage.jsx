@@ -428,7 +428,7 @@ export default function AddProductPage() {
                             placeholder={isRTL ? 'اسم ماركتك (مثل BrandM)' : 'Your brand name (e.g. BrandM)'}
                             className="w-full rounded-lg border border-amber-200 dark:border-amber-700 bg-white dark:bg-dark-bg px-3 py-2 text-sm"
                           />
-                          <div className={`flex flex-wrap gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <div className={`flex flex-wrap gap-3`}>
                             <button
                               type="button"
                               onClick={linkBrandByName}

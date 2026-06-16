@@ -173,12 +173,12 @@ export default function SellerRegistration() {
   };
 
   return (
-    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg flex transition-colors duration-200 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg flex transition-colors duration-200`}>
       {/* Left Sidebar - Benefits */}
       <div className="hidden lg:flex lg:w-[420px] bg-brand-navy dark:bg-[#0f172a] flex-col justify-center p-12 relative overflow-hidden transition-colors duration-200">
         <div className="absolute inset-0 bg-pattern opacity-20"></div>
         <div className="relative z-10">
-          <Link to="/" className={`flex items-center gap-2 mb-10 ${isRTL ? 'flex-row-reverse justify-end' : ''}`}>
+          <Link to="/" className={`flex items-center gap-2 mb-10 ${isRTL ? 'justify-end' : ''}`}>
             <div className="w-10 h-10 bg-brand-gold rounded-xl flex items-center justify-center">
               <span className="text-white dark:text-brand-navy font-display font-bold text-xl">B</span>
             </div>
@@ -201,7 +201,7 @@ export default function SellerRegistration() {
 
           <div className="space-y-5">
             {PERKS.map(({ icon: Icon, title, desc }) => (
-              <div key={title} className={`flex gap-4 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+              <div key={title} className={`flex gap-4`}>
                 <div className="w-10 h-10 rounded-xl bg-brand-gold/20 flex items-center justify-center flex-shrink-0">
                   <Icon size={18} className="text-brand-gold" />
                 </div>
@@ -219,7 +219,7 @@ export default function SellerRegistration() {
       <div className="flex-1 flex items-center justify-center px-6 py-12 overflow-y-auto">
         <div className="w-full max-w-lg">
           {/* Mobile logo */}
-          <Link to="/" className={`flex lg:hidden items-center gap-2 mb-8 ${isRTL ? 'flex-row-reverse justify-end' : ''}`}>
+          <Link to="/" className={`flex lg:hidden items-center gap-2 mb-8 ${isRTL ? 'justify-end' : ''}`}>
             <div className="w-9 h-9 bg-brand-navy dark:bg-brand-gold rounded-xl flex items-center justify-center transition-colors">
               <span className="text-white dark:text-brand-navy font-display font-bold">B</span>
             </div>
@@ -227,17 +227,17 @@ export default function SellerRegistration() {
           </Link>
 
           {/* Already selling hint */}
-          <div className={`flex justify-end mb-4 ${isRTL ? 'flex-row-reverse justify-start' : ''}`}>
+          <div className={`flex mb-4 ${isRTL ? 'justify-start' : 'justify-end'}`}>
             <Link to="/login" className="text-sm text-gray-500 dark:text-dark-muted hover:text-brand-navy dark:hover:text-brand-gold transition-colors">
               {isRTL ? 'تبيع بالفعل؟' : 'Already selling?'} <span className="font-semibold text-brand-navy dark:text-brand-gold">{isRTL ? 'سجل دخول' : 'Sign in'}</span>
             </Link>
           </div>
 
           {/* Step indicator */}
-          <div className={`flex items-center gap-3 mb-8 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className={`flex items-center gap-3 mb-8`}>
             {STEPS.map((s, i) => (
-              <div key={s.num} className={`flex items-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                <div className={`flex items-center gap-2 transition-all ${isRTL ? 'flex-row-reverse' : ''} ${step >= s.num ? 'text-brand-navy dark:text-brand-gold' : 'text-gray-400 dark:text-dark-muted'}`}>
+              <div key={s.num} className={`flex items-center gap-2`}>
+                <div className={`flex items-center gap-2 transition-all ${step >= s.num ? 'text-brand-navy dark:text-brand-gold' : 'text-gray-400 dark:text-dark-muted'}`}>
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all ${step > s.num ? 'bg-emerald-500 text-white' :
                       step === s.num ? 'bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy shadow-md' : 'bg-gray-200 dark:bg-dark-surface'
                     }`}>
@@ -326,7 +326,7 @@ export default function SellerRegistration() {
 
               <div className={isRTL ? 'text-right' : ''}>
                 <label className="input-label dark:text-dark-text">{isRTL ? 'الفئات (اختر كل ما ينطبق)' : 'Categories (select all that apply)'}</label>
-                <div className={`flex flex-wrap gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex flex-wrap gap-2`}>
                   {catOptions.map(cat => (
                     <button
                       key={cat}
@@ -392,26 +392,26 @@ export default function SellerRegistration() {
               <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5">
                 <h4 className={`font-semibold text-gray-900 dark:text-dark-text mb-3 ${isRTL ? 'text-right' : ''}`}>{isRTL ? 'ملخص الطلب' : 'Application Summary'}</h4>
                 <div className="space-y-2 text-sm">
-                  <div className={`flex justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex justify-between`}>
                     <span className="text-gray-500 dark:text-dark-muted">{isRTL ? 'الاسم' : 'Name'}</span>
                     <span className="font-medium dark:text-dark-text">{form.name}</span>
                   </div>
-                  <div className={`flex justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex justify-between`}>
                     <span className="text-gray-500 dark:text-dark-muted">{isRTL ? 'الماركة' : 'Brand'}</span>
                     <span className="font-medium dark:text-dark-text">{form.brandName || '—'}</span>
                   </div>
-                  <div className={`flex justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex justify-between`}>
                     <span className="text-gray-500 dark:text-dark-muted">{isRTL ? 'الموقع' : 'Location'}</span>
                     <span className="font-medium dark:text-dark-text">{form.governorate}</span>
                   </div>
-                  <div className={`flex justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex justify-between`}>
                     <span className="text-gray-500 dark:text-dark-muted">{isRTL ? 'الهاتف' : 'Phone'}</span>
                     <span className="font-medium dark:text-dark-text">{form.phone}</span>
                   </div>
                 </div>
               </div>
 
-              <label className={`flex items-start gap-2 cursor-pointer ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+              <label className={`flex items-start gap-2 cursor-pointer`}>
                 <input
                   type="checkbox"
                   checked={form.agreeTerms}
@@ -428,13 +428,13 @@ export default function SellerRegistration() {
 
               <button type="submit" disabled={loading} className="w-full btn-primary py-4 text-base disabled:opacity-70">
                 {loading ? (
-                  <span className={`flex items-center justify-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <span className={`flex items-center justify-center gap-2`}>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     {isRTL ? 'جاري الإرسال...' : 'Submitting...'}
                   </span>
                 ) : (
-                  <span className={`flex items-center justify-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                    {isRTL ? 'تقديم الطلب' : 'Submit Application'} <ArrowRight size={18} className={isRTL ? 'rotate-180' : ''} />
+                  <span className={`flex items-center justify-center gap-2`}>
+                    {isRTL ? 'تقديم الطلب' : 'Submit Application'} <ArrowRight size={18} className="rtl-flip" />
                   </span>
                 )}
               </button>
@@ -443,17 +443,17 @@ export default function SellerRegistration() {
 
           {/* Navigation buttons (non-final steps) */}
           {step < 3 && (
-            <div className={`flex gap-3 mt-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`flex gap-3 mt-6`}>
               {step > 1 && (
-                <button onClick={() => setStep(s => s - 1)} className={`btn-ghost flex items-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  <ArrowLeft size={16} className={isRTL ? 'rotate-180' : ''} /> {isRTL ? 'رجوع' : 'Back'}
+                <button onClick={() => setStep(s => s - 1)} className={`btn-ghost flex items-center gap-1`}>
+                  <ArrowLeft size={16} className="rtl-flip" /> {isRTL ? 'رجوع' : 'Back'}
                 </button>
               )}
-              <button onClick={handleNext} className={`flex-1 btn-primary py-4 flex items-center justify-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <button onClick={handleNext} className={`flex-1 btn-primary py-4 flex items-center justify-center gap-1`}>
                 {step === 2 
                   ? (isRTL ? 'مواصلة للمراجعة' : 'Continue to Review') 
                   : (isRTL ? 'مواصلة لإعداد الماركة' : 'Continue to Brand Setup')
-                } <ArrowRight size={18} className={isRTL ? 'rotate-180' : ''} />
+                } <ArrowRight size={18} className="rtl-flip" />
               </button>
             </div>
           )}

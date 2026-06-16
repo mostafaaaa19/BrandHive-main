@@ -127,7 +127,7 @@ export default function VerifyPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg flex transition-colors duration-200 ${isRTL ? 'flex-row-reverse' : ''}`}>
+    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg flex transition-colors duration-200`}>
 
       {/* ── Left Panel (visual) ── */}
       <div className="hidden lg:flex flex-1 bg-brand-navy dark:bg-[#0f172a] items-center justify-center relative overflow-hidden transition-colors duration-200">
@@ -173,7 +173,7 @@ export default function VerifyPage() {
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.35 }}
-            className={`flex items-center justify-center gap-2 text-brand-gold text-sm ${isRTL ? 'flex-row-reverse' : ''}`}
+            className={`flex items-center justify-center gap-2 text-brand-gold text-sm`}
           >
             <Mail size={14} />
             <span>{isRTL ? 'تحقق من مجلد الرسائل المزعجة إذا لم تجد الرمز' : "Check your spam folder if you don't see it"}</span>
@@ -190,7 +190,7 @@ export default function VerifyPage() {
           className="w-full max-w-md"
         >
           {/* Logo */}
-          <Link to="/" className={`flex items-center gap-2 mb-10 ${isRTL ? 'flex-row-reverse justify-end' : ''}`}>
+          <Link to="/" className={`flex items-center gap-2 mb-10 ${isRTL ? 'justify-end' : ''}`}>
             <div className="w-10 h-10 bg-brand-navy dark:bg-brand-gold rounded-xl flex items-center justify-center transition-colors">
               <span className="text-white dark:text-brand-navy font-display font-bold text-xl">B</span>
             </div>
@@ -251,7 +251,7 @@ export default function VerifyPage() {
                         initial={{ opacity: 0, y: -6 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -6 }}
-                        className={`flex items-start gap-2 mt-3 text-sm text-red-600 dark:text-red-400 ${isRTL ? 'flex-row-reverse text-right' : ''}`}
+                        className={`flex items-start gap-2 mt-3 text-sm text-red-600 dark:text-red-400`}
                       >
                         <AlertCircle size={15} className="mt-0.5 shrink-0" />
                         <span>{otpError}</span>
@@ -268,7 +268,7 @@ export default function VerifyPage() {
                   className="w-full btn-primary py-4 text-base disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {loading ? (
-                    <span className={`flex items-center justify-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <span className={`flex items-center justify-center gap-2`}>
                       <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       {isRTL ? 'جاري التحقق...' : 'Verifying…'}
                     </span>
@@ -290,7 +290,7 @@ export default function VerifyPage() {
                       id="verify-resend"
                       onClick={handleResend}
                       disabled={resendLoading}
-                      className={`text-brand-gold font-semibold hover:underline disabled:opacity-60 inline-flex items-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}
+                      className={`text-brand-gold font-semibold hover:underline disabled:opacity-60 inline-flex items-center gap-1`}
                     >
                       {resendLoading && (
                         <RefreshCw size={13} className="animate-spin" />

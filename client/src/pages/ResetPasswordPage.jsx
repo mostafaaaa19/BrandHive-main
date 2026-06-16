@@ -101,7 +101,7 @@ export default function ResetPasswordPage() {
   if (!email) return null;
 
   return (
-    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg flex transition-colors duration-200 ${isRTL ? 'flex-row-reverse' : ''}`}>
+    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg flex transition-colors duration-200`}>
 
       {/* ── Left Panel (visual) ── */}
       <div className="hidden lg:flex flex-1 bg-brand-navy dark:bg-[#0f172a] items-center justify-center relative overflow-hidden transition-colors duration-200">
@@ -156,7 +156,7 @@ export default function ResetPasswordPage() {
           className="w-full max-w-md"
         >
           {/* Logo */}
-          <Link to="/" className={`flex items-center gap-2 mb-10 ${isRTL ? 'flex-row-reverse justify-end' : ''}`}>
+          <Link to="/" className={`flex items-center gap-2 mb-10 ${isRTL ? 'justify-end' : ''}`}>
             <div className="w-10 h-10 bg-brand-navy dark:bg-brand-gold rounded-xl flex items-center justify-center transition-colors">
               <span className="text-white dark:text-brand-navy font-display font-bold text-xl">B</span>
             </div>
@@ -206,7 +206,7 @@ export default function ResetPasswordPage() {
                     initial={{ opacity: 0, y: -6 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -6 }}
-                    className={`flex items-start gap-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/20 text-red-700 dark:text-red-400 rounded-xl px-4 py-3 mb-6 text-sm ${isRTL ? 'flex-row-reverse text-right' : ''}`}
+                    className={`flex items-start gap-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/20 text-red-700 dark:text-red-400 rounded-xl px-4 py-3 mb-6 text-sm`}
                   >
                     <AlertCircle size={16} className="mt-0.5 shrink-0 text-red-500" />
                     <span>{error}</span>
@@ -228,13 +228,13 @@ export default function ResetPasswordPage() {
                       value={newPassword}
                       onChange={(e) => { setNewPassword(e.target.value); setError(''); }}
                       placeholder={isRTL ? '8 أحرف على الأقل' : 'At least 8 characters'}
-                      className={`input-field ${isRTL ? 'pr-4 pl-11 text-right' : 'pr-11'}`}
+                      className={`input-field pe-11 ps-4 text-start`}
                       disabled={loading}
                     />
                     <button
                       type="button"
                       onClick={() => setShowNewPw(!showNewPw)}
-                      className={`absolute top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-dark-muted dark:hover:text-dark-text ${isRTL ? 'left-3' : 'right-3'}`}
+                      className={`absolute top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-dark-muted dark:hover:text-dark-text end-3`}
                     >
                       {showNewPw ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
@@ -271,13 +271,13 @@ export default function ResetPasswordPage() {
                       value={confirmPassword}
                       onChange={(e) => { setConfirmPassword(e.target.value); setError(''); }}
                       placeholder={isRTL ? 'كرر كلمة المرور' : 'Repeat your password'}
-                      className={`input-field ${isRTL ? 'pr-4 pl-11 text-right' : 'pr-11'} ${confirmPassword && newPassword !== confirmPassword ? 'border-red-300 dark:border-red-900/50 focus:border-red-400' : ''}`}
+                      className={`input-field pe-11 ps-4 text-start ${confirmPassword && newPassword !== confirmPassword ? 'border-red-300 dark:border-red-900/50 focus:border-red-400' : ''}`}
                       disabled={loading}
                     />
                     <button
                       type="button"
                       onClick={() => setShowConfirmPw(!showConfirmPw)}
-                      className={`absolute top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-dark-muted dark:hover:text-dark-text ${isRTL ? 'left-3' : 'right-3'}`}
+                      className={`absolute top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-dark-muted dark:hover:text-dark-text end-3`}
                     >
                       {showConfirmPw ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
@@ -297,7 +297,7 @@ export default function ResetPasswordPage() {
                   className="w-full btn-primary py-4 text-base disabled:opacity-70"
                 >
                   {loading ? (
-                    <span className={`flex items-center justify-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <span className={`flex items-center justify-center gap-2`}>
                       <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       {isRTL ? 'جاري التعيين...' : 'Resetting…'}
                     </span>
@@ -308,7 +308,7 @@ export default function ResetPasswordPage() {
               </form>
 
               <p className={`text-center text-sm text-gray-500 dark:text-dark-muted mt-6 ${isRTL ? 'text-right' : ''}`}>
-                <Link to="/verify-reset" className={`text-brand-navy dark:text-brand-gold font-semibold hover:underline flex items-center justify-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <Link to="/verify-reset" className={`text-brand-navy dark:text-brand-gold font-semibold hover:underline flex items-center justify-center gap-1`}>
                   {isRTL ? '← عودة' : '← Back'}
                 </Link>
               </p>

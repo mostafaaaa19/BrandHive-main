@@ -199,7 +199,7 @@ export default function ExploreBrands() {
   const hasFilters = search || selectedGov || selectedCat || activeFilter !== 'All';
 
   return (
-    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200 ${isRTL ? 'text-right' : 'text-left'}`}>
+    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200 text-start`}>
       {/* Header */}
       <div className="bg-brand-navy text-white py-12">
         <div className="page-container">
@@ -215,18 +215,18 @@ export default function ExploreBrands() {
       <div className="page-container py-8">
         {/* Search + Controls */}
         <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-4 mb-6">
-          <div className={`flex flex-col sm:flex-row gap-3 ${isRTL ? 'sm:flex-row-reverse' : ''}`}>
+          <div className={`flex flex-col sm:flex-row gap-3`}>
             <div className="relative flex-1">
-              <Search size={16} className={`absolute ${isRTL ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 text-gray-400 dark:text-dark-muted`} />
+              <Search size={16} className={`absolute start-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-dark-muted`} />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={isRTL ? 'ابحث عن الماركات بالاسم، الفئة، الموقع...' : 'Search brands by name, category, location...'}
-                className={`input-field ${isRTL ? 'pr-9 pl-4 text-right' : 'pl-9 pr-4'}`}
+                className={`input-field ps-9 pe-4 text-start`}
               />
               {search && (
-                <button onClick={() => setSearch('')} className={`absolute ${isRTL ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-dark-text`}>
+                <button onClick={() => setSearch('')} className={`absolute end-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-dark-text`}>
                   <X size={14} />
                 </button>
               )}
@@ -264,7 +264,7 @@ export default function ExploreBrands() {
             </select>
 
             {/* View toggle */}
-            <div className={`flex items-center gap-1 bg-gray-100 dark:bg-dark-bg rounded-xl p-1 flex-shrink-0 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`flex items-center gap-1 bg-gray-100 dark:bg-dark-bg rounded-xl p-1 flex-shrink-0`}>
               <button
                 onClick={() => setView('grid')}
                 className={`p-2 rounded-lg transition-all ${view === 'grid' ? 'bg-white dark:bg-dark-surface shadow-sm text-brand-navy dark:text-brand-gold' : 'text-gray-400 dark:text-dark-muted'}`}
@@ -282,7 +282,7 @@ export default function ExploreBrands() {
         </div>
 
         {/* Filter Tabs */}
-        <div className={`flex items-center gap-2 mb-6 overflow-x-auto pb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+        <div className={`flex items-center gap-2 mb-6 overflow-x-auto pb-2`}>
           {filterTabs.map(tab => (
             <button
               key={tab.value}
@@ -300,7 +300,7 @@ export default function ExploreBrands() {
           {hasFilters && (
             <button 
               onClick={clearFilters} 
-              className={`flex items-center gap-1 px-3 py-2 text-sm text-red-600 bg-red-50 dark:bg-red-500/10 rounded-xl hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors whitespace-nowrap ${isRTL ? 'mr-auto ml-0 flex-row-reverse' : 'ml-auto mr-0'} flex-shrink-0`}
+              className="flex items-center gap-1 px-3 py-2 text-sm text-red-600 bg-red-50 dark:bg-red-500/10 rounded-xl hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors whitespace-nowrap ms-auto flex-shrink-0"
             >
               <X size={13} /> {isRTL ? 'مسح الفلاتر' : 'Clear Filters'}
             </button>
@@ -308,7 +308,7 @@ export default function ExploreBrands() {
         </div>
 
         {/* Result count */}
-        <div className={`flex items-center justify-between mb-6 ${isRTL ? 'flex-row-reverse' : ''}`}>
+        <div className={`flex items-center justify-between mb-6`}>
           <p className="text-gray-600 dark:text-dark-muted text-sm">
             {isRTL ? (
               <>عرض <span className="font-semibold text-brand-gold">{filtered.length}</span> ماركة</>

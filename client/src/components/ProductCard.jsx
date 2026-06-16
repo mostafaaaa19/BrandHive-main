@@ -91,7 +91,7 @@ export default function ProductCard({ product, size = 'md', badge }) {
         </div>
 
         {/* Badges */}
-        <div className={`absolute top-2 ${isRTL ? 'right-2' : 'left-2'} flex flex-col gap-1`}>
+        <div className={`absolute top-2 start-2 flex flex-col gap-1`}>
           {badge && (
             <span className="badge-new">{badge}</span>
           )}
@@ -110,7 +110,7 @@ export default function ProductCard({ product, size = 'md', badge }) {
         <button
           onClick={handleWishlist}
           aria-label={wishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
-          className={`absolute top-2 ${isRTL ? 'left-2' : 'right-2'} z-20 flex h-9 w-9 items-center justify-center rounded-full transition-all ${
+          className={`absolute top-2 end-2 z-20 flex h-9 w-9 items-center justify-center rounded-full transition-all ${
             wishlisted
               ? 'bg-red-500 text-white shadow-md scale-110'
               : 'bg-white text-gray-500 hover:text-red-500 shadow-md'
@@ -132,9 +132,9 @@ export default function ProductCard({ product, size = 'md', badge }) {
       </div>
 
       {/* Info */}
-      <div className={`flex flex-1 flex-col p-3 ${isSmall ? '' : 'sm:p-4'} ${isRTL ? 'text-right' : 'text-left'}`}>
+      <div className={`flex flex-1 flex-col p-3 ${isSmall ? '' : 'sm:p-4'} text-start`}>
         {/* Brand */}
-        <div className={`flex items-center gap-1 mb-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+        <div className={`flex items-center gap-1 mb-1`}>
           <span className={`text-brand-gold text-xs font-semibold truncate`}>{product.brandName}</span>
           {product.verified && <span className="text-emerald-500 text-xs">✓</span>}
         </div>
@@ -145,7 +145,7 @@ export default function ProductCard({ product, size = 'md', badge }) {
         </h3>
 
         {/* Rating */}
-        <div className={`flex items-center gap-1 mb-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+        <div className={`flex items-center gap-1 mb-2`}>
           <div className="flex">
             {[...Array(5)].map((_, i) => (
               <Star
@@ -159,14 +159,14 @@ export default function ProductCard({ product, size = 'md', badge }) {
         </div>
 
         {/* Price */}
-        <div className={`mt-auto flex items-end justify-between gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+        <div className={`mt-auto flex items-end justify-between gap-2`}>
           <div className={isRTL ? 'text-right' : 'text-left'}>
             <span className={`block font-bold text-brand-navy dark:text-brand-gold ${isSmall ? 'text-sm' : 'text-base sm:text-lg'}`}>
               {product.price.toLocaleString()}
             </span>
             <span className="block text-xs font-semibold text-brand-navy/80 dark:text-brand-gold/80">{t('common.egp')}</span>
             {product.originalPrice && (
-              <span className={`text-xs text-gray-400 dark:text-dark-muted line-through ${isRTL ? 'mr-1' : 'ml-1'}`}>
+              <span className={`text-xs text-gray-400 dark:text-dark-muted line-through ms-1`}>
                 {product.originalPrice.toLocaleString()}
               </span>
             )}
@@ -180,7 +180,7 @@ export default function ProductCard({ product, size = 'md', badge }) {
 
         {/* Governorate */}
         {!isSmall && (
-          <div className={`flex items-center gap-1 mt-1.5 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className={`flex items-center gap-1 mt-1.5`}>
             <MapPin size={10} className="text-gray-400 dark:text-dark-muted" />
             <span className="text-xs text-gray-400 dark:text-dark-muted">{product.governorate}</span>
           </div>

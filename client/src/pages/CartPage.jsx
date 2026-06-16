@@ -357,13 +357,13 @@ export default function CartPage() {
   }
 
   return (
-    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200 ${isRTL ? 'text-right' : 'text-left'}`}>
+    <div dir={isRTL ? "rtl" : "ltr"} className="min-h-screen bg-brand-cream dark:bg-dark-bg transition-colors duration-200">
       <div className="page-container py-8">
         {/* Stepper */}
-        <div className={`flex items-center justify-center mb-8 ${isRTL ? 'flex-row-reverse' : ''}`}>
+        <div className={`flex items-center justify-center mb-8`}>
           {STEPS.map((s, i) => (
-            <div key={`step-${i}`} className={`flex items-center ${isRTL ? 'flex-row-reverse' : ''}`}>
-              <div className={`flex items-center gap-2 ${i <= step ? 'text-brand-navy dark:text-brand-gold' : 'text-gray-400 dark:text-dark-muted'} ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div key={`step-${i}`} className={`flex items-center`}>
+              <div className={`flex items-center gap-2 ${i <= step ? 'text-brand-navy dark:text-brand-gold' : 'text-gray-400 dark:text-dark-muted'}`}>
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
                   i < step ? 'bg-emerald-500 text-white' :
                   i === step ? 'bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy shadow-md' :
@@ -394,15 +394,15 @@ export default function CartPage() {
 
         {/* Step 0: Cart */}
         {step === 0 && items.length > 0 && (
-          <div className={`grid lg:grid-cols-3 gap-8 ${isRTL ? 'lg:flex-row-reverse' : ''}`}>
+          <div className={`grid lg:grid-cols-3 gap-8`}>
             {/* Cart Items */}
             <div className="lg:col-span-2">
-              <div className={`flex items-center justify-between mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex items-center justify-between mb-4`}>
                 <h2 className="text-xl font-display font-bold text-gray-900 dark:text-dark-text">
                   {isRTL ? `سلتك (${itemCount} منتجات)` : `Your Cart (${itemCount} items)`}
                 </h2>
-                <Link to="/products" className={`flex items-center gap-1 text-sm text-brand-gold hover:underline ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  <ArrowLeft size={14} className={isRTL ? 'rotate-180' : ''} /> {isRTL ? 'متابعة التسوق' : t('cart.continueShopping')}
+                <Link to="/products" className={`flex items-center gap-1 text-sm text-brand-gold hover:underline`}>
+                  <ArrowLeft size={14} className="rtl-flip" /> {isRTL ? 'متابعة التسوق' : t('cart.continueShopping')}
                 </Link>
               </div>
 
@@ -410,7 +410,7 @@ export default function CartPage() {
                 {items.map((item, idx) => {
                   const icon = CATEGORY_ICONS[item.category] || CATEGORY_ICONS.default;
                   return (
-                    <div key={item.key || item.id || idx} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-4 flex gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <div key={item.key || item.id || idx} className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-4 flex gap-4`}>
                       {/* Image */}
                       <div className={`w-20 h-20 rounded-xl flex-shrink-0 flex items-center justify-center text-4xl ${
                         item.category === 'Jewelry' ? 'bg-amber-50 dark:bg-amber-900/10' :
@@ -435,7 +435,7 @@ export default function CartPage() {
 
                       {/* Info */}
                       <div className="flex-1 min-w-0">
-                        <div className={`flex items-start justify-between gap-2 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+                        <div className={`flex items-start justify-between gap-2`}>
                           <div className={isRTL ? 'text-right' : 'text-left'}>
                             <Link to={`/brand/${item.brandSlug}`} className="text-xs text-brand-gold font-semibold hover:underline">
                               {item.brandName}
@@ -455,9 +455,9 @@ export default function CartPage() {
                           </button>
                         </div>
 
-                        <div className={`flex items-center justify-between mt-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div className={`flex items-center justify-between mt-2`}>
                           {/* Quantity */}
-                          <div className={`flex items-center border border-gray-200 dark:border-dark-border rounded-xl overflow-hidden ${isRTL ? 'flex-row-reverse' : ''}`}>
+                          <div className={`flex items-center border border-gray-200 dark:border-dark-border rounded-xl overflow-hidden`}>
                             <button
                               onClick={() => updateQuantity(item.key, item.quantity - 1)}
                               className="px-3 py-1.5 text-gray-600 dark:text-dark-muted hover:bg-gray-50 dark:hover:bg-dark-bg transition-colors"
@@ -484,7 +484,7 @@ export default function CartPage() {
 
               {step === 0 && crossSell.length > 0 && (
                 <div className="mt-8">
-                  <h3 className={`font-display font-bold text-gray-900 dark:text-dark-text text-lg mb-4 flex items-center gap-2 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+                  <h3 className={`font-display font-bold text-gray-900 dark:text-dark-text text-lg mb-4 flex items-center gap-2`}>
                     <span>✨</span>
                     {isRTL ? 'يشتريها معها عادةً' : 'Frequently Bought Together'}
                   </h3>
@@ -528,20 +528,20 @@ export default function CartPage() {
                 </h3>
 
                 <div className="space-y-3 mb-5">
-                  <div className={`flex justify-between text-sm ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex justify-between text-sm`}>
                     <span className="text-gray-600 dark:text-dark-muted">
                       {isRTL ? `المجموع (${itemCount} منتجات)` : `Subtotal (${itemCount} items)`}
                     </span>
                     <span className="font-semibold dark:text-dark-text">{subtotal.toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}</span>
                   </div>
-                  <div className={`flex justify-between text-sm ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex justify-between text-sm`}>
                     <span className="text-gray-600 dark:text-dark-muted">{isRTL ? 'الشحن' : 'Shipping'}</span>
                     <span className={`font-semibold ${shippingCost === 0 ? 'text-emerald-600 dark:text-emerald-400' : 'dark:text-dark-text'}`}>
                       {shippingCost === 0 ? (isRTL ? 'مجاني' : 'Free') : `${shippingCost} ${isRTL ? 'ج.م' : t('common.egp')}`}
                     </span>
                   </div>
                   {bundleDiscount > 0 && (
-                    <div className={`flex justify-between text-sm ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <div className={`flex justify-between text-sm`}>
                       <span className="text-emerald-600 dark:text-emerald-400">
                         {isRTL ? 'عرض الباندل' : 'Bundle offer'}
                       </span>
@@ -551,7 +551,7 @@ export default function CartPage() {
                     </div>
                   )}
                   {appliedCoupon?.code && (
-                    <div className={`flex justify-between text-sm ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <div className={`flex justify-between text-sm`}>
                       <span className="text-emerald-600 dark:text-emerald-400">
                         {isRTL ? `خصم (${appliedCoupon.code})` : `Discount (${appliedCoupon.code})`}
                       </span>
@@ -567,22 +567,22 @@ export default function CartPage() {
                       ))}
                     </div>
                   )}
-                  <div className={`border-t border-gray-100 dark:border-dark-border pt-3 flex justify-between font-bold text-lg ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={`border-t border-gray-100 dark:border-dark-border pt-3 flex justify-between font-bold text-lg`}>
                     <span className="dark:text-dark-text">{isRTL ? 'الإجمالي' : t('cart.total')}</span>
                     <span className="text-brand-navy dark:text-brand-gold">{total.toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}</span>
                   </div>
                 </div>
 
                 {/* Promo */}
-                <div className={`flex gap-2 mb-5 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex gap-2 mb-5`}>
                   <div className="relative flex-1">
-                    <Tag size={14} className={`absolute ${isRTL ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 text-gray-400 dark:text-dark-muted`} />
+                    <Tag size={14} className={`absolute start-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-dark-muted`} />
                     <input
                       type="text"
                       value={promoCode}
                       onChange={e => setPromoCode(e.target.value)}
                       placeholder={isRTL ? 'رمز ترويجي...' : 'Promo code...'}
-                      className={`input-field ${isRTL ? 'pr-8 pl-4 text-right' : 'pl-8 pr-4'} py-2.5 text-sm`}
+                      className={`input-field ps-8 pe-4 text-start py-2.5 text-sm`}
                     />
                   </div>
                   <button 
@@ -600,12 +600,12 @@ export default function CartPage() {
 
                 <button
                   onClick={() => setStep(1)}
-                  className={`w-full btn-primary py-4 text-base flex items-center justify-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}
+                  className={`w-full btn-primary py-4 text-base flex items-center justify-center gap-2`}
                 >
-                  {isRTL ? 'الاستمرار للتوصيل' : 'Proceed to Delivery'} <ChevronRight size={18} className={isRTL ? 'rotate-180' : ''} />
+                  {isRTL ? 'الاستمرار للتوصيل' : 'Proceed to Delivery'} <ChevronRight size={18} className="rtl-flip" />
                 </button>
 
-                <div className={`flex items-center justify-center gap-3 mt-4 text-xs text-gray-400 dark:text-dark-muted ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex items-center justify-center gap-3 mt-4 text-xs text-gray-400 dark:text-dark-muted`}>
                   <Shield size={12} /> {isRTL ? 'آمن · Stripe · SSL 256 بت' : 'Secured · Stripe · 256-bit SSL'}
                 </div>
               </div>
@@ -667,7 +667,7 @@ export default function CartPage() {
             )}
             
             <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 space-y-4 mb-6">
-              <div className={`grid grid-cols-2 gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`grid grid-cols-2 gap-4`}>
                 <div className={isRTL ? 'text-right' : 'text-left'}>
                   <label className="input-label dark:text-dark-text block mb-1.5">{isRTL ? 'الاسم الكامل' : 'Full Name'}</label>
                   <input 
@@ -696,7 +696,7 @@ export default function CartPage() {
                   className={`input-field ${isRTL ? 'text-right' : ''}`} 
                 />
               </div>
-              <div className={`grid grid-cols-2 gap-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`grid grid-cols-2 gap-4`}>
                 <div className={isRTL ? 'text-right' : 'text-left'}>
                   <label className="input-label dark:text-dark-text block mb-1.5">{isRTL ? 'المحافظة' : 'Governorate'}</label>
                   <select 
@@ -733,17 +733,17 @@ export default function CartPage() {
                 </div>
               </div>
             </div>
-            <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
-              <button onClick={() => setStep(0)} className={`btn-ghost flex items-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                <ArrowLeft size={16} className={isRTL ? 'rotate-180' : ''} /> {isRTL ? 'رجوع' : 'Back'}
+            <div className={`flex gap-3`}>
+              <button onClick={() => setStep(0)} className={`btn-ghost flex items-center gap-2`}>
+                <ArrowLeft size={16} className="rtl-flip" /> {isRTL ? 'رجوع' : 'Back'}
               </button>
               <button
                 onClick={() => canProceedDelivery && setStep(2)}
                 disabled={!canProceedDelivery}
-                className={`flex-1 btn-primary py-4 text-base flex items-center justify-center gap-2 ${!canProceedDelivery ? 'opacity-50 cursor-not-allowed' : ''} ${isRTL ? 'flex-row-reverse' : ''}`}
+                className={`flex-1 btn-primary py-4 text-base flex items-center justify-center gap-2 ${!canProceedDelivery ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {isRTL ? 'الاستمرار للدفع' : 'Continue to Payment'}
-                <ChevronRight size={18} className={isRTL ? 'rotate-180' : ''} />
+                <ChevronRight size={18} className="rtl-flip" />
               </button>
             </div>
           </div>
@@ -760,7 +760,7 @@ export default function CartPage() {
                 {PAYMENT_METHODS.map(method => (
                   <label
                     key={method.id}
-                    className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${isRTL ? 'flex-row-reverse text-right' : ''} ${
+                    className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
                       selectedPayment === method.id
                         ? 'border-brand-navy dark:border-brand-gold bg-brand-navy/5 dark:bg-brand-gold/5'
                         : 'border-gray-200 dark:border-dark-border hover:border-gray-300 dark:hover:border-dark-muted'
@@ -813,7 +813,7 @@ export default function CartPage() {
                     {savedCards.map((card) => (
                       <label
                         key={card.id}
-                        className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${isRTL ? 'flex-row-reverse text-right' : ''} ${
+                        className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
                           selectedCardId === card.id
                             ? 'border-brand-navy dark:border-brand-gold bg-brand-navy/5 dark:bg-brand-gold/5'
                             : 'border-gray-200 dark:border-dark-border'
@@ -852,13 +852,13 @@ export default function CartPage() {
                 </div>
               )}
             </div>
-            <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
-              <button onClick={() => setStep(1)} className={`btn-ghost flex items-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                <ArrowLeft size={16} className={isRTL ? 'rotate-180' : ''} /> {isRTL ? 'رجوع' : 'Back'}
+            <div className={`flex gap-3`}>
+              <button onClick={() => setStep(1)} className={`btn-ghost flex items-center gap-2`}>
+                <ArrowLeft size={16} className="rtl-flip" /> {isRTL ? 'رجوع' : 'Back'}
               </button>
-              <button onClick={() => setStep(3)} className={`flex-1 btn-primary py-4 text-base flex items-center justify-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <button onClick={() => setStep(3)} className={`flex-1 btn-primary py-4 text-base flex items-center justify-center gap-2`}>
                 {isRTL ? 'مراجعة الطلب' : 'Review Order'}
-                <ChevronRight size={18} className={isRTL ? 'rotate-180' : ''} />
+                <ChevronRight size={18} className="rtl-flip" />
               </button>
             </div>
           </div>
@@ -875,7 +875,7 @@ export default function CartPage() {
             <div className={`bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-6 mb-4 ${isRTL ? 'text-right' : ''}`}>
               <h3 className="font-semibold text-gray-900 dark:text-dark-text mb-3">{isRTL ? 'منتجات الطلب' : 'Order Items'}</h3>
               {items.map((item, idx) => (
-                <div key={item.key || item.id || idx} className={`flex justify-between items-center py-2 border-b border-gray-50 dark:border-dark-border last:border-0 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div key={item.key || item.id || idx} className={`flex justify-between items-center py-2 border-b border-gray-50 dark:border-dark-border last:border-0`}>
                   <span className="text-sm text-gray-700 dark:text-dark-muted">
                     {item.name} × {item.quantity}
                   </span>
@@ -883,28 +883,28 @@ export default function CartPage() {
                 </div>
               ))}
               <div className={`space-y-2 pt-3 border-t border-gray-100 dark:border-dark-border text-sm ${isRTL ? 'text-right' : ''}`}>
-                <div className={`flex justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex justify-between`}>
                   <span className="text-gray-600 dark:text-dark-muted">{isRTL ? 'المجموع' : 'Subtotal'}</span>
                   <span>{subtotal.toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}</span>
                 </div>
-                <div className={`flex justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex justify-between`}>
                   <span className="text-gray-600 dark:text-dark-muted">{isRTL ? 'الشحن' : 'Shipping'}</span>
                   <span>{shippingCost === 0 ? (isRTL ? 'مجاني' : 'Free') : `${shippingCost} ${isRTL ? 'ج.م' : t('common.egp')}`}</span>
                 </div>
                 {bundleDiscount > 0 && (
-                  <div className={`flex justify-between text-emerald-600 dark:text-emerald-400 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex justify-between text-emerald-600 dark:text-emerald-400`}>
                     <span>{isRTL ? 'عرض الباندل' : 'Bundle offer'}</span>
                     <span>-{bundleDiscount.toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}</span>
                   </div>
                 )}
                 {appliedCoupon?.code && (
-                  <div className={`flex justify-between text-emerald-600 dark:text-emerald-400 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex justify-between text-emerald-600 dark:text-emerald-400`}>
                     <span>{isRTL ? `كوبون (${appliedCoupon.code})` : `Coupon (${appliedCoupon.code})`}</span>
                     <span>-{couponDiscount.toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}</span>
                   </div>
                 )}
               </div>
-              <div className={`flex justify-between items-center pt-3 font-bold text-lg ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex justify-between items-center pt-3 font-bold text-lg`}>
                 <span className="dark:text-dark-text">{isRTL ? 'الإجمالي' : t('cart.total')}</span>
                 <span className="text-brand-navy dark:text-brand-gold">{total.toLocaleString()} {isRTL ? 'ج.م' : t('common.egp')}</span>
               </div>
@@ -933,9 +933,9 @@ export default function CartPage() {
               )}
             </div>
 
-            <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
-              <button onClick={() => setStep(2)} className={`btn-ghost flex items-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                <ArrowLeft size={16} className={isRTL ? 'rotate-180' : ''} /> {isRTL ? 'رجوع' : 'Back'}
+            <div className={`flex gap-3`}>
+              <button onClick={() => setStep(2)} className={`btn-ghost flex items-center gap-2`}>
+                <ArrowLeft size={16} className="rtl-flip" /> {isRTL ? 'رجوع' : 'Back'}
               </button>
               <button 
                 onClick={handlePlaceOrder} 
@@ -948,14 +948,14 @@ export default function CartPage() {
                     {isRTL ? 'جاري إتمام الطلب...' : 'Placing order...'}
                   </span>
                 ) : (
-                  <span className={`flex items-center justify-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <span className={`flex items-center justify-center gap-2`}>
                     {isRTL ? 'إتمام الطلب' : 'Place Order'}
                     <CheckCircle size={18} />
                   </span>
                 )}
               </button>
             </div>
-            <p className={`text-center text-xs text-gray-400 dark:text-dark-muted mt-3 flex items-center justify-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <p className={`text-center text-xs text-gray-400 dark:text-dark-muted mt-3 flex items-center justify-center gap-1`}>
               <Shield size={11} /> {isRTL ? 'آمن · Stripe · SSL 256 بت' : 'Secured · Stripe · 256-bit SSL'}
             </p>
           </div>

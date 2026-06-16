@@ -41,7 +41,7 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg flex transition-colors duration-200 ${isRTL ? 'flex-row-reverse' : ''}`}>
+    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg flex transition-colors duration-200`}>
 
       {/* ── Left Panel (visual) ── */}
       <div className="hidden lg:flex flex-1 bg-brand-navy dark:bg-[#0f172a] items-center justify-center relative overflow-hidden transition-colors duration-200">
@@ -89,7 +89,7 @@ export default function ForgotPasswordPage() {
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.35 }}
-            className={`flex items-center justify-center gap-2 text-brand-gold text-sm ${isRTL ? 'flex-row-reverse' : ''}`}
+            className={`flex items-center justify-center gap-2 text-brand-gold text-sm`}
           >
             <Mail size={14} />
             <span>{isRTL ? 'تحقق من مجلد الرسائل المزعجة إذا لم تجد الرمز' : "Check your spam folder if you don't see it"}</span>
@@ -106,7 +106,7 @@ export default function ForgotPasswordPage() {
           className="w-full max-w-md"
         >
           {/* Logo */}
-          <Link to="/" className={`flex items-center gap-2 mb-10 ${isRTL ? 'flex-row-reverse justify-end' : ''}`}>
+          <Link to="/" className={`flex items-center gap-2 mb-10 ${isRTL ? 'justify-end' : ''}`}>
             <div className="w-10 h-10 bg-brand-navy dark:bg-brand-gold rounded-xl flex items-center justify-center transition-colors">
               <span className="text-white dark:text-brand-navy font-display font-bold text-xl">B</span>
             </div>
@@ -156,7 +156,7 @@ export default function ForgotPasswordPage() {
                     initial={{ opacity: 0, y: -6 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -6 }}
-                    className={`flex items-start gap-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/20 text-red-700 dark:text-red-400 rounded-xl px-4 py-3 mb-6 text-sm ${isRTL ? 'flex-row-reverse text-right' : ''}`}
+                    className={`flex items-start gap-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/20 text-red-700 dark:text-red-400 rounded-xl px-4 py-3 mb-6 text-sm`}
                   >
                     <AlertCircle size={16} className="mt-0.5 shrink-0 text-red-500" />
                     <span>{error}</span>
@@ -188,7 +188,7 @@ export default function ForgotPasswordPage() {
                   className="w-full btn-primary py-4 text-base mt-2 disabled:opacity-70"
                 >
                   {loading ? (
-                    <span className={`flex items-center justify-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <span className={`flex items-center justify-center gap-2`}>
                       <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       {isRTL ? 'جاري الإرسال...' : 'Sending…'}
                     </span>
@@ -199,7 +199,7 @@ export default function ForgotPasswordPage() {
               </form>
 
               <p className={`text-center text-sm text-gray-500 dark:text-dark-muted mt-6 ${isRTL ? 'text-right' : ''}`}>
-                <Link to="/login" className={`text-brand-navy dark:text-brand-gold font-semibold hover:underline flex items-center justify-center gap-1 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <Link to="/login" className={`text-brand-navy dark:text-brand-gold font-semibold hover:underline flex items-center justify-center gap-1`}>
                   {isRTL ? '← العودة لتسجيل الدخول' : '← Back to Login'}
                 </Link>
               </p>

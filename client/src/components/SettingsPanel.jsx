@@ -126,7 +126,7 @@ export default function SettingsPanel() {
         <h3 className={`font-display font-bold text-brand-navy dark:text-white text-lg mb-4 ${isRTL ? 'text-right' : ''}`}>
           {isRTL ? 'المظهر' : 'Appearance'}
         </h3>
-        <div className={`flex items-center justify-between p-4 bg-brand-cream dark:bg-dark-bg rounded-xl ${isRTL ? 'flex-row-reverse' : ''}`}>
+        <div className={`flex items-center justify-between p-4 bg-brand-cream dark:bg-dark-bg rounded-xl`}>
           <div className={isRTL ? 'text-right' : ''}>
             <p className="font-medium text-gray-900 dark:text-dark-text text-sm">
               {isRTL ? 'الوضع الداكن' : 'Dark Mode'}
@@ -186,7 +186,7 @@ export default function SettingsPanel() {
                 language === lang.code
                   ? 'border-brand-gold bg-brand-gold/5 dark:bg-brand-gold/10'
                   : 'border-gray-200 dark:border-dark-border hover:border-brand-gold/50'
-              } ${isRTL ? 'flex-row-reverse' : ''}`}
+              }`}
             >
               {lang.flag}
               <div className={isRTL ? 'text-right' : 'text-left'}>
@@ -245,7 +245,7 @@ export default function SettingsPanel() {
               </div>
 
               {pwStep === 'sent' && (
-                <div className={`flex gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex gap-3`}>
                   <button
                     onClick={handleVerifyCode}
                     disabled={pwLoading || otp.length < OTP_LENGTH}
@@ -291,7 +291,7 @@ export default function SettingsPanel() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(v => !v)}
-                  className={`absolute top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 ${isRTL ? 'left-3' : 'right-3'}`}
+                  className={`absolute top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 end-3`}
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>

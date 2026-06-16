@@ -72,9 +72,7 @@ export default function BazaarPage() {
             </p>
             <div className="relative max-w-lg mx-auto">
               <Search
-                className={`absolute top-1/2 -translate-y-1/2 text-gray-400 ${
-                  isRTL ? 'right-4' : 'left-4'
-                }`}
+                className="absolute top-1/2 -translate-y-1/2 text-gray-400 start-4"
                 size={18}
               />
               <input
@@ -83,16 +81,12 @@ export default function BazaarPage() {
                 placeholder={
                   isRTL ? 'ابحث عن متجر...' : 'Search for a store...'
                 }
-                className={`w-full py-3 rounded-2xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-brand-gold ${
-                  isRTL ? 'pr-12 pl-4 text-right' : 'pl-12 pr-4'
-                }`}
+                className="w-full py-3 rounded-2xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-brand-gold ps-12 pe-4 text-start"
               />
               {search && (
                 <button
                   onClick={() => setSearch('')}
-                  className={`absolute top-1/2 -translate-y-1/2 text-gray-400 ${
-                    isRTL ? 'left-4' : 'right-4'
-                  }`}
+                  className="absolute top-1/2 -translate-y-1/2 text-gray-400 end-4"
                 >
                   <X size={16} />
                 </button>
@@ -182,11 +176,7 @@ export default function BazaarPage() {
                       {brand.description}
                     </p>
                   )}
-                  <div
-                    className={`flex items-center gap-3 mt-3 text-xs text-gray-400 ${
-                      isRTL ? 'flex-row-reverse' : ''
-                    }`}
-                  >
+                  <div className="flex items-center gap-3 mt-3 text-xs text-gray-400">
                     {brand.rating > 0 && (
                       <span className="flex items-center gap-1">
                         <Star

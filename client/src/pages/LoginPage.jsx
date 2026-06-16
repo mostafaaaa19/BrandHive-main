@@ -47,12 +47,12 @@ export default function LoginPage() {
   };
 
   return (
-    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg flex transition-colors duration-200 ${isRTL ? 'flex-row-reverse' : ''}`}>
+    <div className={`min-h-screen bg-brand-cream dark:bg-dark-bg flex transition-colors duration-200`}>
       {/* Left - Form */}
       <div className="flex-1 flex items-center justify-center px-6 py-12">
-        <div className={`w-full max-w-md ${isRTL ? 'text-right' : 'text-left'}`}>
+        <div className={`w-full max-w-md text-start`}>
           {/* Logo */}
-          <Link to="/" className={`flex items-center gap-2 mb-8 ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <Link to="/" className={`flex items-center gap-2 mb-8`}>
             <div className="w-10 h-10 bg-brand-navy dark:bg-brand-gold rounded-xl flex items-center justify-center transition-colors">
               <span className="text-white dark:text-brand-navy font-display font-bold text-xl">B</span>
             </div>
@@ -68,7 +68,7 @@ export default function LoginPage() {
 
           {/* API Error Banner */}
           {error && (
-            <div className={`flex items-start gap-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/20 text-red-700 dark:text-red-400 rounded-xl px-4 py-3 mb-6 text-sm ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div className={`flex items-start gap-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/20 text-red-700 dark:text-red-400 rounded-xl px-4 py-3 mb-6 text-sm`}>
               <AlertCircle size={16} className={`mt-0.5 shrink-0 text-red-500 ${isRTL ? 'ml-0 mr-0' : ''}`} />
               <span>{error}</span>
             </div>
@@ -82,13 +82,13 @@ export default function LoginPage() {
                 value={email}
                 onChange={e => { setEmail(e.target.value); setError(null); }}
                 placeholder={t('auth.emailPlaceholder')}
-                className={`input-field ${isRTL ? 'text-right' : 'text-left'}`}
+                className={`input-field text-start`}
                 autoComplete="email"
               />
             </div>
 
             <div>
-              <div className={`flex items-center justify-between mb-1.5 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex items-center justify-between mb-1.5`}>
                 <label className="input-label dark:text-dark-text mb-0">{t('auth.password')}</label>
                 <Link to="/forgot-password" className="text-xs text-brand-gold hover:underline">
                   {t('auth.forgotPassword')}
@@ -100,13 +100,13 @@ export default function LoginPage() {
                   value={password}
                   onChange={e => { setPassword(e.target.value); setError(null); }}
                   placeholder={t('auth.passwordPlaceholder')}
-                  className={`input-field ${isRTL ? 'pl-11 pr-4 text-right' : 'pr-11 pl-4'}`}
+                  className={`input-field pe-11 ps-4 text-start`}
                   autoComplete="current-password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPw(!showPw)}
-                  className={`absolute ${isRTL ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 text-gray-400 dark:text-dark-muted hover:text-gray-600 dark:hover:text-dark-text`}
+                  className={`absolute end-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-dark-muted hover:text-gray-600 dark:hover:text-dark-text`}
                 >
                   {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -119,13 +119,13 @@ export default function LoginPage() {
               className="w-full btn-primary py-4 text-base mt-2 disabled:opacity-70"
             >
               {authLoading ? (
-                <span className={`flex items-center justify-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <span className={`flex items-center justify-center gap-2`}>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   {isRTL ? 'جاري الدخول...' : 'Signing in...'}
                 </span>
               ) : (
-                <span className={`flex items-center justify-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  {t('auth.signIn')} <ArrowRight size={18} className={isRTL ? 'rotate-180' : ''} />
+                <span className={`flex items-center justify-center gap-2`}>
+                  {t('auth.signIn')} <ArrowRight size={18} className="rtl-flip" />
                 </span>
               )}
             </button>
@@ -163,7 +163,7 @@ export default function LoginPage() {
               ? 'سجل دخولك للوصول إلى قائمتك المفضلة، تتبع طلباتك، واكتشاف توصيات مخصصة من أفضل الماركات المحلية في مصر.'
               : 'Sign in to access your wishlist, track orders, and discover personalized recommendations from Egypt\'s top local brands.'}
           </p>
-          <div className={`flex items-center justify-center gap-2 text-brand-gold ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className={`flex items-center justify-center gap-2 text-brand-gold`}>
             <Shield size={14} />
             <span className="text-sm">{isRTL ? 'تشفير SSL 256 بت' : '256-bit SSL encrypted'}</span>
           </div>

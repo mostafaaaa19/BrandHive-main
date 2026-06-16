@@ -182,7 +182,7 @@ export default function SellerPendingPage() {
 
   return (
     <div
-      className={`min-h-[calc(100vh-4rem)] bg-brand-cream dark:bg-dark-bg flex items-center justify-center px-4 py-12 ${isRTL ? 'text-right' : 'text-left'}`}
+      className={`min-h-[calc(100vh-4rem)] bg-brand-cream dark:bg-dark-bg flex items-center justify-center px-4 py-12 text-start`}
     >
       <motion.div
         initial={{ opacity: 0, y: 24 }}
@@ -215,7 +215,7 @@ export default function SellerPendingPage() {
             )}
           </p>
 
-          <div className={`space-y-4 mb-8 ${isRTL ? 'text-right' : 'text-left'}`}>
+          <div className={`space-y-4 mb-8 text-start`}>
             {steps.map((step, i) => (
               <div
                 key={i}
@@ -223,7 +223,7 @@ export default function SellerPendingPage() {
                   step.active
                     ? 'border-brand-gold/40 bg-brand-gold-pale/50 dark:bg-brand-gold/10'
                     : 'border-gray-100 dark:border-dark-border bg-gray-50/50 dark:bg-dark-bg/50'
-                } ${isRTL ? 'flex-row-reverse' : ''}`}
+                }`}
               >
                 <div
                   className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${
@@ -254,7 +254,7 @@ export default function SellerPendingPage() {
 
           {user?.email && (
             <p
-              className={`text-sm text-gray-500 dark:text-dark-muted mb-6 flex items-center justify-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}
+              className={`text-sm text-gray-500 dark:text-dark-muted mb-6 flex items-center justify-center gap-2`}
             >
               <Mail size={14} />
               {isRTL ? 'إشعارات على:' : 'Updates sent to:'}{' '}
@@ -262,17 +262,17 @@ export default function SellerPendingPage() {
             </p>
           )}
 
-          <div className={`flex flex-col sm:flex-row gap-3 ${isRTL ? 'sm:flex-row-reverse' : ''}`}>
-            <Link to="/" className={`btn-outline flex-1 justify-center ${isRTL ? 'flex-row-reverse' : ''}`}>
+          <div className={`flex flex-col sm:flex-row gap-3`}>
+            <Link to="/" className={`btn-outline flex-1 justify-center`}>
               <Home size={16} />
               {isRTL ? 'الصفحة الرئيسية' : 'Back to home'}
             </Link>
             <Link
               to="/account"
-              className={`btn-primary flex-1 justify-center ${isRTL ? 'flex-row-reverse' : ''}`}
+              className={`btn-primary flex-1 justify-center`}
             >
               {isRTL ? 'حسابي' : 'My account'}
-              <ArrowRight size={16} className={isRTL ? 'rotate-180' : ''} />
+              <ArrowRight size={16} className="rtl-flip" />
             </Link>
           </div>
 

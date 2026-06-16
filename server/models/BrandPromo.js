@@ -15,6 +15,7 @@ const brandPromoSchema = new mongoose.Schema(
     buyX: { type: Number },
     discount: { type: Number },
     getY: { type: Number },
+    productId: { type: String },
     active: { type: Boolean, default: true },
   },
   { timestamps: true }

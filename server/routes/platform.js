@@ -5,6 +5,8 @@ const SiteSettings = require('../models/SiteSettings');
 const AdInquiry = require('../models/AdInquiry');
 const BrandCoupon = require('../models/BrandCoupon');
 const BrandPromo = require('../models/BrandPromo');
+const ProductSaleMirror = require('../models/ProductSaleMirror');
+const BrandFollowMirror = require('../models/BrandFollowMirror');
 const SavedCard = require('../models/SavedCard');
 const SellerStoreSettings = require('../models/SellerStoreSettings');
 const PlatformCoupon = require('../models/PlatformCoupon');
@@ -181,6 +183,49 @@ router.post('/ad-inquiries', async (req, res) => {
   }
 });
 
+router.get('/ad-inquiries', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Ad inquiry storage unavailable (database offline)' });
+  }
+
+  const { status } = req.query;
+  const filter = {};
+  if (status) filter.status = String(status);
+
+  try {
+    const inquiries = await AdInquiry.find(filter).sort({ createdAt: -1 }).limit(100).lean();
+    return res.json({ data: inquiries });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to load ad inquiries' });
+  }
+});
+
+router.patch('/ad-inquiries/:id/status', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Ad inquiry storage unavailable (database offline)' });
+  }
+
+  const { status } = req.body || {};
+  const allowed = new Set(['pending', 'contacted', 'closed']);
+  if (!allowed.has(status)) {
+    return res.status(400).json({ message: 'Valid status is required' });
+  }
+
+  try {
+    const entry = await AdInquiry.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true }
+    );
+    if (!entry) {
+      return res.status(404).json({ message: 'Inquiry not found' });
+    }
+    return res.json({ data: entry });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to update inquiry' });
+  }
+});
+
 const toPlatformCouponDto = (doc) => ({
   _id: String(doc._id),
   id: String(doc._id),
@@ -351,6 +396,7 @@ const toPromoDto = (doc) => ({
   buyX: doc.buyX,
   discount: doc.discount,
   getY: doc.getY,
+  productId: doc.productId,
   brandId: doc.brandId,
   sellerId: doc.sellerId,
   active: doc.active !== false,
@@ -512,7 +558,7 @@ router.post('/sellers/:userId/promos', async (req, res) => {
   }
 
   const sellerId = String(req.params.userId || '');
-  const { brandId, type, label, minOrder, buyQty, buyX, discount, getY } = req.body || {};
+  const { brandId, type, label, minOrder, buyQty, buyX, discount, getY, productId } = req.body || {};
 
   if (!sellerId || !type) {
     return res.status(400).json({ message: 'type is required' });
@@ -534,6 +580,7 @@ router.post('/sellers/:userId/promos', async (req, res) => {
         buyX: buyX != null ? Number(buyX) : buyQty != null ? Number(buyQty) : undefined,
         discount: discount != null ? Number(discount) : undefined,
         getY: getY != null ? Number(getY) : undefined,
+        productId: productId ? String(productId) : undefined,
         active: true,
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -670,6 +717,28 @@ router.patch('/users/:userId/saved-cards/:cardId/default', async (req, res) => {
   }
 });
 
+router.get('/admin/bazaars', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Bazaar list unavailable (database offline)' });
+  }
+
+  try {
+    const docs = await SellerStoreSettings.find().sort({ updatedAt: -1 }).lean();
+    return res.json({
+      data: docs.map((doc) => ({
+        userId: doc.userId,
+        brandId: doc.brandId,
+        name: doc.shop?.storeName || doc.bazaar?.name || '',
+        email: doc.shop?.email || '',
+        isActive: doc.bazaar?.isActive !== false,
+        updatedAt: doc.updatedAt,
+      })),
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to load bazaars' });
+  }
+});
+
 router.get('/users/:userId/store-settings', async (req, res) => {
   if (!dbReady()) {
     return res.status(503).json({ message: 'Store settings unavailable (database offline)' });
@@ -774,6 +843,140 @@ router.put('/users/:userId/profile', async (req, res) => {
     return res.json({ data: value });
   } catch (err) {
     return res.status(500).json({ message: err.message || 'Failed to save profile' });
+  }
+});
+
+const toProductSaleDto = (doc) => ({
+  productId: String(doc.productId),
+  brandId: String(doc.brandId),
+  originalPrice: Number(doc.originalPrice) || 0,
+  discountPrice: Number(doc.discountPrice) || 0,
+  discountPercent: doc.discountPercent != null ? Number(doc.discountPercent) : undefined,
+  active: doc.active !== false,
+  updatedAt: doc.updatedAt,
+});
+
+router.put('/products/:productId/sale', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Product sales unavailable (database offline)' });
+  }
+
+  const productId = String(req.params.productId || '').trim();
+  const { brandId, originalPrice, discountPrice, discountPercent } = req.body || {};
+
+  if (!productId || !brandId) {
+    return res.status(400).json({ message: 'productId and brandId are required' });
+  }
+
+  const original = Number(originalPrice);
+  const discounted = Number(discountPrice);
+  if (!Number.isFinite(original) || original <= 0 || !Number.isFinite(discounted) || discounted <= 0) {
+    return res.status(400).json({ message: 'Valid originalPrice and discountPrice are required' });
+  }
+
+  try {
+    const entry = await ProductSaleMirror.findOneAndUpdate(
+      { productId },
+      {
+        productId,
+        brandId: String(brandId),
+        originalPrice: original,
+        discountPrice: discounted,
+        discountPercent:
+          discountPercent != null
+            ? Number(discountPercent)
+            : Math.round((1 - discounted / original) * 100),
+        active: true,
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    return res.json({ data: toProductSaleDto(entry) });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to save product sale' });
+  }
+});
+
+router.get('/brands/:brandId/product-sales', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Product sales unavailable (database offline)' });
+  }
+
+  const brandId = String(req.params.brandId || '').trim();
+  if (!brandId) return res.status(400).json({ message: 'brandId is required' });
+
+  try {
+    const sales = await ProductSaleMirror.find({ brandId, active: { $ne: false } })
+      .sort({ updatedAt: -1 })
+      .lean();
+    return res.json({ data: sales.map(toProductSaleDto) });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to load product sales' });
+  }
+});
+
+router.put('/brands/:brandId/follow', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Followers unavailable (database offline)' });
+  }
+
+  const brandId = String(req.params.brandId || '').trim();
+  const userId = String(req.body?.userId || '').trim();
+  if (!brandId || !userId) {
+    return res.status(400).json({ message: 'brandId and userId are required' });
+  }
+
+  try {
+    await BrandFollowMirror.findOneAndUpdate(
+      { brandId, userId },
+      {
+        brandId,
+        userId,
+        userEmail: req.body?.email ? String(req.body.email).toLowerCase().trim() : undefined,
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    const count = await BrandFollowMirror.countDocuments({ brandId });
+    return res.json({ data: { count, following: true } });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to follow brand' });
+  }
+});
+
+router.put('/brands/:brandId/unfollow', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Followers unavailable (database offline)' });
+  }
+
+  const brandId = String(req.params.brandId || '').trim();
+  const userId = String(req.body?.userId || '').trim();
+  if (!brandId || !userId) {
+    return res.status(400).json({ message: 'brandId and userId are required' });
+  }
+
+  try {
+    await BrandFollowMirror.deleteOne({ brandId, userId });
+    const count = await BrandFollowMirror.countDocuments({ brandId });
+    return res.json({ data: { count, following: false } });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to unfollow brand' });
+  }
+});
+
+router.get('/brands/:brandId/followers/count', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Followers unavailable (database offline)' });
+  }
+
+  const brandId = String(req.params.brandId || '').trim();
+  if (!brandId) return res.status(400).json({ message: 'brandId is required' });
+
+  try {
+    const count = await BrandFollowMirror.countDocuments({ brandId });
+    return res.json({ data: { count } });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to load follower count' });
   }
 });
 

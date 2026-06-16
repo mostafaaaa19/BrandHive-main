@@ -5,7 +5,7 @@ import {
   CreditCard, Smartphone, Banknote, Building2, CheckCircle, Shield
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
-import { ordersAPI, addressesAPI, fetchSafeCrossSell, applyCartCouponCode, computeCartPromoAdjustments, extractOrderPaymentUrl, extractCreatedOrderId, initiateOrderPayment, syncCartBeforeCheckout, prefetchCartBrandOffers, fetchSavedCards, fetchPaymobStatus, mirrorCreatedOrderForSellers } from '../services/api';
+import { ordersAPI, addressesAPI, fetchSafeCrossSell, applyCartCouponCode, computeCartPromoAdjustments, extractOrderPaymentUrl, extractCreatedOrderId, initiateOrderPayment, syncCartBeforeCheckout, prefetchCartBrandOffers, fetchSavedCards, fetchPaymobStatus, mirrorCreatedOrderForSellers, fetchAddressShippingFee } from '../services/api';
 import { mapProduct } from '../utils/mappers';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -59,6 +59,12 @@ export default function CartPage() {
       sub: isRTL ? 'ادفع في أي منفذ فوري' : 'Pay at any Fawry outlet',
     },
     {
+      id: 'vodafone_cash',
+      icon: Smartphone,
+      label: isRTL ? 'فودافون كاش' : 'Vodafone Cash',
+      sub: isRTL ? 'ادفع من محفظتك الإلكترونية' : 'Pay from your mobile wallet',
+    },
+    {
       id: 'cod',
       icon: Banknote,
       label: isRTL ? 'الدفع عند الاستلام' : 'Cash on Delivery',
@@ -71,13 +77,16 @@ export default function CartPage() {
   const [savedCards, setSavedCards] = useState([]);
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [offersVersion, setOffersVersion] = useState(0);
+  const [dynamicShippingFee, setDynamicShippingFee] = useState(null);
 
   const couponDiscount = appliedCoupon?.discount || 0;
   const adjustments = useMemo(
     () => computeCartPromoAdjustments(items, subtotal, couponDiscount),
     [items, subtotal, couponDiscount, offersVersion]
   );
-  const { shippingCost, bundleDiscount, total, promoLabels } = adjustments;
+  const { shippingCost: baseShippingCost, bundleDiscount, total: baseTotal, promoLabels } = adjustments;
+  const shippingCost = dynamicShippingFee ?? baseShippingCost;
+  const total = baseTotal - baseShippingCost + shippingCost;
 
   useEffect(() => {
     if (items.length === 0) return;
@@ -135,6 +144,21 @@ export default function CartPage() {
     };
     fetchAddresses();
   }, [step, isAuthenticated]);
+
+  useEffect(() => {
+    if (!selectedAddressId || subtotal <= 0) {
+      setDynamicShippingFee(null);
+      return;
+    }
+
+    let cancelled = false;
+    fetchAddressShippingFee(selectedAddressId, subtotal).then((fee) => {
+      if (!cancelled) setDynamicShippingFee(fee);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAddressId, subtotal]);
 
   useEffect(() => {
     if (items.length === 0) return;

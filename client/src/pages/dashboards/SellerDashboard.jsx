@@ -3,8 +3,9 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard, Store, Package, ShoppingBag, DollarSign, Target, Star, Megaphone,
   Settings, MessageSquare, CreditCard, LogOut, Users,
-  Plus, BarChart3, Bell, Edit, XCircle, Boxes, Trash2
+  Plus, BarChart3, Bell, Edit, XCircle, Boxes, Trash2, X, Send
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -37,9 +38,14 @@ import {
   deleteSellerCoupon,
   fetchSellerPromotions,
   saveSellerPromotion,
+  deleteSellerPromotion,
+  deleteSellerProduct,
+  updateSellerOrderStatus,
+  fetchSellerStockAlerts,
   applySellerFlashSale,
   fetchSellerStoreSettings,
   saveSellerBazaarProfile,
+  fetchBrandFollowersCount,
   saveSellerShopSettings,
   submitAdInquiry,
   companionServices,
@@ -207,9 +213,10 @@ function SidebarItem({ icon: Icon, label, tab, activeTab, setActiveTab, isRTL })
   );
 }
 
-function SellerOrdersTab({ orders, isRTL, t }) {
+function SellerOrdersTab({ orders, isRTL, t, onOrdersChange }) {
   const [filter, setFilter] = useState('all');
   const [filteredOrders, setFilteredOrders] = useState(orders);
+  const [updatingId, setUpdatingId] = useState(null);
 
   useEffect(() => {
     if (filter === 'all') {
@@ -251,6 +258,39 @@ function SellerOrdersTab({ orders, isRTL, t }) {
     Delivered: 'bg-emerald-100 text-emerald-700',
     Pending: 'bg-amber-100 text-amber-700',
     Processing: 'bg-gray-100 text-gray-600',
+  };
+
+  const handleStatusUpdate = async (order, nextStatus) => {
+    const orderId = order._id || order.id;
+    if (!orderId || !nextStatus) return;
+
+    setUpdatingId(orderId);
+    try {
+      await updateSellerOrderStatus(order, nextStatus);
+      toast.success(
+        isRTL ? 'تم تحديث حالة الطلب' : 'Order status updated'
+      );
+      onOrdersChange?.();
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message ||
+          err.message ||
+          (isRTL ? 'فشل تحديث الحالة' : 'Failed to update status')
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const nextStatusOptions = (status) => {
+    const current = getOrderStatus({ status });
+    if (['canceled', 'cancelled', 'delivered'].includes(current)) return [];
+    if (current === 'pending' || current === 'confirmed' || current === 'paid') {
+      return ['processing', 'shipped'];
+    }
+    if (current === 'processing') return ['shipped'];
+    if (current === 'shipped') return ['delivered'];
+    return ['processing'];
   };
 
   return (
@@ -302,6 +342,7 @@ function SellerOrdersTab({ orders, isRTL, t }) {
                   isRTL ? 'المبلغ' : 'Amount',
                   isRTL ? 'التاريخ' : 'Date',
                   isRTL ? 'الحالة' : 'Status',
+                  isRTL ? 'إجراءات' : 'Actions',
                 ].map(h => (
                   <th key={h} className="px-4 py-3 
                     text-xs font-bold text-gray-400 
@@ -350,6 +391,27 @@ function SellerOrdersTab({ orders, isRTL, t }) {
                     }`}>
                       {order.status || 'pending'}
                     </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {nextStatusOptions(order.status).map((nextStatus) => (
+                        <button
+                          key={nextStatus}
+                          type="button"
+                          disabled={updatingId === (order._id || order.id)}
+                          onClick={() => handleStatusUpdate(order, nextStatus)}
+                          className="text-[10px] px-2 py-1 rounded-lg bg-brand-gold/10 text-brand-navy dark:text-brand-gold hover:bg-brand-gold/20 disabled:opacity-50"
+                        >
+                          {updatingId === (order._id || order.id)
+                            ? '…'
+                            : nextStatus === 'processing'
+                              ? (isRTL ? 'معالجة' : 'Process')
+                              : nextStatus === 'shipped'
+                                ? (isRTL ? 'شحن' : 'Ship')
+                                : (isRTL ? 'تسليم' : 'Deliver')}
+                        </button>
+                      ))}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -906,6 +968,21 @@ function SellerPromotionsTab({ isRTL, user, brandId, products, onProductsChange 
     toast.success(isRTL ? 'تم الحذف' : 'Deleted');
   };
 
+  const handleDeletePromo = async (promo) => {
+    const promoId = promo._id || promo.id;
+    if (!promoId) return;
+    try {
+      await deleteSellerPromotion(userId, brandId, promoId);
+      await loadPromotions();
+      toast.success(isRTL ? 'تم حذف العرض' : 'Promotion removed');
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message ||
+          (isRTL ? 'فشل حذف العرض' : 'Failed to delete promotion')
+      );
+    }
+  };
+
   const handleFlashSale = async () => {
     if (!flashForm.productId || !flashForm.discount) {
       toast.error(isRTL ? 'اختر منتجاً ونسبة الخصم' : 'Select a product and discount');
@@ -913,7 +990,16 @@ function SellerPromotionsTab({ isRTL, user, brandId, products, onProductsChange 
     }
     setSaving(true);
     try {
-      await applySellerFlashSale(flashForm.productId, flashForm.discount);
+      const selectedProduct = products.find(
+        (product) =>
+          String(product._id || product.id) === String(flashForm.productId)
+      );
+      await applySellerFlashSale(
+        selectedProduct || flashForm.productId,
+        flashForm.discount,
+        user,
+        brandId
+      );
       toast.success(isRTL ? 'تم تفعيل عرض الفلاش ✅' : 'Flash sale activated ✅');
       if (onProductsChange) await onProductsChange();
     } catch (err) {
@@ -1169,9 +1255,18 @@ function SellerPromotionsTab({ isRTL, user, brandId, products, onProductsChange 
                   {isRTL ? 'حفظ العرض' : 'Save Offer'}
                 </button>
                 {activePromo('free_shipping') && (
-                  <p className="text-sm text-emerald-600 dark:text-emerald-400">
-                    {activePromo('free_shipping').label}
-                  </p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm text-emerald-600 dark:text-emerald-400">
+                      {activePromo('free_shipping').label}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePromo(activePromo('free_shipping'))}
+                      className="text-xs text-red-500 hover:underline"
+                    >
+                      {isRTL ? 'حذف' : 'Remove'}
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -1208,9 +1303,18 @@ function SellerPromotionsTab({ isRTL, user, brandId, products, onProductsChange 
                   {isRTL ? 'حفظ العرض' : 'Save Offer'}
                 </button>
                 {activePromo('buy_x_get_y') && (
-                  <p className="text-sm text-emerald-600 dark:text-emerald-400">
-                    {activePromo('buy_x_get_y').label}
-                  </p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm text-emerald-600 dark:text-emerald-400">
+                      {activePromo('buy_x_get_y').label}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePromo(activePromo('buy_x_get_y'))}
+                      className="text-xs text-red-500 hover:underline"
+                    >
+                      {isRTL ? 'حذف' : 'Remove'}
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -1479,6 +1583,10 @@ function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats
   const [bazaar, setBazaar] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notifying, setNotifying] = useState(false);
+  const [notifyModalOpen, setNotifyModalOpen] = useState(false);
+  const [notifyTitle, setNotifyTitle] = useState('');
+  const [notifyBody, setNotifyBody] = useState('');
+  const [notifyErrors, setNotifyErrors] = useState({ title: '', body: '' });
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -1582,6 +1690,31 @@ function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats
   }, [loadBazaar]);
 
   useEffect(() => {
+    const id = brandId || bazaar?._id || bazaar?.id;
+    if (!id || !bazaar) return;
+
+    let cancelled = false;
+    fetchBrandFollowersCount(id)
+      .then((mirrorCount) => {
+        if (cancelled) return;
+        setBazaar((prev) => {
+          if (!prev) return prev;
+          const nextCount = Math.max(
+            prev.followersCount || prev.followers || 0,
+            mirrorCount || 0
+          );
+          if (nextCount === (prev.followersCount || 0)) return prev;
+          return { ...prev, followersCount: nextCount };
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [brandId, bazaar?._id, bazaar?.id]);
+
+  useEffect(() => {
     if (bazaar) {
       setEditForm({
         description: bazaar.description || '',
@@ -1633,33 +1766,50 @@ function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats
     }
   };
 
-  const handleNotify = async () => {
-    const title = prompt(isRTL 
-      ? 'عنوان الإشعار:' 
-      : 'Notification title:'
-    );
-    if (!title) return;
-    const body = prompt(isRTL 
-      ? 'نص الإشعار:' 
-      : 'Notification body:'
-    );
-    if (!body) return;
+  const openNotifyModal = () => {
+    setNotifyTitle('');
+    setNotifyBody('');
+    setNotifyErrors({ title: '', body: '' });
+    setNotifyModalOpen(true);
+  };
+
+  const closeNotifyModal = () => {
+    setNotifyModalOpen(false);
+    setNotifyTitle('');
+    setNotifyBody('');
+    setNotifyErrors({ title: '', body: '' });
+  };
+
+  const submitNotify = async () => {
+    const title = notifyTitle.trim();
+    const body = notifyBody.trim();
+    const errors = { title: '', body: '' };
+
+    if (title.length < 3) {
+      errors.title = isRTL ? 'العنوان قصير جداً (3 أحرف على الأقل)' : 'Title too short (min 3 characters)';
+    }
+    if (body.length < 10) {
+      errors.body = isRTL ? 'النص قصير جداً (10 أحرف على الأقل)' : 'Message too short (min 10 characters)';
+    }
+
+    if (errors.title || errors.body) {
+      setNotifyErrors(errors);
+      return;
+    }
+
     setNotifying(true);
     try {
       await sellerAPI.notifyFollowers({ title, body });
-      toast.success(isRTL 
-        ? 'تم إرسال الإشعار ✅' 
-        : 'Notification sent ✅'
-      );
+      toast.success(isRTL ? 'تم إرسال الإشعار ✅' : 'Notification sent ✅');
+      closeNotifyModal();
     } catch {
-      toast.error(isRTL 
-        ? 'فشل الإرسال' 
-        : 'Failed to send'
-      );
+      toast.error(isRTL ? 'فشل الإرسال' : 'Failed to send');
     } finally {
       setNotifying(false);
     }
   };
+
+  const handleNotify = openNotifyModal;
 
   return (
     <div>
@@ -1879,6 +2029,153 @@ function SellerBazaarTab({ isRTL, sellerAPI, user, products, brandId, orderStats
           </button>
         </div>
       )}
+
+      <AnimatePresence>
+        {notifyModalOpen && (
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+            onClick={() => !notifying && closeNotifyModal()}
+          >
+            <motion.div
+              dir={isRTL ? 'rtl' : 'ltr'}
+              initial={{ opacity: 0, scale: 0.95, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 12 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-dark-surface rounded-3xl shadow-2xl w-full max-w-md border border-gray-100 dark:border-dark-border overflow-hidden"
+            >
+              <div className="bg-gradient-to-br from-amber-50 to-brand-cream dark:from-amber-900/20 dark:to-dark-bg px-6 py-5 border-b border-amber-100 dark:border-dark-border">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-brand-gold/20 flex items-center justify-center text-brand-navy dark:text-brand-gold flex-shrink-0">
+                      <Bell size={20} />
+                    </div>
+                    <div className="text-start">
+                      <h2 className="text-lg font-display font-bold text-gray-900 dark:text-dark-text">
+                        {isRTL ? 'إشعار المتابعين' : 'Notify Followers'}
+                      </h2>
+                      <p className="text-xs text-gray-500 dark:text-dark-muted mt-0.5">
+                        {bazaar?.name
+                          ? (isRTL ? `إرسال إلى متابعي ${bazaar.name}` : `Send to ${bazaar.name} followers`)
+                          : (isRTL ? 'أرسل تحديثاً لمتجرك' : 'Send an update to your store followers')}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeNotifyModal}
+                    disabled={notifying}
+                    className="text-gray-400 hover:text-gray-600 dark:hover:text-dark-text p-1 disabled:opacity-50"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-4 text-start">
+                <div>
+                  <label
+                    htmlFor="notify-title"
+                    className="block text-sm font-semibold text-gray-700 dark:text-dark-text mb-2"
+                  >
+                    {isRTL ? 'عنوان الإشعار' : 'Notification title'}{' '}
+                    <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="notify-title"
+                    type="text"
+                    value={notifyTitle}
+                    onChange={(e) => {
+                      setNotifyTitle(e.target.value);
+                      if (notifyErrors.title) setNotifyErrors((prev) => ({ ...prev, title: '' }));
+                    }}
+                    placeholder={isRTL ? 'مثال: عرض فلاش 15% على Hoodie' : 'e.g. 15% flash sale on Hoodie'}
+                    className={`w-full rounded-2xl border bg-white dark:bg-dark-bg px-4 py-3 text-sm text-gray-900 dark:text-dark-text placeholder:text-gray-400 dark:placeholder:text-dark-muted focus:outline-none focus:ring-2 focus:ring-brand-gold/40 focus:border-brand-gold ${
+                      notifyErrors.title
+                        ? 'border-red-300 dark:border-red-500/50'
+                        : 'border-gray-200 dark:border-dark-border'
+                    }`}
+                  />
+                  {notifyErrors.title && (
+                    <p className="text-xs text-red-500 mt-2">{notifyErrors.title}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="notify-body"
+                    className="block text-sm font-semibold text-gray-700 dark:text-dark-text mb-2"
+                  >
+                    {isRTL ? 'نص الإشعار' : 'Message'}{' '}
+                    <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    id="notify-body"
+                    rows={4}
+                    value={notifyBody}
+                    onChange={(e) => {
+                      setNotifyBody(e.target.value);
+                      if (notifyErrors.body) setNotifyErrors((prev) => ({ ...prev, body: '' }));
+                    }}
+                    placeholder={
+                      isRTL
+                        ? 'اكتب تفاصيل العرض أو التحديث الذي تريد إبلاغ متابعيك به...'
+                        : 'Write the offer or update you want your followers to know about...'
+                    }
+                    className={`w-full rounded-2xl border bg-white dark:bg-dark-bg px-4 py-3 text-sm text-gray-900 dark:text-dark-text placeholder:text-gray-400 dark:placeholder:text-dark-muted resize-none focus:outline-none focus:ring-2 focus:ring-brand-gold/40 focus:border-brand-gold ${
+                      notifyErrors.body
+                        ? 'border-red-300 dark:border-red-500/50'
+                        : 'border-gray-200 dark:border-dark-border'
+                    }`}
+                  />
+                  <div className="flex items-center justify-between mt-2 text-xs">
+                    <span className={notifyErrors.body ? 'text-red-500' : 'text-transparent'}>
+                      {notifyErrors.body || '—'}
+                    </span>
+                    <span
+                      className={
+                        notifyBody.trim().length >= 10
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-gray-400 dark:text-dark-muted'
+                      }
+                    >
+                      {notifyBody.trim().length}/10 {isRTL ? 'أحرف على الأقل' : 'min chars'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={closeNotifyModal}
+                    disabled={notifying}
+                    className="btn-outline flex-1 text-sm py-2.5 disabled:opacity-50"
+                  >
+                    {isRTL ? 'إلغاء' : 'Cancel'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={submitNotify}
+                    disabled={
+                      notifying ||
+                      notifyTitle.trim().length < 3 ||
+                      notifyBody.trim().length < 10
+                    }
+                    className="btn-primary flex-1 text-sm py-2.5 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {notifying ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Send size={16} />
+                    )}
+                    {isRTL ? 'إرسال الإشعار' : 'Send Notification'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1892,7 +2189,35 @@ const getProductImageSrc = (product) => {
   return product?.image || null;
 };
 
-function SellerProductsTab({ products, isRTL, navigate, t }) {
+function SellerProductsTab({ products, isRTL, navigate, t, user, onProductsChange }) {
+  const [deletingId, setDeletingId] = useState(null);
+
+  const handleDelete = async (product) => {
+    const productId = product._id || product.id;
+    if (!productId) return;
+
+    const confirmed = window.confirm(
+      isRTL
+        ? `هل تريد حذف "${product.name}"؟`
+        : `Delete "${product.name}"?`
+    );
+    if (!confirmed) return;
+
+    setDeletingId(productId);
+    try {
+      await deleteSellerProduct(productId, user);
+      toast.success(isRTL ? 'تم حذف المنتج' : 'Product deleted');
+      onProductsChange?.();
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message ||
+          (isRTL ? 'فشل حذف المنتج' : 'Failed to delete product')
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div>
       <div className={`flex items-center justify-between mb-6
@@ -1979,6 +2304,24 @@ function SellerProductsTab({ products, isRTL, navigate, t }) {
                       : (isRTL ? 'غير نشط' : 'Inactive')
                     }
                   </span>
+                </div>
+                <div className={`flex items-center gap-2 mt-3`}>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/seller/products/${product._id || product.id}/edit`)}
+                    className="flex-1 text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-dark-border hover:border-brand-gold flex items-center justify-center gap-1"
+                  >
+                    <Edit size={12} />
+                    {isRTL ? 'تعديل' : 'Edit'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(product)}
+                    disabled={deletingId === (product._id || product.id)}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 disabled:opacity-50"
+                  >
+                    <Trash2 size={12} />
+                  </button>
                 </div>
               </div>
             </div>
@@ -2658,7 +3001,12 @@ export default function SellerDashboard() {
         setAnalytics(null);
       }
 
-      setStockAlerts([]);
+      try {
+        const alerts = await fetchSellerStockAlerts();
+        setStockAlerts(Array.isArray(alerts) ? alerts : []);
+      } catch {
+        setStockAlerts([]);
+      }
       setLoading(false);
     };
     fetchData();
@@ -3023,6 +3371,7 @@ export default function SellerDashboard() {
                 orders={orders} 
                 isRTL={isRTL} 
                 t={t}
+                onOrdersChange={loadSellerOrders}
               />
             )}
 
@@ -3068,6 +3417,8 @@ export default function SellerDashboard() {
                 isRTL={isRTL}
                 navigate={navigate}
                 t={t}
+                user={user}
+                onProductsChange={loadSellerProducts}
               />
             )}
 

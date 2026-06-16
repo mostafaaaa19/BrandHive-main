@@ -66,7 +66,7 @@ export default function BrandCard({ brand, view = 'grid' }) {
   }
 
   return (
-    <Link to={`/brand/${brand.slug}`} className={`card-brand block group ${isRTL ? 'text-right' : ''}`}>
+    <Link to={`/brand/${brand.slug}`} className="card-brand block group text-start">
       {/* Cover */}
       <div className={`-mx-6 -mt-6 mb-4 h-16 bg-gray-200 dark:bg-dark-bg rounded-t-2xl relative overflow-hidden`}>
         {brand.coverImage ? (

@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { MapPin, Star, CheckCircle2, MessageSquare, Heart, Share2, ArrowLeft, Truck, RotateCcw, Tag, Gift, Zap } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
 import { mapProduct, mapBrand, hydrateProductImages, deduplicateProducts } from '../utils/mappers';
-import { productsAPI, brandsAPI, loadLocalProductImages, enrichProductsWithLocalImages, enrichCatalogWithMirroredImages, fetchBrandProductReviews, fetchBrandFollowState, toggleBrandFollow, fetchBrandPublicOffers } from '../services/api';
+import { productsAPI, brandsAPI, loadLocalProductImages, enrichProductsWithLocalImages, enrichCatalogWithMirroredImages, fetchBrandProductReviews, fetchBrandFollowState, toggleBrandFollow, fetchBrandPublicOffers, enrichMappedProductsWithPricing, fetchBrandFollowersCount } from '../services/api';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
@@ -111,6 +111,7 @@ export default function BrandPage() {
         mappedProducts = await enrichCatalogWithMirroredImages(mappedProducts, {
           limit: 50,
         });
+        mappedProducts = await enrichMappedProductsWithPricing(mappedProducts);
         mappedProducts = deduplicateProducts(mappedProducts);
         setBrandProducts(mappedProducts);
 
@@ -146,7 +147,14 @@ export default function BrandPage() {
   useEffect(() => {
     if (!brand) return;
 
+    const brandId = brand.id || brand._id;
     setLocalFollowers(brand.followers || 0);
+
+    fetchBrandFollowersCount(brandId)
+      .then((count) => {
+        setLocalFollowers((prev) => Math.max(prev, count || 0));
+      })
+      .catch(() => {});
 
     const userId = user?.id || user?._id;
     if (!userId) {
@@ -155,9 +163,9 @@ export default function BrandPage() {
     }
 
     const loadFollowState = async () => {
-      const brandId = brand.id || brand._id;
       const state = await fetchBrandFollowState(userId, brandId);
       setIsFollowing(state.isFollowing);
+      setLocalFollowers((prev) => Math.max(prev, state.followersCount || 0));
     };
 
     loadFollowState();
@@ -239,15 +247,21 @@ export default function BrandPage() {
 
     setFollowLoading(true);
     try {
-      const nextFollowing = await toggleBrandFollow(
+      const next = await toggleBrandFollow(
         userId,
         brandId,
-        isFollowing
+        isFollowing,
+        user?.email
       );
+      const nextFollowing = next.following;
       setIsFollowing(nextFollowing);
-      setLocalFollowers((prev) =>
-        nextFollowing ? prev + 1 : Math.max(0, prev - 1)
-      );
+      if (next.followersCount != null) {
+        setLocalFollowers(next.followersCount);
+      } else {
+        setLocalFollowers((prev) =>
+          nextFollowing ? prev + 1 : Math.max(0, prev - 1)
+        );
+      }
       toast.success(
         nextFollowing
           ? isRTL
@@ -257,9 +271,16 @@ export default function BrandPage() {
             ? 'تم إلغاء المتابعة'
             : 'Unfollowed'
       );
-    } catch {
+    } catch (err) {
+      if (String(err?.message || '').includes('Login required')) {
+        toast.error(isRTL ? 'يرجى تسجيل الدخول أولاً' : 'Please login first');
+        navigate('/login', { state: { from: `/brand/${slug}` } });
+        return;
+      }
       toast.error(
-        isRTL ? 'تعذرت متابعة الماركة' : 'Could not update follow status'
+        err.message?.includes('Invalid brand')
+          ? (isRTL ? 'تعذر ربط الماركة. حدّث الصفحة وحاول مجدداً.' : 'Could not resolve this brand. Refresh and try again.')
+          : (isRTL ? 'تعذر تحديث المتابعة' : 'Could not update follow status')
       );
     } finally {
       setFollowLoading(false);

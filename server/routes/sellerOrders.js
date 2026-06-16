@@ -165,4 +165,45 @@ router.get('/', async (req, res) => {
   }
 });
 
+router.patch('/:id/status', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Order storage unavailable (database offline)' });
+  }
+
+  const { status, note } = req.body || {};
+  const normalized = normalizeMirrorStatus(status);
+  if (!status) {
+    return res.status(400).json({ message: 'status is required' });
+  }
+
+  const lookupId = String(req.params.id || '').trim();
+  if (!lookupId) {
+    return res.status(400).json({ message: 'order id is required' });
+  }
+
+  try {
+    let order = null;
+
+    if (mongoose.Types.ObjectId.isValid(lookupId)) {
+      order = await SellerOrderMirror.findById(lookupId);
+    }
+
+    if (!order) {
+      order = await SellerOrderMirror.findOne({ railwayOrderId: lookupId });
+    }
+
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    order.status = normalized;
+    if (note) order.statusNote = String(note).trim();
+    await order.save();
+
+    return res.json({ data: order });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to update order status' });
+  }
+});
+
 module.exports = router;

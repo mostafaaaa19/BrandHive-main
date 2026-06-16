@@ -10,7 +10,7 @@ import BrandCard from '../components/BrandCard';
 import { testimonials } from '../data/mockData';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
-import { productsAPI, brandsAPI, categoriesAPI, aiAPI, loadLocalProductImages, enrichProductsWithLocalImages, enrichCatalogWithMirroredImages, sanitizeFeaturedLocalStorage, fetchFeaturedSlotIds, fetchPublicStats } from '../services/api';
+import { productsAPI, brandsAPI, categoriesAPI, aiAPI, loadLocalProductImages, enrichProductsWithLocalImages, enrichCatalogWithMirroredImages, sanitizeFeaturedLocalStorage, fetchFeaturedSlotIds, fetchPublicStats, enrichMappedProductsWithPricing } from '../services/api';
 import { mapProduct, mapBrand, mapCategory, hydrateProductImages } from '../utils/mappers';
 import { filterHomepageQualityProducts, buildTrendingDisplayList, hasProductImage } from '../utils/productQuality';
 import { formatStatNumber } from '../utils/formatStat';
@@ -185,6 +185,7 @@ export default function HomePage() {
         catalog = filterHomepageQualityProducts(catalog);
         catalog = hydrateProductImages(catalog, catalog);
         catalog = await enrichCatalogWithMirroredImages(catalog, { limit: 12 });
+        catalog = await enrichMappedProductsWithPricing(catalog);
 
         catalog = filterHomepageQualityProducts(catalog);
         setFeaturedProducts(catalog);
@@ -206,6 +207,13 @@ export default function HomePage() {
         trending,
         topRated,
         newArrivals,
+      ]);
+
+      [catalog, trending, topRated, newArrivals] = await Promise.all([
+        enrichMappedProductsWithPricing(catalog),
+        enrichMappedProductsWithPricing(trending),
+        enrichMappedProductsWithPricing(topRated),
+        enrichMappedProductsWithPricing(newArrivals),
       ]);
 
       enrichCatalogWithMirroredImages(catalog, { limit: 50 }).then((enriched) => {

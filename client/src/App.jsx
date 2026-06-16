@@ -141,6 +141,14 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/seller/products/:productId/edit"
+        element={
+          <ProtectedRoute requiredRole="seller">
+            <Layout><AddProductPage /></Layout>
+          </ProtectedRoute>
+        }
+      />
 
       {/* Protected: Admin */}
       <Route

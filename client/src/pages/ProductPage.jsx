@@ -5,7 +5,7 @@ import {
   Shield, CheckCircle2, MapPin, Minus, Plus, ChevronRight
 } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
-import { productsAPI, brandsAPI, reviewsAPI, aiAPI, ordersAPI, rememberReviewProduct, loadLocalProductImages, enrichProductWithLocalImages, enrichProductsWithLocalImages, enrichCatalogWithMirroredImages } from '../services/api';
+import { productsAPI, brandsAPI, reviewsAPI, aiAPI, ordersAPI, rememberReviewProduct, loadLocalProductImages, enrichProductWithLocalImages, enrichProductsWithLocalImages, enrichCatalogWithMirroredImages, enrichMappedProductWithPricing } from '../services/api';
 import { mapProduct } from '../utils/mappers';
 import { useCart, useWishlist } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -77,6 +77,7 @@ export default function ProductPage() {
         const withImages = enrichProductWithLocalImages(raw);
         let mapped = mapProduct(withImages);
         [mapped] = await enrichCatalogWithMirroredImages([mapped]);
+        mapped = await enrichMappedProductWithPricing(mapped);
         setProduct(mapped);
 
         let categoryRelated = [];

@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, Heart, Star, User, MapPin, CreditCard,
   Bell, MessageSquare, LogOut, ChevronRight, TrendingUp, Settings,
-  X, Clock, CheckCircle, XCircle, Truck, RefreshCw, AlertCircle, Trash2
+  X, Clock, CheckCircle, XCircle, Truck, RefreshCw, AlertCircle, Trash2, Store, Edit, RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -26,8 +26,10 @@ import {
   removeSavedCard,
   setDefaultSavedCard,
   extractProfilePayload,
+  requestOrderReturn,
+  fetchMyFollowingBrands,
 } from '../../services/api';
-import { mapProduct } from '../../utils/mappers';
+import { mapProduct, mapBrand } from '../../utils/mappers';
 import { showOrderInvoice } from '../../utils/invoice';
 import { useAuth } from '../../context/AuthContext';
 import { useWishlist, useCart } from '../../context/CartContext';
@@ -88,6 +90,50 @@ const formatOrderProductLabel = (order, items, isRTL) => {
   }
   return label;
 };
+
+const getOrderSavings = (order) => {
+  const explicit = Number(
+    order?.couponDiscount ||
+      order?.discount ||
+      order?.discountAmount ||
+      order?.totalDiscount ||
+      0
+  );
+  if (explicit > 0) return explicit;
+
+  const items = order?.items || order?.products || [];
+  let itemSavings = 0;
+
+  items.forEach((item) => {
+    const qty = Math.max(1, Number(item?.quantity) || 1);
+    const paid = Number(item?.finalPrice ?? item?.price ?? item?.unitPrice ?? 0);
+    const original = Number(
+      item?.originalPrice ??
+        item?.compareAtPrice ??
+        item?.priceBeforeDiscount ??
+        item?.product?.price ??
+        0
+    );
+    if (original > paid) itemSavings += (original - paid) * qty;
+  });
+
+  if (itemSavings > 0) return itemSavings;
+
+  const subtotal = Number(order?.subtotal || 0);
+  const total = Number(order?.totalAmount || order?.total || 0);
+  const shipping = Number(order?.shippingCost || order?.shippingFee || 0);
+  if (subtotal > 0 && total >= 0) {
+    return Math.max(0, subtotal + shipping - total);
+  }
+
+  return 0;
+};
+
+const computeCustomerSavings = (orderList) =>
+  (Array.isArray(orderList) ? orderList : []).reduce(
+    (sum, order) => sum + getOrderSavings(order),
+    0
+  );
 
 function NavItem({ icon: Icon, label, tab, activeTab, setActiveTab, badge }) {
   const isActive = activeTab === tab;
@@ -206,6 +252,10 @@ export default function UserDashboard() {
   const [orderDetail, setOrderDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [cancellingId, setCancellingId] = useState(null);
+  const [returningId, setReturningId] = useState(null);
+  const [returnModalOrderId, setReturnModalOrderId] = useState(null);
+  const [returnReason, setReturnReason] = useState('');
+  const [returnReasonError, setReturnReasonError] = useState('');
   const [reorderLoading, setReorderLoading] = useState(null);
   const [retryLoading, setRetryLoading] = useState(null);
 
@@ -219,6 +269,7 @@ export default function UserDashboard() {
   const [moveAllLoading, setMoveAllLoading] = useState(false);
   const [invoiceLoading, setInvoiceLoading] = useState(null);
   const [showAddressForm, setShowAddressForm] = useState(false);
+  const [editingAddressId, setEditingAddressId] = useState(null);
   const [addressForm, setAddressForm] = useState({
     fullName: '', phone: '', street: '', city: '', governorate: 'Cairo',
   });
@@ -241,6 +292,8 @@ export default function UserDashboard() {
   const [cardErrors, setCardErrors] = useState({});
 
   const [profileInitialized, setProfileInitialized] = useState(false);
+  const [followingBrands, setFollowingBrands] = useState([]);
+  const [followingLoading, setFollowingLoading] = useState(false);
 
   useEffect(() => {
     if (user && !profileInitialized) {
@@ -255,23 +308,29 @@ export default function UserDashboard() {
   }, [user, profileInitialized]);
 
   useEffect(() => {
-    if (activeTab !== 'reviews' || hasSellerApiAccess) return;
+    if (hasSellerApiAccess || !user) return;
+
+    let cancelled = false;
     const fetchMyReviews = async () => {
       setReviewsLoading(true);
       try {
         const res = await reviewsAPI.getMyReviews();
         const data = res.data?.data || res.data?.reviews || res.data || [];
         const list = Array.isArray(data) ? data : [];
-        setMyReviews(await hydrateMyReviews(list, { orders }));
+        const hydrated = await hydrateMyReviews(list, { orders });
+        if (!cancelled) setMyReviews(hydrated);
       } catch {
-        // 403 = admin account; 404 = no reviews yet — both show empty state silently
-        setMyReviews([]);
+        if (!cancelled) setMyReviews([]);
       } finally {
-        setReviewsLoading(false);
+        if (!cancelled) setReviewsLoading(false);
       }
     };
     fetchMyReviews();
-  }, [activeTab, hasSellerApiAccess, orders]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasSellerApiAccess, user, orders]);
 
   useEffect(() => {
     const fetchUnreadCount = async () => {
@@ -293,6 +352,9 @@ export default function UserDashboard() {
     }
     if (activeTab === 'addresses' || activeTab === 'profile') {
       fetchAddresses();
+    }
+    if (activeTab === 'following') {
+      loadFollowingBrands();
     }
   }, [activeTab]);
 
@@ -591,6 +653,81 @@ export default function UserDashboard() {
     }
   };
 
+  const canRequestReturn = (order) => {
+    const status = String(order?.status || order?.orderStatus || '').toLowerCase();
+    if (!['delivered', 'shipped'].includes(status)) return false;
+    if (!order?.createdAt) return true;
+    const days =
+      (Date.now() - new Date(order.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+    return days <= 14;
+  };
+
+  const openReturnModal = (orderId) => {
+    if (!orderId) return;
+    setReturnModalOrderId(orderId);
+    setReturnReason('');
+    setReturnReasonError('');
+  };
+
+  const closeReturnModal = () => {
+    setReturnModalOrderId(null);
+    setReturnReason('');
+    setReturnReasonError('');
+  };
+
+  const submitReturnRequest = async () => {
+    const trimmed = returnReason.trim();
+    if (trimmed.length < 10) {
+      setReturnReasonError(
+        isRTL
+          ? 'اكتب سبباً أوضح (10 أحرف على الأقل)'
+          : 'Please provide a clearer reason (at least 10 characters)'
+      );
+      return;
+    }
+
+    setReturnReasonError('');
+    setReturningId(returnModalOrderId);
+    try {
+      await requestOrderReturn({
+        orderId: returnModalOrderId,
+        reason: trimmed,
+        user,
+      });
+      toast.success(
+        isRTL
+          ? 'تم إرسال طلب الاسترجاع. سيتواصل معك فريق الدعم قريباً.'
+          : 'Return request submitted. Support will contact you soon.'
+      );
+      setReturnModalOrderId(null);
+      setReturnReason('');
+      setReturnReasonError('');
+      setSelectedOrder(null);
+      setOrderDetail(null);
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message ||
+          (isRTL ? 'فشل إرسال طلب الاسترجاع' : 'Failed to submit return request')
+      );
+    } finally {
+      setReturningId(null);
+    }
+  };
+
+  const loadFollowingBrands = async () => {
+    setFollowingLoading(true);
+    try {
+      const brands = await fetchMyFollowingBrands(user?.id || user?._id);
+      setFollowingBrands(
+        Array.isArray(brands) ? brands.map((brand) => mapBrand(brand)) : []
+      );
+    } catch {
+      setFollowingBrands([]);
+    } finally {
+      setFollowingLoading(false);
+    }
+  };
+
   const handleReorder = async (orderId, orderFallback = null) => {
     if (!orderId) {
       toast.error(isRTL ? 'معرّف الطلب غير صالح' : 'Invalid order ID');
@@ -765,16 +902,37 @@ export default function UserDashboard() {
   const addAddress = async () => {
     setAddressLoading(true);
     try {
-      await addressesAPI.add(addressForm);
-      toast.success(isRTL ? 'تم إضافة العنوان ✅' : 'Address added ✅');
+      if (editingAddressId) {
+        await addressesAPI.update(editingAddressId, addressForm);
+        toast.success(isRTL ? 'تم تحديث العنوان ✅' : 'Address updated ✅');
+      } else {
+        await addressesAPI.add(addressForm);
+        toast.success(isRTL ? 'تم إضافة العنوان ✅' : 'Address added ✅');
+      }
       setShowAddressForm(false);
+      setEditingAddressId(null);
       setAddressForm({ fullName: '', phone: '', street: '', city: '', governorate: 'Cairo' });
       fetchAddresses();
     } catch (err) {
-      toast.error(err.response?.data?.message || (isRTL ? 'فشل إضافة العنوان' : 'Failed to add address'));
+      toast.error(
+        err.response?.data?.message ||
+          (isRTL ? 'فشل حفظ العنوان' : 'Failed to save address')
+      );
     } finally {
       setAddressLoading(false);
     }
+  };
+
+  const startEditAddress = (addr) => {
+    setEditingAddressId(addr._id);
+    setAddressForm({
+      fullName: addr.fullName || '',
+      phone: addr.phone || '',
+      street: addr.street || '',
+      city: addr.city || '',
+      governorate: addr.governorate || 'Cairo',
+    });
+    setShowAddressForm(true);
   };
 
   const deleteAddress = async (id) => {
@@ -791,6 +949,7 @@ export default function UserDashboard() {
     { icon: LayoutDashboard, label: isRTL ? 'لوحة التحكم' : 'Dashboard', tab: 'dashboard' },
     { icon: Package, label: isRTL ? 'طلباتي' : 'My Orders', tab: 'orders', badge: orderCount || orders.length || 0 },
     { icon: Heart, label: isRTL ? 'المفضلة' : 'Wishlist', tab: 'wishlist', badge: wishlistItems.length || 0 },
+    { icon: Store, label: isRTL ? 'الماركات المتابعة' : 'Following', tab: 'following' },
     { icon: Star, label: isRTL ? 'تقييماتي' : 'Reviews', tab: 'reviews', badge: myReviews.length || 0 },
     { icon: Settings, label: isRTL ? 'الإعدادات' : 'Settings', tab: 'settings' },
   ];
@@ -820,6 +979,9 @@ export default function UserDashboard() {
     };
     return map[String(status || '').toLowerCase()] || status;
   };
+
+  const reviewsWrittenCount = myReviews.length;
+  const egpSaved = useMemo(() => computeCustomerSavings(orders), [orders]);
 
   return (
     <div
@@ -913,8 +1075,8 @@ export default function UserDashboard() {
                   {[
                     { icon: Package, label: isRTL ? 'إجمالي الطلبات' : 'Total Orders', value: orderCount || orders.length, color: 'bg-blue-100 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' },
                     { icon: Heart, label: isRTL ? 'المنتجات المفضلة' : 'Wishlist Items', value: wishlistItems.length, color: 'bg-rose-100 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400' },
-                    { icon: Star, label: isRTL ? 'التقييمات المكتوبة' : 'Reviews Written', value: user?.reviewsCount || 0, color: 'bg-amber-100 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400' },
-                    { icon: TrendingUp, label: isRTL ? 'ج.م تم توفيرها' : 'EGP Saved', value: (user?.savedAmount || 0).toLocaleString(), color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' },
+                    { icon: Star, label: isRTL ? 'التقييمات المكتوبة' : 'Reviews Written', value: reviewsWrittenCount, color: 'bg-amber-100 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400' },
+                    { icon: TrendingUp, label: isRTL ? 'ج.م تم توفيرها' : 'EGP Saved', value: egpSaved.toLocaleString(), color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' },
                   ].map(stat => (
                     <div key={stat.label} className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5 text-start">
                       <div className={`w-10 h-10 rounded-xl ${stat.color} flex items-center justify-center mb-3`}>
@@ -1224,6 +1386,18 @@ export default function UserDashboard() {
                                           )}
                                         </button>
                                       )}
+                                      {canRequestReturn(order) && (
+                                        <button
+                                          type="button"
+                                          onClick={() => openReturnModal(orderId)}
+                                          disabled={returningId === orderId}
+                                          className="text-xs px-3 py-1.5 bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 rounded-lg font-semibold disabled:opacity-50"
+                                        >
+                                          {returningId === orderId
+                                            ? '…'
+                                            : (isRTL ? 'طلب استرجاع' : 'Request Return')}
+                                        </button>
+                                      )}
                                     </div>
                                   </td>
                                 </tr>
@@ -1307,6 +1481,57 @@ export default function UserDashboard() {
                           </div>
                         </div>
                       </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'following' && (
+              <div>
+                <h1 className="text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6">
+                  {isRTL ? 'الماركات المتابعة' : 'Brands I Follow'}
+                </h1>
+                {followingLoading ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {[...Array(3)].map((_, i) => (
+                      <div key={i} className="h-32 bg-gray-100 dark:bg-dark-surface rounded-2xl animate-pulse" />
+                    ))}
+                  </div>
+                ) : followingBrands.length === 0 ? (
+                  <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-12 text-center">
+                    <Store className="mx-auto text-gray-300 dark:text-dark-muted mb-4" size={48} />
+                    <p className="text-gray-500 dark:text-dark-muted mb-4">
+                      {isRTL ? 'لم تتابع أي ماركة بعد' : 'You are not following any brands yet'}
+                    </p>
+                    <Link to="/brands" className="btn-primary inline-block">
+                      {isRTL ? 'استكشف الماركات' : 'Explore Brands'}
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {followingBrands.map((brand) => (
+                      <Link
+                        key={brand.id || brand._id}
+                        to={`/brand/${brand.slug || brand.id || brand._id}`}
+                        className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5 hover:shadow-card-hover transition-all"
+                      >
+                        <div className={`flex items-center gap-3 text-start`}>
+                          <div className="w-12 h-12 rounded-xl bg-brand-cream dark:bg-dark-bg flex items-center justify-center text-xl flex-shrink-0">
+                            {brand.logo ? (
+                              <img src={brand.logo} alt="" className="w-full h-full object-cover rounded-xl" />
+                            ) : (
+                              '🏪'
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-bold text-gray-900 dark:text-dark-text truncate">{brand.name}</p>
+                            <p className="text-xs text-gray-500 dark:text-dark-muted truncate">
+                              {brand.governorate || brand.location || (isRTL ? 'مصر' : 'Egypt')}
+                            </p>
+                          </div>
+                        </div>
+                      </Link>
                     ))}
                   </div>
                 )}
@@ -1591,7 +1816,14 @@ export default function UserDashboard() {
                             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
                           ) : (isRTL ? 'حفظ' : 'Save')}
                         </button>
-                        <button onClick={() => setShowAddressForm(false)} className="btn-outline flex-1 text-sm py-2">
+                        <button
+                          onClick={() => {
+                            setShowAddressForm(false);
+                            setEditingAddressId(null);
+                            setAddressForm({ fullName: '', phone: '', street: '', city: '', governorate: 'Cairo' });
+                          }}
+                          className="btn-outline flex-1 text-sm py-2"
+                        >
                           {isRTL ? 'إلغاء' : 'Cancel'}
                         </button>
                       </div>
@@ -1630,9 +1862,18 @@ export default function UserDashboard() {
                               </button>
                             )}
                           </div>
-                          <button onClick={() => deleteAddress(addr._id)} className="text-red-400 hover:text-red-600 transition-colors p-1 flex-shrink-0">
-                            <Trash2 size={16} />
-                          </button>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => startEditAddress(addr)}
+                              className="text-gray-400 hover:text-brand-gold transition-colors p-1"
+                            >
+                              <Edit size={16} />
+                            </button>
+                            <button onClick={() => deleteAddress(addr._id)} className="text-red-400 hover:text-red-600 transition-colors p-1">
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -2077,6 +2318,20 @@ export default function UserDashboard() {
                           {isRTL ? 'إلغاء الطلب' : 'Cancel Order'}
                         </button>
                       )}
+                      {canRequestReturn(orderDetail) && (
+                        <button
+                          type="button"
+                          disabled={returningId === (orderDetail._id || orderDetail.id)}
+                          onClick={() =>
+                            openReturnModal(orderDetail._id || orderDetail.id || orderDetail.orderId)
+                          }
+                          className="border border-amber-300 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-xl px-4 py-2 text-sm disabled:opacity-50"
+                        >
+                          {returningId === (orderDetail._id || orderDetail.id)
+                            ? '…'
+                            : (isRTL ? 'طلب استرجاع' : 'Request Return')}
+                        </button>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -2084,6 +2339,128 @@ export default function UserDashboard() {
                     {isRTL ? 'حدث خطأ' : 'Something went wrong'}
                   </div>
                 )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {returnModalOrderId && (
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+            onClick={closeReturnModal}
+          >
+            <motion.div
+              dir={isRTL ? 'rtl' : 'ltr'}
+              initial={{ opacity: 0, scale: 0.95, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 12 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-dark-surface rounded-3xl shadow-2xl w-full max-w-md border border-gray-100 dark:border-dark-border overflow-hidden"
+            >
+              <div className="bg-gradient-to-br from-amber-50 to-brand-cream dark:from-amber-900/20 dark:to-dark-bg px-6 py-5 border-b border-amber-100 dark:border-dark-border">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-amber-700 dark:text-amber-400 flex-shrink-0">
+                      <RotateCcw size={20} />
+                    </div>
+                    <div className="text-start">
+                      <h2 className="text-lg font-display font-bold text-gray-900 dark:text-dark-text">
+                        {isRTL ? 'طلب استرجاع' : 'Request Return'}
+                      </h2>
+                      <p className="text-xs text-gray-500 dark:text-dark-muted mt-0.5">
+                        {isRTL ? 'الطلب' : 'Order'}{' '}
+                        <span className="font-mono text-brand-gold font-bold">
+                          #{String(returnModalOrderId).slice(-6).toUpperCase()}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeReturnModal}
+                    disabled={Boolean(returningId)}
+                    className="text-gray-400 hover:text-gray-600 dark:hover:text-dark-text p-1 disabled:opacity-50"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-4 text-start">
+                <p className="text-sm text-gray-600 dark:text-dark-muted">
+                  {isRTL
+                    ? 'أخبرنا لماذا تريد إرجاع هذا الطلب. فريق الدعم سيراجع طلبك خلال 14 يوماً من التوصيل.'
+                    : 'Tell us why you want to return this order. Our team will review requests within 14 days of delivery.'}
+                </p>
+
+                <div>
+                  <label
+                    htmlFor="return-reason"
+                    className="block text-sm font-semibold text-gray-700 dark:text-dark-text mb-2"
+                  >
+                    {isRTL ? 'سبب الاسترجاع' : 'Return reason'}{' '}
+                    <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    id="return-reason"
+                    rows={4}
+                    value={returnReason}
+                    onChange={(e) => {
+                      setReturnReason(e.target.value);
+                      if (returnReasonError) setReturnReasonError('');
+                    }}
+                    placeholder={
+                      isRTL
+                        ? 'مثال: المنتج وصل بحجم غير مناسب / به عيب في الخياطة...'
+                        : 'e.g. Wrong size received / item has a defect...'
+                    }
+                    className={`w-full rounded-2xl border bg-white dark:bg-dark-bg px-4 py-3 text-sm text-gray-900 dark:text-dark-text placeholder:text-gray-400 dark:placeholder:text-dark-muted resize-none focus:outline-none focus:ring-2 focus:ring-brand-gold/40 focus:border-brand-gold ${
+                      returnReasonError
+                        ? 'border-red-300 dark:border-red-500/50'
+                        : 'border-gray-200 dark:border-dark-border'
+                    }`}
+                  />
+                  <div className="flex items-center justify-between mt-2 text-xs">
+                    <span className={returnReasonError ? 'text-red-500' : 'text-transparent'}>
+                      {returnReasonError || '—'}
+                    </span>
+                    <span
+                      className={
+                        returnReason.trim().length >= 10
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-gray-400 dark:text-dark-muted'
+                      }
+                    >
+                      {returnReason.trim().length}/10 {isRTL ? 'أحرف على الأقل' : 'min chars'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={closeReturnModal}
+                    disabled={Boolean(returningId)}
+                    className="btn-outline flex-1 text-sm py-2.5 disabled:opacity-50"
+                  >
+                    {isRTL ? 'إلغاء' : 'Cancel'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={submitReturnRequest}
+                    disabled={returningId === returnModalOrderId || returnReason.trim().length < 10}
+                    className="btn-primary flex-1 text-sm py-2.5 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {returningId === returnModalOrderId ? (
+                      <RefreshCw size={16} className="animate-spin" />
+                    ) : (
+                      <RotateCcw size={16} />
+                    )}
+                    {isRTL ? 'إرسال الطلب' : 'Submit Request'}
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

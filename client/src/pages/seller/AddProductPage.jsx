@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Upload, X, ArrowLeft, ChevronRight, Tag, DollarSign, Package, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'react-hot-toast';
@@ -8,6 +8,8 @@ import { useLanguage } from '../../context/LanguageContext';
 import {
   categoriesAPI,
   createSellerProduct,
+  updateSellerProduct,
+  fetchSellerProductForEdit,
   rememberSellerBrand,
   rememberSellerBrandName,
   resolveSellerBrand,
@@ -18,6 +20,8 @@ import {
 
 export default function AddProductPage() {
   const navigate = useNavigate();
+  const { productId: editProductId } = useParams();
+  const isEditMode = Boolean(editProductId);
   const { user } = useAuth();
   const { isRTL } = useLanguage();
   const sellerApiReady = hasSellerApiAccess();
@@ -25,6 +29,7 @@ export default function AddProductPage() {
   // Data State
   const [categories, setCategories] = useState([]);
   const [loadingCats, setLoadingCats] = useState(true);
+  const [loadingProduct, setLoadingProduct] = useState(isEditMode);
   const [myBrand, setMyBrand] = useState(null);
   const [brandLoading, setBrandLoading] = useState(true);
   const [brandError, setBrandError] = useState(null);
@@ -117,6 +122,53 @@ export default function AddProductPage() {
     };
     fetchInitialData();
   }, [user]);
+
+  useEffect(() => {
+    if (!isEditMode || !editProductId) return;
+
+    const loadProduct = async () => {
+      setLoadingProduct(true);
+      try {
+        const product = await fetchSellerProductForEdit(editProductId, user);
+        if (!product) throw new Error('Product not found');
+
+        const categoryId =
+          product.category?._id ||
+          product.category?.id ||
+          product.category ||
+          '';
+
+        setFormData({
+          name: product.name || '',
+          description: product.description || '',
+          category: categoryId,
+          brand: product.brand?._id || product.brand?.id || product.brand || '',
+          price: product.price != null ? String(product.price) : '',
+          stock: product.stock != null ? String(product.stock) : '',
+          weight: product.weight != null ? String(product.weight) : '',
+          discountPrice:
+            product.discountPrice != null ? String(product.discountPrice) : '',
+        });
+        setTagList(Array.isArray(product.tags) ? product.tags : []);
+
+        const imageSrc =
+          product.mainImage?.url ||
+          product.mainImage ||
+          product.image ||
+          product.images?.[0]?.url ||
+          product.images?.[0] ||
+          '';
+        if (imageSrc) setMainImagePreview(imageSrc);
+      } catch {
+        toast.error(isRTL ? 'تعذر تحميل المنتج' : 'Could not load product');
+        navigate('/seller/dashboard?tab=products');
+      } finally {
+        setLoadingProduct(false);
+      }
+    };
+
+    loadProduct();
+  }, [editProductId, isEditMode, isRTL, navigate, user]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -281,25 +333,38 @@ export default function AddProductPage() {
         payload.tags = tagList;
       }
 
-      await createSellerProduct(payload, {
-        mainImage,
-        additionalImages: additionalImages.map((entry) => entry.file).filter(Boolean),
-      });
+      if (isEditMode) {
+        await updateSellerProduct(editProductId, payload, {
+          mainImage,
+          additionalImages: additionalImages.map((entry) => entry.file).filter(Boolean),
+        });
+        toast.success(
+          isRTL ? 'تم تحديث المنتج ✅' : 'Product updated ✅',
+          { style: { borderRadius: '12px' } }
+        );
+      } else {
+        await createSellerProduct(payload, {
+          mainImage,
+          additionalImages: additionalImages.map((entry) => entry.file).filter(Boolean),
+        });
 
-      const userId = user?.id || user?._id;
-      rememberSellerBrand(userId, myBrand || { _id: formData.brand });
+        const userId = user?.id || user?._id;
+        rememberSellerBrand(userId, myBrand || { _id: formData.brand });
 
-      toast.success(
-        type === 'draft'
-          ? (isRTL ? 'تم الحفظ 📝' : 'Saved as draft! 📝')
-          : (isRTL ? 'تم النشر! 🎉' : 'Published! 🎉'),
-        { style: { borderRadius: '12px' } }
-      );
+        toast.success(
+          type === 'draft'
+            ? (isRTL ? 'تم الحفظ 📝' : 'Saved as draft! 📝')
+            : (isRTL ? 'تم النشر! 🎉' : 'Published! 🎉'),
+          { style: { borderRadius: '12px' } }
+        );
+      }
       navigate('/seller/dashboard?tab=products');
     } catch (err) {
       const msg = humanizeApiError(
         err,
-        isRTL ? 'فشل إنشاء المنتج' : 'Failed to create product'
+        isEditMode
+          ? (isRTL ? 'فشل تحديث المنتج' : 'Failed to update product')
+          : (isRTL ? 'فشل إنشاء المنتج' : 'Failed to create product')
       );
 
       console.error('Create product error:', err.response?.data || err.message);
@@ -312,6 +377,14 @@ export default function AddProductPage() {
 
   const discount = calculateDiscount();
 
+  if (loadingProduct) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-brand-cream dark:bg-dark-bg">
+        <div className="w-8 h-8 border-4 border-brand-gold border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-brand-cream dark:bg-dark-bg py-8">
       <div className="page-container max-w-7xl">
@@ -323,14 +396,22 @@ export default function AddProductPage() {
             <ChevronRight size={14} className="mx-2" />
             <span>Products</span>
             <ChevronRight size={14} className="mx-2" />
-            <span className="text-brand-navy dark:text-brand-gold font-medium">Add New Product</span>
+            <span className="text-brand-navy dark:text-brand-gold font-medium">
+              {isEditMode
+                ? (isRTL ? 'تعديل منتج' : 'Edit Product')
+                : (isRTL ? 'إضافة منتج' : 'Add New Product')}
+            </span>
           </div>
           
-          <Link to="/seller/dashboard" className="inline-flex items-center text-sm text-brand-gold hover:underline mb-2">
+          <Link to="/seller/dashboard?tab=products" className="inline-flex items-center text-sm text-brand-gold hover:underline mb-2">
             <ArrowLeft size={16} className="mr-1" /> Back to Products
           </Link>
           
-          <h1 className="text-3xl font-display font-bold text-brand-navy dark:text-white">Add New Product</h1>
+          <h1 className="text-3xl font-display font-bold text-brand-navy dark:text-white">
+            {isEditMode
+              ? (isRTL ? 'تعديل المنتج' : 'Edit Product')
+              : (isRTL ? 'إضافة منتج جديد' : 'Add New Product')}
+          </h1>
           {!sellerApiReady && (
             <p className="mt-3 text-sm text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3">
               {isRTL
@@ -692,17 +773,19 @@ export default function AddProductPage() {
 
         {/* Form Actions - Bottom Full Width */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="mt-8 flex justify-end gap-4 border-t border-gray-200 dark:border-dark-border pt-6">
-          <button
-            onClick={() => handleSubmit('draft')}
-            disabled={isSubmitting}
-            className="btn-outline flex items-center justify-center min-w-[140px]"
-          >
-            {isSubmitting && submitType === 'draft' ? (
-              <div className="w-5 h-5 border-2 border-brand-navy dark:border-white border-t-transparent rounded-full animate-spin"></div>
-            ) : (
-              'Save as Draft'
-            )}
-          </button>
+          {!isEditMode && (
+            <button
+              onClick={() => handleSubmit('draft')}
+              disabled={isSubmitting}
+              className="btn-outline flex items-center justify-center min-w-[140px]"
+            >
+              {isSubmitting && submitType === 'draft' ? (
+                <div className="w-5 h-5 border-2 border-brand-navy dark:border-white border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                'Save as Draft'
+              )}
+            </button>
+          )}
           <button
             onClick={() => handleSubmit('publish')}
             disabled={isSubmitting}
@@ -711,7 +794,9 @@ export default function AddProductPage() {
             {isSubmitting && submitType === 'publish' ? (
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
             ) : (
-              'Publish Product'
+              isEditMode
+                ? (isRTL ? 'حفظ التغييرات' : 'Save Changes')
+                : 'Publish Product'
             )}
           </button>
         </motion.div>

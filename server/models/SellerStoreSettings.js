@@ -5,10 +5,12 @@ const sellerStoreSettingsSchema = new mongoose.Schema(
     userId: { type: String, required: true },
     brandId: { type: String, index: true },
     bazaar: {
+      name: { type: String, default: '' },
       description: { type: String, default: '' },
       whatsappLink: { type: String, default: '' },
       instagramLink: { type: String, default: '' },
       facebookLink: { type: String, default: '' },
+      isActive: { type: Boolean, default: true },
     },
     shop: {
       storeName: { type: String, default: '' },

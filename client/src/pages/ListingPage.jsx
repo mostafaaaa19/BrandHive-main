@@ -4,7 +4,7 @@ import { SlidersHorizontal, Grid3X3, LayoutGrid, List, X, ChevronDown, ChevronUp
 import ProductCard from '../components/ProductCard';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
-import { productsAPI, categoriesAPI, searchAPI, aiAPI, loadLocalProductImages, enrichProductsWithLocalImages, enrichCatalogWithMirroredImages } from '../services/api';
+import { productsAPI, categoriesAPI, searchAPI, aiAPI, loadLocalProductImages, enrichProductsWithLocalImages, enrichCatalogWithMirroredImages, enrichMappedProductsWithPricing } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import {
   mapProduct,
@@ -108,6 +108,7 @@ export default function ListingPage() {
         const withImages = enrichProductsWithLocalImages(raw);
         let mapped = withImages.map(mapProduct);
         mapped = await enrichCatalogWithMirroredImages(mapped);
+        mapped = await enrichMappedProductsWithPricing(mapped);
         setProducts(deduplicateProducts(mapped));
         setError(null);
         const meta = res.data?.meta || {};

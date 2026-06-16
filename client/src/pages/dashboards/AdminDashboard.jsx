@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Store, Package, DollarSign, Search as SearchIcon,
-  Flag, Target, Settings, Bell, FileText, LogOut, CheckCircle, Eye, BarChart3, XCircle, Trash2, Tag, Plus, MessageSquare, CreditCard
+  Flag, Target, Settings, Bell, FileText, LogOut, CheckCircle, Eye, BarChart3, XCircle, Trash2, Tag, Plus, MessageSquare, CreditCard, Megaphone
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useAuth } from '../../context/AuthContext';
@@ -24,6 +24,10 @@ import {
   syncAdminOrdersAfterPaymob,
   syncHomepageStatsFromAdmin,
   companionServices,
+  sellerAPI,
+  fetchAdInquiries,
+  updateAdInquiryStatus,
+  fetchAdminBazaars,
 } from '../../services/api';
 import { isHomepageQualityProduct } from '../../utils/productQuality';
 import { useTranslation } from 'react-i18next';
@@ -1256,30 +1260,27 @@ function AdminAuditTab({ isRTL }) {
     { value: 'withdrawal.updated', labelEn: 'Payouts', labelAr: 'السحب' },
   ];
 
-  if (!import.meta.env.DEV) {
-    return (
-      <div>
-        <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
-          {isRTL ? 'سجل العمليات' : 'Audit Log'}
-        </h1>
-        <p className="text-sm text-gray-400">
-          {isRTL ? 'سجل العمليات متاح في وضع التطوير مع السيرفر المحلي.' : 'Audit log requires local dev mode with npm run server.'}
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div>
       <div className={`flex items-center justify-between mb-6`}>
         <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text ${isRTL ? 'text-right' : ''}`}>
           {isRTL ? 'سجل العمليات' : 'Audit Log'}
         </h1>
-        <button type="button" onClick={loadLogs} className="btn-outline text-sm">
-          {isRTL ? 'تحديث' : 'Refresh'}
-        </button>
+        {companionServices.audit && (
+          <button type="button" onClick={loadLogs} className="btn-outline text-sm">
+            {isRTL ? 'تحديث' : 'Refresh'}
+          </button>
+        )}
       </div>
 
+      {!companionServices.audit ? (
+        <p className="text-amber-600 dark:text-amber-400 text-sm">
+          {isRTL
+            ? 'خدمة سجل العمليات غير متصلة. تأكد من إعداد VITE_MIRROR_API_URL على Vercel.'
+            : 'Audit log service not connected. Ensure VITE_MIRROR_API_URL is set on Vercel.'}
+        </p>
+      ) : (
+        <>
       <div className={`flex gap-2 mb-4 flex-wrap`}>
         {filters.map((item) => (
           <button
@@ -1353,6 +1354,8 @@ function AdminAuditTab({ isRTL }) {
           </div>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1399,24 +1402,26 @@ function AdminPayoutsTab({ isRTL, toast }) {
     }
   };
 
-  if (!import.meta.env.DEV) {
-    return (
-      <div>
-        <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
-          {isRTL ? 'طلبات السحب' : 'Withdrawal Requests'}
-        </h1>
-        <p className="text-sm text-gray-400">
-          {isRTL ? 'إدارة السحب متاحة في وضع التطوير مع السيرفر المحلي.' : 'Payout management requires local dev mode with npm run server.'}
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div>
-      <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
-        {isRTL ? 'طلبات السحب' : 'Withdrawal Requests'}
-      </h1>
+      <div className={`flex items-center justify-between mb-6`}>
+        <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text ${isRTL ? 'text-right' : ''}`}>
+          {isRTL ? 'طلبات السحب' : 'Withdrawal Requests'}
+        </h1>
+        {companionServices.payouts && (
+          <button type="button" onClick={loadWithdrawals} className="btn-outline text-sm">
+            {isRTL ? 'تحديث' : 'Refresh'}
+          </button>
+        )}
+      </div>
+
+      {!companionServices.payouts ? (
+        <p className="text-amber-600 dark:text-amber-400 text-sm">
+          {isRTL
+            ? 'خدمة المدفوعات غير متصلة. تأكد من إعداد VITE_MIRROR_API_URL على Vercel.'
+            : 'Payout service not connected. Ensure VITE_MIRROR_API_URL is set on Vercel.'}
+        </p>
+      ) : (
       <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border overflow-hidden">
         {loading ? (
           <div className="p-8 text-center">
@@ -1523,6 +1528,7 @@ function AdminPayoutsTab({ isRTL, toast }) {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -1720,6 +1726,193 @@ function AdminSupportTab({ isRTL, toast }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function AdminBazaarsTab({ isRTL }) {
+  const [bazaars, setBazaars] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [togglingId, setTogglingId] = useState(null);
+
+  const loadBazaars = async () => {
+    setLoading(true);
+    try {
+      const list = await fetchAdminBazaars();
+      setBazaars(Array.isArray(list) ? list : []);
+    } catch {
+      setBazaars([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadBazaars();
+  }, []);
+
+  const handleToggle = async (bazaar) => {
+    const id = bazaar._id || bazaar.id;
+    if (!id) return;
+    setTogglingId(id);
+    try {
+      await sellerAPI.toggleBazaarAdmin(id);
+      toast.success(isRTL ? 'تم تحديث حالة البازار' : 'Bazaar status updated');
+      await loadBazaars();
+    } catch (err) {
+      toast.error(err.response?.data?.message || (isRTL ? 'فشل التحديث' : 'Update failed'));
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  return (
+    <div>
+      <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
+        {isRTL ? 'إدارة البازارات' : 'Bazaar Moderation'}
+      </h1>
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="w-6 h-6 border-2 border-brand-gold border-t-transparent rounded-full animate-spin mx-auto" />
+        </div>
+      ) : bazaars.length === 0 ? (
+        <p className="text-gray-500 dark:text-dark-muted">
+          {isRTL ? 'لا توجد بازارات' : 'No bazaars found'}
+        </p>
+      ) : (
+        <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border overflow-hidden">
+          <table className="w-full text-sm text-start">
+            <thead className="bg-gray-50 dark:bg-dark-bg">
+              <tr>
+                {[isRTL ? 'الاسم' : 'Name', isRTL ? 'الحالة' : 'Status', isRTL ? 'إجراء' : 'Action'].map((h) => (
+                  <th key={h} className="px-4 py-3 text-xs font-bold text-gray-400 uppercase">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
+              {bazaars.map((bazaar) => {
+                const id = bazaar._id || bazaar.id;
+                const active = bazaar.isActive !== false && bazaar.active !== false;
+                return (
+                  <tr key={id}>
+                    <td className="px-4 py-3">
+                      <div className="font-medium dark:text-dark-text">
+                        {bazaar.displayName || bazaar.name || bazaar.slug || id}
+                      </div>
+                      {bazaar.sellerEmail && (
+                        <div className="text-xs text-gray-400 dark:text-dark-muted mt-0.5">
+                          {bazaar.sellerEmail}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs px-2 py-1 rounded-full ${active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {active ? (isRTL ? 'نشط' : 'Active') : (isRTL ? 'معطّل' : 'Inactive')}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        disabled={togglingId === id}
+                        onClick={() => handleToggle(bazaar)}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-dark-border hover:border-brand-gold disabled:opacity-50"
+                      >
+                        {togglingId === id ? '…' : (active ? (isRTL ? 'تعطيل' : 'Disable') : (isRTL ? 'تفعيل' : 'Enable'))}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminAdInquiriesTab({ isRTL }) {
+  const [inquiries, setInquiries] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadInquiries = async () => {
+    setLoading(true);
+    try {
+      const list = await fetchAdInquiries();
+      setInquiries(Array.isArray(list) ? list : []);
+    } catch {
+      setInquiries([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadInquiries();
+  }, []);
+
+  const handleStatus = async (inquiry, status) => {
+    try {
+      await updateAdInquiryStatus(inquiry._id || inquiry.id, status);
+      toast.success(isRTL ? 'تم التحديث' : 'Updated');
+      await loadInquiries();
+    } catch (err) {
+      toast.error(err.response?.data?.message || (isRTL ? 'فشل التحديث' : 'Update failed'));
+    }
+  };
+
+  return (
+    <div>
+      <h1 className={`text-2xl font-display font-bold text-gray-900 dark:text-dark-text mb-6 ${isRTL ? 'text-right' : ''}`}>
+        {isRTL ? 'طلبات الإعلانات' : 'Ad Inquiries'}
+      </h1>
+      {!companionServices.platform ? (
+        <p className="text-amber-600 text-sm">
+          {isRTL ? 'خدمة Mirror غير متصلة' : 'Mirror service not connected'}
+        </p>
+      ) : loading ? (
+        <div className="text-center py-12">
+          <div className="w-6 h-6 border-2 border-brand-gold border-t-transparent rounded-full animate-spin mx-auto" />
+        </div>
+      ) : inquiries.length === 0 ? (
+        <p className="text-gray-500 dark:text-dark-muted">
+          {isRTL ? 'لا توجد طلبات' : 'No inquiries yet'}
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {inquiries.map((inquiry) => (
+            <div key={inquiry._id || inquiry.id} className="bg-white dark:bg-dark-surface rounded-2xl shadow-card dark:shadow-none dark:border dark:border-dark-border p-5">
+              <div className={`flex items-start justify-between gap-4 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
+                <div>
+                  <p className="font-bold text-gray-900 dark:text-dark-text">{inquiry.brandName || inquiry.sellerEmail || 'Seller'}</p>
+                  <p className="text-sm text-brand-gold mt-1">{inquiry.adType}</p>
+                  {inquiry.message && (
+                    <p className="text-sm text-gray-500 dark:text-dark-muted mt-2">{inquiry.message}</p>
+                  )}
+                  <p className="text-xs text-gray-400 mt-2">
+                    {inquiry.createdAt ? new Date(inquiry.createdAt).toLocaleString() : ''}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600 text-center">
+                    {inquiry.status || 'pending'}
+                  </span>
+                  {inquiry.status !== 'contacted' && (
+                    <button type="button" onClick={() => handleStatus(inquiry, 'contacted')} className="text-xs text-brand-navy dark:text-brand-gold hover:underline">
+                      {isRTL ? 'تم التواصل' : 'Mark contacted'}
+                    </button>
+                  )}
+                  {inquiry.status !== 'closed' && (
+                    <button type="button" onClick={() => handleStatus(inquiry, 'closed')} className="text-xs text-gray-500 hover:underline">
+                      {isRTL ? 'إغلاق' : 'Close'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -2097,6 +2290,8 @@ export default function AdminDashboard() {
         { icon: SearchIcon, label: isRTL ? 'مراجعة المنتجات' : 'Review Products', tab: 'products' },
         { icon: Flag, label: isRTL ? 'البلاغات' : 'Reports', tab: 'reports' },
         { icon: Target, label: isRTL ? 'الخانات المميزة' : 'Featured Slots', tab: 'featured' },
+        { icon: Store, label: isRTL ? 'البازارات' : 'Bazaars', tab: 'bazaars' },
+        { icon: Megaphone, label: isRTL ? 'طلبات الإعلانات' : 'Ad Inquiries', tab: 'ads' },
       ],
     },
     {
@@ -2756,6 +2951,14 @@ export default function AdminDashboard() {
 
             {activeTab === 'featured' && (
               <AdminFeaturedSlotsTab isRTL={isRTL} productsAPI={productsAPI} />
+            )}
+
+            {activeTab === 'bazaars' && (
+              <AdminBazaarsTab isRTL={isRTL} />
+            )}
+
+            {activeTab === 'ads' && (
+              <AdminAdInquiriesTab isRTL={isRTL} />
             )}
 
             {activeTab === 'notifications' && (

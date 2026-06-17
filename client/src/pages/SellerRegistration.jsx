@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, ArrowLeft, Upload, CheckCircle, Store, BarChart3, Users, MessageSquare, ShoppingBag } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { brandsAPI, categoriesAPI, rememberSellerBrandName } from '../services/api';
+import { brandsAPI, categoriesAPI, rememberSellerBrandName, cacheBrandRequestSubmission } from '../services/api';
 import { mapCategory } from '../utils/mappers';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../context/LanguageContext';
@@ -135,6 +135,12 @@ export default function SellerRegistration() {
       if (userId || user?.email) {
         rememberSellerBrandName(userId, form.brandName.trim(), user?.email);
       }
+      cacheBrandRequestSubmission(user, {
+        name: form.brandName.trim(),
+        brandName: form.brandName.trim(),
+        status: 'pending',
+        email: user?.email,
+      });
 
       toast.success(
         isRTL

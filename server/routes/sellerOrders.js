@@ -100,6 +100,33 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.get('/by-railway', async (req, res) => {
+  if (!dbReady()) {
+    return res.status(503).json({ message: 'Order storage unavailable (database offline)' });
+  }
+
+  const ids = String(req.query.ids || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  if (ids.length === 0) {
+    return res.status(400).json({ message: 'ids query param is required' });
+  }
+
+  try {
+    const orders = await SellerOrderMirror.find({
+      railwayOrderId: { $in: ids.map(String) },
+    })
+      .select('railwayOrderId items.brandName items.productId items.name')
+      .lean();
+
+    return res.json({ data: orders });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Failed to load mirror orders' });
+  }
+});
+
 router.get('/', async (req, res) => {
   if (!dbReady()) {
     return res.status(503).json({ message: 'Order storage unavailable (database offline)' });

@@ -229,7 +229,8 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       const currentUser = JSON.parse(localStorage.getItem('brandhive_user') || 'null');
-      if (currentUser?.email) {
+      const token = currentUser?.token || currentUser?.accessToken;
+      if (currentUser?.email && token) {
         authAPI.logout({ email: currentUser.email }).catch(() => {});
       }
     } catch {

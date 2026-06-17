@@ -3,7 +3,8 @@ import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, Heart, Star, User, MapPin, CreditCard,
   Bell, MessageSquare, LogOut, ChevronRight, TrendingUp, Settings,
-  X, Clock, CheckCircle, XCircle, Truck, RefreshCw, AlertCircle, Trash2, Store, Edit, RotateCcw
+  X, Clock, CheckCircle, XCircle, Truck, RefreshCw, AlertCircle, Trash2, Store, Edit, RotateCcw,
+  FileText, Undo2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -21,6 +22,8 @@ import {
   initiateOrderPayment,
   applyPaidOrderOverlay,
   hydratePaidOrdersFromMirror,
+  enrichCustomerOrdersWithBrandNames,
+  resolveOrderBrandName,
   fetchSavedCards,
   addSavedCard,
   removeSavedCard,
@@ -90,6 +93,124 @@ const formatOrderProductLabel = (order, items, isRTL) => {
   }
   return label;
 };
+
+const ORDER_ACTION_BASE =
+  'inline-flex items-center justify-center gap-1.5 h-8 px-2.5 rounded-md text-[11px] font-semibold transition-colors disabled:opacity-50 whitespace-nowrap';
+
+const ActionSpinner = ({ className = 'border-brand-gold' }) => (
+  <span className={`w-3 h-3 border-2 ${className} border-t-transparent rounded-full animate-spin shrink-0`} />
+);
+
+function OrderActionsBar({
+  isRTL,
+  layout = 'table',
+  hideTrack = false,
+  onTrack,
+  onInvoice,
+  onReorder,
+  onRetryPayment,
+  onReturn,
+  showReorder = false,
+  showRetry = false,
+  showReturn = false,
+  invoiceLoading = false,
+  reorderLoading = false,
+  retryLoading = false,
+  returnLoading = false,
+}) {
+  const buttons = [];
+
+  if (!hideTrack) {
+    buttons.push({
+      key: 'track',
+      label: isRTL ? 'تتبع' : 'Track',
+      icon: Truck,
+      onClick: onTrack,
+      className: 'text-brand-gold hover:bg-brand-gold/10 border border-brand-gold/20',
+    });
+  }
+
+  buttons.push({
+    key: 'invoice',
+    label: isRTL ? 'فاتورة' : 'Invoice',
+    icon: FileText,
+    onClick: onInvoice,
+    loading: invoiceLoading,
+    spinClass: 'border-gray-400',
+    className:
+      'text-gray-600 dark:text-dark-muted hover:bg-gray-50 dark:hover:bg-dark-surface border border-gray-200 dark:border-dark-border',
+  });
+
+  if (showReorder) {
+    buttons.push({
+      key: 'reorder',
+      label: isRTL ? 'إعادة' : 'Reorder',
+      icon: RotateCcw,
+      onClick: onReorder,
+      loading: reorderLoading,
+      spinClass: 'border-blue-400',
+      className:
+        'bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 border border-blue-500/20',
+    });
+  }
+
+  if (showRetry) {
+    buttons.push({
+      key: 'retry',
+      label: isRTL ? 'دفع' : 'Retry',
+      icon: CreditCard,
+      onClick: onRetryPayment,
+      loading: retryLoading,
+      spinClass: 'border-red-400',
+      className:
+        'bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 border border-red-500/20',
+    });
+  }
+
+  if (showReturn) {
+    buttons.push({
+      key: 'return',
+      label: isRTL ? 'استرجاع' : 'Return',
+      icon: Undo2,
+      onClick: onReturn,
+      loading: returnLoading,
+      spinClass: 'border-amber-400',
+      className:
+        'bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 border border-amber-500/20',
+    });
+  }
+
+  const rowClass =
+    layout === 'card'
+      ? 'flex flex-wrap items-center gap-1.5'
+      : 'inline-flex items-center gap-1 flex-nowrap';
+
+  const btnClass = layout === 'card' ? ORDER_ACTION_BASE : `${ORDER_ACTION_BASE} px-2 gap-1 h-7`;
+
+  return (
+    <div className={rowClass} role="group" aria-label={isRTL ? 'إجراءات الطلب' : 'Order actions'}>
+      {buttons.map((btn) => {
+        const Icon = btn.icon;
+        return (
+          <button
+            key={btn.key}
+            type="button"
+            onClick={btn.onClick}
+            disabled={btn.loading}
+            className={`${btnClass} shrink-0 ${btn.className}`}
+          >
+            {btn.loading ? (
+              <ActionSpinner className={btn.spinClass} />
+            ) : (
+              <Icon size={13} strokeWidth={2.25} />
+            )}
+            {btn.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 const getOrderSavings = (order) => {
   const explicit = Number(
@@ -594,7 +715,8 @@ export default function UserDashboard() {
         const data = ordersRes.value.data;
         const list = Array.isArray(data) ? data : data?.data || data?.orders || [];
         const hydrated = await hydratePaidOrdersFromMirror(list);
-        setOrders(hydrated);
+        const enriched = await enrichCustomerOrdersWithBrandNames(hydrated);
+        setOrders(enriched);
         if (countRes.status !== 'fulfilled') {
           setOrderCount(list.length);
         }
@@ -1130,7 +1252,7 @@ export default function UserDashboard() {
                           const status = order.status || order.orderStatus || 'Pending';
                           const items = order.items || order.products || [];
                           const productName = formatOrderProductLabel(order, items, isRTL);
-                          const brandName = items[0]?.product?.brand?.name || items[0]?.brandName || order.brand || '-';
+                          const brandName = order.brandName || resolveOrderBrandName(order, items) || '-';
 
                           return (
                             <tr key={orderId} className="border-b border-gray-50 dark:border-dark-border/50 last:border-0 hover:bg-gray-50/50 dark:hover:bg-dark-bg/50">
@@ -1230,7 +1352,7 @@ export default function UserDashboard() {
                           const status = order.status || order.orderStatus || 'Pending';
                           const items = order.items || order.products || [];
                           const productName = formatOrderProductLabel(order, items, isRTL);
-                          const brandName = items[0]?.product?.brand?.name || items[0]?.brandName || order.brand || '-';
+                          const brandName = order.brandName || resolveOrderBrandName(order, items) || '-';
 
                           return (
                             <div
@@ -1250,47 +1372,26 @@ export default function UserDashboard() {
                               <p className="font-semibold text-gray-900 dark:text-dark-text mt-2">
                                 {amount.toLocaleString()} {t('common.egp')}
                               </p>
-                              <div className={`flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-50 dark:border-dark-border/50`}>
-                                <button
-                                  type="button"
-                                  onClick={() => {
+                              <div className="mt-3 pt-3 border-t border-gray-50 dark:border-dark-border/50">
+                                <OrderActionsBar
+                                  isRTL={isRTL}
+                                  layout="card"
+                                  onTrack={() => {
                                     setSelectedOrder(order);
                                     fetchOrderDetail(orderId);
                                   }}
-                                  className="text-xs text-brand-navy dark:text-brand-gold hover:underline"
-                                >
-                                  {isRTL ? 'تتبع' : 'Track'}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDownloadInvoice(orderId, order)}
-                                  disabled={invoiceLoading === orderId}
-                                  className="text-xs text-gray-600 dark:text-dark-muted hover:underline disabled:opacity-50"
-                                >
-                                  {invoiceLoading === orderId
-                                    ? (isRTL ? '…' : '…')
-                                    : (isRTL ? 'فاتورة' : 'Invoice')}
-                                </button>
-                                {canReorder(status) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleReorder(orderId, order)}
-                                    disabled={reorderLoading === orderId}
-                                    className="text-xs px-3 py-1.5 bg-brand-gold/10 text-brand-gold hover:bg-brand-gold/20 rounded-lg font-semibold transition-colors disabled:opacity-50"
-                                  >
-                                    {reorderLoading === orderId ? '…' : (isRTL ? '🔄 إعادة الطلب' : '🔄 Reorder')}
-                                  </button>
-                                )}
-                                {orderNeedsPaymentRetry(order) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRetryPayment(order)}
-                                    disabled={retryLoading === (order._id || order.id)}
-                                    className="text-xs px-3 py-1.5 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 rounded-lg font-semibold disabled:opacity-50"
-                                  >
-                                    {retryLoading === (order._id || order.id) ? '…' : (isRTL ? '💳 إعادة الدفع' : '💳 Retry Payment')}
-                                  </button>
-                                )}
+                                  onInvoice={() => handleDownloadInvoice(orderId, order)}
+                                  onReorder={() => handleReorder(orderId, order)}
+                                  onRetryPayment={() => handleRetryPayment(order)}
+                                  onReturn={() => openReturnModal(orderId)}
+                                  showReorder={canReorder(status)}
+                                  showRetry={orderNeedsPaymentRetry(order)}
+                                  showReturn={canRequestReturn(order)}
+                                  invoiceLoading={invoiceLoading === orderId}
+                                  reorderLoading={reorderLoading === orderId}
+                                  retryLoading={retryLoading === (order._id || order.id)}
+                                  returnLoading={returningId === orderId}
+                                />
                               </div>
                             </div>
                           );
@@ -1309,8 +1410,15 @@ export default function UserDashboard() {
                                 isRTL ? 'المبلغ' : 'Amount',
                                 isRTL ? 'الحالة' : 'Status',
                                 isRTL ? 'إجراءات' : 'Actions'
-                              ].map(h => (
-                                <th key={h} className="text-xs font-semibold text-gray-400 dark:text-dark-muted uppercase tracking-wider pb-3 px-2">{h}</th>
+                              ].map((h, index) => (
+                                <th
+                                  key={h}
+                                  className={`text-xs font-semibold text-gray-400 dark:text-dark-muted uppercase tracking-wider pb-3 px-2 ${
+                                    index === 6 ? 'min-w-[340px] whitespace-nowrap' : ''
+                                  }`}
+                                >
+                                  {h}
+                                </th>
                               ))}
                             </tr>
                           </thead>
@@ -1322,7 +1430,7 @@ export default function UserDashboard() {
                               const status = order.status || order.orderStatus || 'Pending';
                               const items = order.items || order.products || [];
                               const productName = formatOrderProductLabel(order, items, isRTL);
-                              const brandName = items[0]?.product?.brand?.name || items[0]?.brandName || order.brand || '-';
+                              const brandName = order.brandName || resolveOrderBrandName(order, items) || '-';
 
                               return (
                                 <tr key={orderId} className="border-b border-gray-50 dark:border-dark-border/50 last:border-0 hover:bg-gray-50/50 dark:hover:bg-dark-bg/50">
@@ -1336,69 +1444,25 @@ export default function UserDashboard() {
                                       {translateStatus(status)}
                                     </span>
                                   </td>
-                                  <td className="py-3 px-2">
-                                    <div className={`flex items-center gap-2 flex-wrap`}>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setSelectedOrder(order);
-                                          fetchOrderDetail(orderId);
-                                        }}
-                                        className="text-xs text-brand-navy dark:text-brand-gold hover:underline"
-                                      >
-                                        {isRTL ? 'تتبع' : 'Track'}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDownloadInvoice(orderId, order)}
-                                        disabled={invoiceLoading === orderId}
-                                        className="text-xs text-gray-600 dark:text-dark-muted hover:underline disabled:opacity-50"
-                                      >
-                                        {invoiceLoading === orderId
-                                          ? '…'
-                                          : (isRTL ? 'فاتورة' : 'Invoice')}
-                                      </button>
-                                      {canReorder(status) && (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleReorder(orderId, order)}
-                                          disabled={reorderLoading === orderId}
-                                          className="text-xs px-3 py-1.5 bg-brand-gold/10 text-brand-gold hover:bg-brand-gold/20 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-1"
-                                        >
-                                          {reorderLoading === orderId ? (
-                                            <div className="w-3 h-3 border-2 border-brand-gold border-t-transparent rounded-full animate-spin" />
-                                          ) : (
-                                            <>🔄 {isRTL ? 'إعادة الطلب' : 'Reorder'}</>
-                                          )}
-                                        </button>
-                                      )}
-                                      {orderNeedsPaymentRetry(order) && (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleRetryPayment(order)}
-                                          disabled={retryLoading === (order._id || order.id)}
-                                          className="text-xs px-3 py-1.5 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 hover:bg-red-100 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-1"
-                                        >
-                                          {retryLoading === (order._id || order.id) ? (
-                                            <div className="w-3 h-3 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
-                                          ) : (
-                                            <>💳 {isRTL ? 'إعادة الدفع' : 'Retry Payment'}</>
-                                          )}
-                                        </button>
-                                      )}
-                                      {canRequestReturn(order) && (
-                                        <button
-                                          type="button"
-                                          onClick={() => openReturnModal(orderId)}
-                                          disabled={returningId === orderId}
-                                          className="text-xs px-3 py-1.5 bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 rounded-lg font-semibold disabled:opacity-50"
-                                        >
-                                          {returningId === orderId
-                                            ? '…'
-                                            : (isRTL ? 'طلب استرجاع' : 'Request Return')}
-                                        </button>
-                                      )}
-                                    </div>
+                                  <td className="py-3 px-2 align-middle whitespace-nowrap">
+                                    <OrderActionsBar
+                                      isRTL={isRTL}
+                                      onTrack={() => {
+                                        setSelectedOrder(order);
+                                        fetchOrderDetail(orderId);
+                                      }}
+                                      onInvoice={() => handleDownloadInvoice(orderId, order)}
+                                      onReorder={() => handleReorder(orderId, order)}
+                                      onRetryPayment={() => handleRetryPayment(order)}
+                                      onReturn={() => openReturnModal(orderId)}
+                                      showReorder={canReorder(status)}
+                                      showRetry={orderNeedsPaymentRetry(order)}
+                                      showReturn={canRequestReturn(order)}
+                                      invoiceLoading={invoiceLoading === orderId}
+                                      reorderLoading={reorderLoading === orderId}
+                                      retryLoading={retryLoading === (order._id || order.id)}
+                                      returnLoading={returningId === orderId}
+                                    />
                                   </td>
                                 </tr>
                               );
@@ -2254,82 +2318,66 @@ export default function UserDashboard() {
                     </div>
 
                     {/* Actions */}
-                    <div className={`border-t border-gray-100 dark:border-dark-border pt-4 flex gap-2 flex-wrap ${isRTL ? 'justify-start' : 'justify-end'}`}>
-                      <button
-                        type="button"
-                        onClick={() =>
+                    <div className={`border-t border-gray-100 dark:border-dark-border pt-4 ${isRTL ? 'text-start' : 'text-end'}`}>
+                      <OrderActionsBar
+                        isRTL={isRTL}
+                        layout="card"
+                        hideTrack
+                        onTrack={() => {}}
+                        onInvoice={() =>
                           handleDownloadInvoice(
                             orderDetail._id || orderDetail.id || orderDetail.orderId,
                             orderDetail
                           )
                         }
-                        disabled={
+                        onReorder={() =>
+                          handleReorder(
+                            orderDetail._id || orderDetail.id || orderDetail.orderId,
+                            orderDetail
+                          )
+                        }
+                        onRetryPayment={() => handleRetryPayment(orderDetail)}
+                        onReturn={() =>
+                          openReturnModal(orderDetail._id || orderDetail.id || orderDetail.orderId)
+                        }
+                        showReorder={canReorder(orderDetail.status || orderDetail.orderStatus)}
+                        showRetry={orderNeedsPaymentRetry(orderDetail)}
+                        showReturn={canRequestReturn(orderDetail)}
+                        invoiceLoading={
                           invoiceLoading ===
                           (orderDetail._id || orderDetail.id || orderDetail.orderId)
                         }
-                        className="text-xs px-3 py-1.5 bg-gray-100 dark:bg-dark-bg text-gray-700 dark:text-dark-text hover:bg-gray-200 dark:hover:bg-dark-border rounded-lg font-semibold transition-colors disabled:opacity-50"
-                      >
-                        {invoiceLoading === (orderDetail._id || orderDetail.id || orderDetail.orderId)
-                          ? '…'
-                          : (isRTL ? '📄 الفاتورة' : '📄 Invoice')}
-                      </button>
-                      {canReorder(orderDetail.status || orderDetail.orderStatus) && (
+                        reorderLoading={
+                          reorderLoading === (orderDetail._id || orderDetail.id || orderDetail.orderId)
+                        }
+                        retryLoading={retryLoading === (orderDetail._id || orderDetail.id)}
+                        returnLoading={
+                          returningId === (orderDetail._id || orderDetail.id || orderDetail.orderId)
+                        }
+                      />
+                      {['pending', 'processing'].includes(
+                        (orderDetail.status || orderDetail.orderStatus || 'pending').toLowerCase()
+                      ) && (
                         <button
-                          onClick={() =>
-                            handleReorder(
-                              orderDetail._id || orderDetail.id || orderDetail.orderId,
-                              orderDetail
-                            )
-                          }
-                          disabled={reorderLoading === (orderDetail._id || orderDetail.id || orderDetail.orderId)}
-                          className="text-xs px-3 py-1.5 bg-brand-gold/10 text-brand-gold hover:bg-brand-gold/20 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-1"
-                        >
-                          {reorderLoading === (orderDetail._id || orderDetail.id || orderDetail.orderId) ? (
-                            <div className="w-3 h-3 border-2 border-brand-gold border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <>🔄 {isRTL ? 'إعادة الطلب' : 'Reorder'}</>
-                          )}
-                        </button>
-                      )}
-                      {orderNeedsPaymentRetry(orderDetail) && (
-                        <button
-                          onClick={() => handleRetryPayment(orderDetail)}
-                          disabled={retryLoading === (orderDetail._id || orderDetail.id)}
-                          className="text-xs px-3 py-1.5 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 hover:bg-red-100 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-1"
-                        >
-                          {retryLoading === (orderDetail._id || orderDetail.id) ? (
-                            <div className="w-3 h-3 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <>💳 {isRTL ? 'إعادة الدفع' : 'Retry Payment'}</>
-                          )}
-                        </button>
-                      )}
-                      {['pending', 'processing'].includes((orderDetail.status || orderDetail.orderStatus || 'pending').toLowerCase()) && (
-                        <button
+                          type="button"
                           disabled={cancellingId === (orderDetail._id || orderDetail.id)}
                           onClick={() => {
-                            if (window.confirm(isRTL ? 'هل أنت متأكد من إلغاء هذا الطلب؟' : 'Are you sure you want to cancel this order?')) {
+                            if (
+                              window.confirm(
+                                isRTL
+                                  ? 'هل أنت متأكد من إلغاء هذا الطلب؟'
+                                  : 'Are you sure you want to cancel this order?'
+                              )
+                            ) {
                               cancelOrder(orderDetail._id || orderDetail.id);
                             }
                           }}
-                          className="border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl px-4 py-2 text-sm disabled:opacity-50 flex items-center gap-2"
+                          className={`${ORDER_ACTION_BASE} mt-2 border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10`}
                         >
-                          {cancellingId === (orderDetail._id || orderDetail.id) && <RefreshCw size={14} className="animate-spin" />}
+                          {cancellingId === (orderDetail._id || orderDetail.id) && (
+                            <RefreshCw size={13} className="animate-spin" />
+                          )}
                           {isRTL ? 'إلغاء الطلب' : 'Cancel Order'}
-                        </button>
-                      )}
-                      {canRequestReturn(orderDetail) && (
-                        <button
-                          type="button"
-                          disabled={returningId === (orderDetail._id || orderDetail.id)}
-                          onClick={() =>
-                            openReturnModal(orderDetail._id || orderDetail.id || orderDetail.orderId)
-                          }
-                          className="border border-amber-300 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-xl px-4 py-2 text-sm disabled:opacity-50"
-                        >
-                          {returningId === (orderDetail._id || orderDetail.id)
-                            ? '…'
-                            : (isRTL ? 'طلب استرجاع' : 'Request Return')}
                         </button>
                       )}
                     </div>

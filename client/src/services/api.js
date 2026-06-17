@@ -612,6 +612,8 @@ export const hasSellerApiAccess = () => {
   return role === 'seller' || role === 'admin';
 };
 
+export const isAdminApiRole = () => getServerRole() === 'admin';
+
 export const isCustomerApiRole = () => getServerRole() === 'customer';
 
 const isMongoId = (value) => /^[a-f0-9]{24}$/i.test(String(value || ''));
@@ -1291,7 +1293,12 @@ export const brandsAPI = {
         ? pageOrParams
         : { page: pageOrParams, limit };
 
-    const publicRes = await getPublicBrands(params);
+    const safeParams = {
+      ...params,
+      limit: clampPageLimit(params.limit ?? limit),
+    };
+
+    const publicRes = await getPublicBrands(safeParams);
     const publicBrands = getResponseArray(publicRes);
 
     if (!hasAuthToken()) {
@@ -1299,12 +1306,12 @@ export const brandsAPI = {
     }
 
     try {
-      const res = await api.get('/brand', { params });
+      const res = await api.get('/brand', { params: safeParams });
       const authedBrands = getResponseArray(res);
       const merged = mergeBrandLists(authedBrands, publicBrands);
       return normalizeBrandDirectoryResponse(merged, res);
     } catch (err) {
-      if (err.response?.status === 401 || err.response?.status === 403) {
+      if ([401, 403, 400].includes(err.response?.status)) {
         return publicRes;
       }
       throw err;
@@ -2003,7 +2010,7 @@ export const fetchAdminBazaars = async () => {
 
   let brands = [];
   try {
-    const res = await brandsAPI.getAll({ limit: 200 });
+    const res = await brandsAPI.getAll({ limit: MAX_PRODUCT_PAGE_SIZE });
     brands = getResponseArray(res);
   } catch {
     brands = [];
@@ -2257,6 +2264,8 @@ export const prefetchSellerBrandHints = async (user) => {
 
 const bootstrapSellerDataFromDashboard = async (user, { addProducts, rememberBrandId }) => {
   const userId = user?.id || user?._id;
+  if (!hasSellerApiAccess()) return null;
+
   try {
     const dashRes = await sellerAPI.getDashboard();
     const dashData = dashRes.data?.data || dashRes.data || {};
@@ -2514,7 +2523,7 @@ const getAuthedBrandsList = async () => {
 };
 
 const getApprovedBrandRequestForUser = async (user) => {
-  if (!hasAuthToken() || !user) return null;
+  if (!hasAuthToken() || !user || !isAdminApiRole()) return null;
 
   const userId = user.id || user._id;
   const email = user.email?.toLowerCase();
@@ -2581,27 +2590,87 @@ const brandRequestMatchesUser = (request, user) => {
   return email && requestEmail && requestEmail === email;
 };
 
+const brandRequestStorageKey = (userId) =>
+  `brandhive_brand_request_${userId || 'default'}`;
+
+export const cacheBrandRequestSubmission = (user, request = {}) => {
+  const userId = user?.id || user?._id;
+  if (!userId) return;
+  try {
+    localStorage.setItem(
+      brandRequestStorageKey(userId),
+      JSON.stringify({
+        ...request,
+        status: request.status || request.requestStatus || 'pending',
+        submittedAt: request.submittedAt || new Date().toISOString(),
+      })
+    );
+  } catch {
+    // ignore quota errors
+  }
+};
+
+const readCachedBrandRequest = (userId) => {
+  if (!userId) return null;
+  try {
+    const raw = localStorage.getItem(brandRequestStorageKey(userId));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
 export const fetchMyBrandRequest = async (user) => {
   if (!hasAuthToken() || !user) return null;
   const hints = collectSellerBrandHints(user);
   const savedName = hints.savedName?.trim().toLowerCase();
-  try {
-    const res = await api.get('/brand/requests', { params: { limit: 50 } });
-    const requests = getResponseArray(res);
-    return (
-      requests.find((request) => {
-        if (brandRequestMatchesUser(request, user)) return true;
-        const reqName = (request.name || request.brandName || '').trim().toLowerCase();
-        if (savedName && reqName === savedName) {
-          const status = request.status || request.requestStatus;
-          return !status || status === 'approved' || status === 'pending';
-        }
-        return false;
-      }) || null
-    );
-  } catch {
-    return null;
+  const userId = user.id || user._id;
+
+  if (isAdminApiRole()) {
+    try {
+      const res = await api.get('/brand/requests', { params: { limit: 50 } });
+      const requests = getResponseArray(res);
+      return (
+        requests.find((request) => {
+          if (brandRequestMatchesUser(request, user)) return true;
+          const reqName = (request.name || request.brandName || '').trim().toLowerCase();
+          if (savedName && reqName === savedName) {
+            const status = request.status || request.requestStatus;
+            return !status || status === 'approved' || status === 'pending';
+          }
+          return false;
+        }) || null
+      );
+    } catch {
+      return null;
+    }
   }
+
+  const cached = readCachedBrandRequest(userId);
+  if (cached) return cached;
+
+  if (userId && localPlatform) {
+    try {
+      const settings = await fetchSellerStoreSettings(userId);
+      if (settings?.brandId) {
+        return {
+          status: 'approved',
+          brandId: settings.brandId,
+          name: settings.shop?.storeName || settings.bazaar?.name || savedName || 'My Brand',
+          brand: {
+            _id: settings.brandId,
+            id: settings.brandId,
+            name: settings.shop?.storeName || settings.bazaar?.name || savedName || 'My Brand',
+            slug: settings.bazaar?.slug,
+          },
+        };
+      }
+    } catch {
+      // ignore mirror errors
+    }
+  }
+
+  return null;
 };
 
 const getCachedSellerBrand = (userId, savedName, savedSlug) => {
@@ -3012,39 +3081,58 @@ export const resolveSellerBazaarSource = async (user, { brandId, products = [] }
     }
   }
 
-  attempts.push(
-    withRequestTimeout(sellerAPI.getBazaar(), 6000).then((res) => {
-      const bazaar = res.data?.data || res.data?.bazaar || res.data;
-      if (bazaar && (bazaar._id || bazaar.id || bazaar.name)) {
-        return { kind: 'bazaar', payload: bazaar };
-      }
-      throw new Error('empty bazaar');
-    }),
-    withRequestTimeout(sellerAPI.getDashboard(), 6000).then((res) => {
-      const dashBrand = res.data?.data?.brand || res.data?.brand;
-      const result = toBrandResult(dashBrand);
-      if (result) return result;
-      throw new Error('empty dashboard brand');
-    }),
-    withRequestTimeout(fetchMyBrandRequest(user), 6000).then((req) => {
-      if (!req) throw new Error('no request');
-      const status = req.status || req.requestStatus;
-      if (status && status !== 'approved' && status !== 'pending') {
-        throw new Error('request not approved');
-      }
-      const result = toBrandResult(
-        req.brand ||
-          req.approvedBrand || {
-            _id: req.brandId || req._id || req.id,
-            id: req.brandId || req._id || req.id,
-            name: req.name || req.brandName || savedName,
-            slug: req.slug,
-            description: req.description,
+  if (userId && localPlatform) {
+    attempts.push(
+      withRequestTimeout(
+        fetchSellerStoreSettings(userId).then((settings) => {
+          const bazaarName =
+            settings?.bazaar?.name || settings?.shop?.storeName || savedName;
+          if (!bazaarName && !settings?.brandId) throw new Error('empty mirror bazaar');
+          if (settings?.bazaar?.name || settings?.shop?.storeName) {
+            return {
+              kind: 'bazaar',
+              payload: {
+                _id: settings.brandId || settings.bazaar?.slug || userId,
+                id: settings.brandId || settings.bazaar?.slug || userId,
+                name: bazaarName,
+                slug: settings.bazaar?.slug,
+                description: settings.bazaar?.description,
+              },
+            };
           }
-      );
-      if (result) return result;
-      throw new Error('empty request brand');
-    }),
+          const result = toBrandResult({
+            _id: settings.brandId,
+            id: settings.brandId,
+            name: bazaarName || savedName || 'My Brand',
+            slug: settings.bazaar?.slug,
+          });
+          if (result) return result;
+          throw new Error('empty mirror brand');
+        }),
+        6000
+      )
+    );
+  }
+
+  if (hasSellerApiAccess()) {
+    attempts.push(
+      withRequestTimeout(sellerAPI.getBazaar(), 6000).then((res) => {
+        const bazaar = res.data?.data || res.data?.bazaar || res.data;
+        if (bazaar && (bazaar._id || bazaar.id || bazaar.name)) {
+          return { kind: 'bazaar', payload: bazaar };
+        }
+        throw new Error('empty bazaar');
+      }),
+      withRequestTimeout(sellerAPI.getDashboard(), 6000).then((res) => {
+        const dashBrand = res.data?.data?.brand || res.data?.brand;
+        const result = toBrandResult(dashBrand);
+        if (result) return result;
+        throw new Error('empty dashboard brand');
+      })
+    );
+  }
+
+  attempts.push(
     withRequestTimeout(linkBrandFromFacets(user), 6000).then((brand) => {
       const result = toBrandResult(brand);
       if (result) return result;
@@ -3083,16 +3171,18 @@ export const resolveSellerBrandId = async (user) => {
   }
 
   let dashBrand = null;
-  try {
-    const dashRes = await sellerAPI.getDashboard();
-    dashBrand = dashRes.data?.data?.brand || dashRes.data?.brand;
-    const dashBrandId = dashBrand?._id || dashBrand?.id;
-    if (dashBrandId) {
-      rememberSellerBrand(userId, dashBrand);
-      return dashBrandId;
+  if (hasSellerApiAccess()) {
+    try {
+      const dashRes = await sellerAPI.getDashboard();
+      dashBrand = dashRes.data?.data?.brand || dashRes.data?.brand;
+      const dashBrandId = dashBrand?._id || dashBrand?.id;
+      if (dashBrandId) {
+        rememberSellerBrand(userId, dashBrand);
+        return dashBrandId;
+      }
+    } catch {
+      // fall through to brand list / cache
     }
-  } catch {
-    // fall through to brand list / cache
   }
 
   try {
@@ -4529,24 +4619,56 @@ export const chatAPI = {
 
 // ─── Inventory ───────────────────────────────────────────────────────────────
 export const inventoryAPI = {
-  getLogs: (params = {}) => api.get('/inventory/logs', { params }),
-  getLogsByProduct: (productId, params = {}) =>
-    api.get(`/inventory/logs/${productId}`, { params }),
-  adjust: (data) => api.post('/inventory/adjust', data),
-  getLowStock: (params = {}) => api.get('/inventory/low-stock', { params }),
-  getOutOfStock: (params = {}) => api.get('/inventory/out-of-stock', { params }),
+  getLogs: (params = {}) => {
+    if (!isAdminApiRole()) {
+      return Promise.resolve({ data: { data: [] } });
+    }
+    return api.get('/inventory/logs', { params });
+  },
+  getLogsByProduct: (productId, params = {}) => {
+    if (!isAdminApiRole()) {
+      return Promise.resolve({ data: { data: [] } });
+    }
+    return api.get(`/inventory/logs/${productId}`, { params });
+  },
+  adjust: (data) => {
+    if (!isAdminApiRole()) {
+      return Promise.reject(new Error('Admin inventory access required'));
+    }
+    return api.post('/inventory/adjust', data);
+  },
+  getLowStock: (params = {}) => {
+    if (!isAdminApiRole()) {
+      return Promise.resolve({ data: { data: [] } });
+    }
+    return api.get('/inventory/low-stock', { params });
+  },
+  getOutOfStock: (params = {}) => {
+    if (!isAdminApiRole()) {
+      return Promise.resolve({ data: { data: [] } });
+    }
+    return api.get('/inventory/out-of-stock', { params });
+  },
   getAlerts: async () => {
-    try {
-      const res = await api.get('/seller/inventory/alerts');
-      if (getResponseArray(res).length > 0) return res;
-    } catch {
-      // fall through to admin inventory endpoints
+    if (hasSellerApiAccess()) {
+      try {
+        const res = await api.get('/seller/inventory/alerts');
+        if (getResponseArray(res).length > 0) return res;
+      } catch {
+        // seller alerts unavailable
+      }
+      return { data: { data: [] } };
     }
-    try {
-      return await api.get('/inventory/low-stock');
-    } catch {
-      return api.get('/inventory/out-of-stock');
+
+    if (isAdminApiRole()) {
+      try {
+        return await api.get('/inventory/low-stock');
+      } catch {
+        return api.get('/inventory/out-of-stock');
+      }
     }
+
+    return { data: { data: [] } };
   },
 };
 
@@ -5454,6 +5576,218 @@ export const hydratePaidOrdersFromMirror = async (orders = []) => {
   return updated;
 };
 
+const pickItemBrandName = (item, brandById = null) => {
+  if (!item || typeof item !== 'object') return '';
+
+  const candidates = [
+    item.brandName,
+    item.brand?.name,
+    typeof item.brand === 'string' && !isValidMongoId(item.brand) ? item.brand : '',
+    item.product?.brand?.name,
+    item.product?.brandName,
+    typeof item.product?.brand === 'string' && !isValidMongoId(item.product.brand)
+      ? item.product.brand
+      : '',
+    item.seller?.brandName,
+    item.shopName,
+    item.storeName,
+  ];
+
+  for (const value of candidates) {
+    const text = String(value || '').trim();
+    if (text) return text;
+  }
+
+  if (brandById) {
+    const brandId =
+      item.brandId ||
+      item.brand?._id ||
+      item.brand?.id ||
+      item.product?.brand?._id ||
+      item.product?.brand?.id;
+    if (brandId) {
+      const name = brandById.get(String(brandId));
+      if (name) return name;
+    }
+  }
+
+  return '';
+};
+
+const getOrderItemProductId = (item) => {
+  if (!item || typeof item !== 'object') return '';
+  return String(
+    item.productId?._id ||
+      item.productId?.id ||
+      item.productId ||
+      item.product?._id ||
+      item.product?.id ||
+      ''
+  ).trim();
+};
+
+export const resolveOrderBrandName = (order, itemsInput, helpers = {}) => {
+  const { brandById, productBrandById, mirrorBrandByRailwayId } = helpers;
+  const items = Array.isArray(itemsInput) && itemsInput.length > 0
+    ? itemsInput
+    : order?.items || order?.products || [];
+
+  const fromItems = [
+    ...new Set(items.map((item) => pickItemBrandName(item, brandById)).filter(Boolean)),
+  ];
+  if (fromItems.length > 0) {
+    return fromItems.length > 1 ? fromItems.join(', ') : fromItems[0];
+  }
+
+  const orderCandidates = [
+    order?.brandName,
+    order?.brand?.name,
+    typeof order?.brand === 'string' && !isValidMongoId(order.brand) ? order.brand : '',
+  ];
+  for (const value of orderCandidates) {
+    const text = String(value || '').trim();
+    if (text) return text;
+  }
+
+  const railwayId = String(order?._id || order?.id || order?.orderId || '').trim();
+  if (railwayId && mirrorBrandByRailwayId?.get(railwayId)) {
+    return mirrorBrandByRailwayId.get(railwayId);
+  }
+
+  if (productBrandById) {
+    for (const item of items) {
+      const productId = getOrderItemProductId(item);
+      if (productId && productBrandById.get(productId)) {
+        return productBrandById.get(productId);
+      }
+    }
+  }
+
+  return '';
+};
+
+const fetchMirrorBrandNamesByRailwayIds = async (railwayIds = []) => {
+  const map = new Map();
+  if (!localSellerOrders || railwayIds.length === 0) return map;
+
+  try {
+    const res = await localSellerOrders.get('/by-railway', {
+      params: { ids: railwayIds.join(',') },
+    });
+    getResponseArray(res).forEach((mirrorOrder) => {
+      const railwayId = String(mirrorOrder?.railwayOrderId || '').trim();
+      if (!railwayId) return;
+      const names = [
+        ...new Set(
+          (mirrorOrder.items || [])
+            .map((item) => String(item?.brandName || '').trim())
+            .filter(Boolean)
+        ),
+      ];
+      if (names.length > 0) {
+        map.set(railwayId, names.length > 1 ? names.join(', ') : names[0]);
+      }
+    });
+  } catch {
+    // mirror unavailable
+  }
+
+  return map;
+};
+
+export const enrichCustomerOrdersWithBrandNames = async (orders = []) => {
+  if (!Array.isArray(orders) || orders.length === 0) return orders;
+
+  const railwayIds = [
+    ...new Set(
+      orders
+        .map((order) => String(order?._id || order?.id || order?.orderId || '').trim())
+        .filter(Boolean)
+    ),
+  ];
+
+  const mirrorBrandByRailwayId = await fetchMirrorBrandNamesByRailwayIds(railwayIds);
+
+  let brandById = new Map();
+  try {
+    const res = await brandsAPI.getAll({ limit: MAX_PRODUCT_PAGE_SIZE });
+    getResponseArray(res).forEach((brand) => {
+      const id = brand._id || brand.id;
+      if (id && brand.name) {
+        brandById.set(String(id), String(brand.name).trim());
+      }
+    });
+  } catch {
+    brandById = new Map();
+  }
+
+  const productBrandById = new Map();
+  const needsProductLookup = new Set();
+
+  orders.forEach((order) => {
+    const items = order?.items || order?.products || [];
+    if (
+      resolveOrderBrandName(order, items, {
+        brandById,
+        mirrorBrandByRailwayId,
+      })
+    ) {
+      return;
+    }
+
+    items.forEach((item) => {
+      const productId = getOrderItemProductId(item);
+      if (productId) needsProductLookup.add(productId);
+    });
+  });
+
+  [...needsProductLookup].forEach((productId) => {
+    const cached = getCachedProduct(productId);
+    const cachedName =
+      cached?.brand?.name ||
+      cached?.brandName ||
+      (typeof cached?.brand === 'string' ? cached.brand : '');
+    if (cachedName) {
+      productBrandById.set(productId, String(cachedName).trim());
+      needsProductLookup.delete(productId);
+    }
+  });
+
+  await Promise.allSettled(
+    [...needsProductLookup].map(async (productId) => {
+      const info = await lookupProductBrand(productId);
+      if (info?.brandName) {
+        productBrandById.set(productId, info.brandName);
+      }
+    })
+  );
+
+  return orders.map((order) => {
+    const items = order?.items || order?.products || [];
+    const brandName =
+      resolveOrderBrandName(order, items, {
+        brandById,
+        productBrandById,
+        mirrorBrandByRailwayId,
+      }) || '-';
+
+    const enrichedItems = items.map((item) => ({
+      ...item,
+      brandName:
+        pickItemBrandName(item, brandById) ||
+        productBrandById.get(getOrderItemProductId(item)) ||
+        (brandName !== '-' ? brandName : ''),
+    }));
+
+    return {
+      ...order,
+      brandName,
+      items: enrichedItems,
+      products: enrichedItems,
+    };
+  });
+};
+
 export const confirmPaymobReturn = async (orderId, paymobParams = {}) => {
   if (!orderId) return null;
 
@@ -6080,21 +6414,23 @@ export const toggleBrandFollow = async (
 export const fetchMyFollowingBrands = async (userId) => {
   let followingIds = userId ? readLocalFollowingIds(userId) : [];
 
-  try {
-    const res = await brandsAPI.getMyFollowing();
-    const apiBrands = getResponseArray(res);
-    if (apiBrands.length > 0) {
-      followingIds = [
-        ...new Set([
-          ...followingIds,
-          ...apiBrands.map((brand) => String(brand._id || brand.id)).filter(Boolean),
-        ]),
-      ];
-      if (userId) writeLocalFollowingIds(userId, followingIds);
-      return apiBrands;
+  if (isCustomerApiRole()) {
+    try {
+      const res = await brandsAPI.getMyFollowing();
+      const apiBrands = getResponseArray(res);
+      if (apiBrands.length > 0) {
+        followingIds = [
+          ...new Set([
+            ...followingIds,
+            ...apiBrands.map((brand) => String(brand._id || brand.id)).filter(Boolean),
+          ]),
+        ];
+        if (userId) writeLocalFollowingIds(userId, followingIds);
+        return apiBrands;
+      }
+    } catch {
+      // fall through to local enrichment
     }
-  } catch {
-    // fall through to local enrichment
   }
 
   if (followingIds.length === 0) return [];
@@ -6377,14 +6713,39 @@ export const replyToSellerCustomer = async (messageId, reply) => {
 export const fetchSellerBrandMessages = async (brandId, brandName = '') => {
   const merged = new Map();
 
+  if (localSupport && brandId) {
+    try {
+      const res = await localSupport.get('/', {
+        params: { brandId: String(brandId) },
+      });
+      getResponseArray(res).forEach((entry) => {
+        const id = entry._id || entry.id || entry.railwayTicketId;
+        if (id) merged.set(String(id), normalizeSellerInboxMessage(entry, brandName));
+      });
+      if (merged.size > 0) {
+        return [...merged.values()].sort(
+          (a, b) =>
+            new Date(b.createdAt || 0).getTime() -
+            new Date(a.createdAt || 0).getTime()
+        );
+      }
+    } catch {
+      // mirror offline
+    }
+  }
+
+  if (!hasSellerApiAccess()) {
+    return [];
+  }
+
   try {
     const res = await sellerAPI.getMessages();
     getResponseArray(res).forEach((entry) => {
       const id = entry._id || entry.id;
       if (id) merged.set(String(id), normalizeSellerInboxMessage(entry, brandName));
     });
-  } catch (err) {
-    console.warn('[fetchSellerBrandMessages/seller]', err.response?.status);
+  } catch {
+    // Railway seller inbox unavailable
   }
 
   if (merged.size === 0 && brandId) {
@@ -6394,8 +6755,8 @@ export const fetchSellerBrandMessages = async (brandId, brandName = '') => {
         const id = entry._id || entry.id;
         if (id) merged.set(String(id), normalizeSellerInboxMessage(entry, brandName));
       });
-    } catch (err) {
-      console.warn('[fetchSellerBrandMessages/brand]', err.response?.status);
+    } catch {
+      // Railway brand inbox unavailable
     }
   }
 
@@ -6419,25 +6780,6 @@ export const fetchSellerBrandMessages = async (brandId, brandName = '') => {
     );
   }
 
-  if (localSupport && brandId) {
-    try {
-      const res = await localSupport.get('/', {
-        params: { brandId: String(brandId) },
-      });
-      getResponseArray(res).forEach((entry) => {
-        const id = entry._id || entry.id || entry.railwayTicketId;
-        if (id) merged.set(String(id), normalizeSellerInboxMessage(entry, brandName));
-      });
-      return [...merged.values()].sort(
-        (a, b) =>
-          new Date(b.createdAt || 0).getTime() -
-          new Date(a.createdAt || 0).getTime()
-      );
-    } catch {
-      // mirror offline
-    }
-  }
-
   return [];
 };
 
@@ -6448,6 +6790,11 @@ export const syncLocalSupportReply = async (
   ticketMeta = {}
 ) => {
   if (!localSupport || !railwayTicketId || !reply?.trim()) return null;
+
+  const ticketId = String(railwayTicketId);
+  if (ticketId.startsWith('auto-') || !isValidMongoId(ticketId)) {
+    return null;
+  }
 
   try {
     const res = await localSupport.post(`/${railwayTicketId}/reply`, {
